@@ -10,7 +10,7 @@ export function verifyShopifyWebhookSignature(
   rawBody: string,
   signatureHeader: string | null,
 ): boolean {
-  const secret = process.env.SHOPIFY_API_SECRET
+  const secret = process.env.SHOPIFY_API_SECRET?.trim()
   if (!secret) {
     console.error(
       '[shopify-webhook] SHOPIFY_API_SECRET is not set — rejecting webhook. ' +

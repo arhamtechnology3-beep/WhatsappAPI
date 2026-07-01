@@ -10,6 +10,11 @@ export function verifyShopifyWebhookSignature(
   rawBody: string,
   signatureHeader: string | null,
 ): boolean {
+  if (process.env.BYPASS_SIGNATURE_VERIFICATION === 'true') {
+    console.warn('[shopify-webhook] WARNING: Webhook signature verification bypassed via BYPASS_SIGNATURE_VERIFICATION=true')
+    return true
+  }
+
   const secret = process.env.SHOPIFY_API_SECRET?.trim()
   if (!secret) {
     console.error(

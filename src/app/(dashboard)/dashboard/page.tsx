@@ -9,6 +9,7 @@ import {
   UserPlus,
   DollarSign,
   Send,
+  ShoppingBag,
 } from 'lucide-react'
 
 import {
@@ -129,9 +130,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Metric cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {metricsLoading || !metrics ? (
-          Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)
+          Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)
         ) : (
           <>
             <MetricCard
@@ -174,6 +175,12 @@ export default function DashboardPage() {
                   'vs yesterday',
                 ),
               }}
+            />
+            <MetricCard
+              title="Carts Recovered"
+              value={metrics.cartsRecoveredThisWeek.toLocaleString()}
+              icon={ShoppingBag}
+              subtitle={`${metrics.cartRecoveryRate}% recovery rate this week`}
             />
           </>
         )}

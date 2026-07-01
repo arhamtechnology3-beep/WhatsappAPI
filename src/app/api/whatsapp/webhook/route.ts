@@ -706,6 +706,21 @@ async function processMessage(
   // Fire-and-forget: a slow or failing automation must not block the
   // webhook's 200 OK response to Meta.
   const inboundText = contentText ?? message.text?.body ?? ''
+
+  // STOP keyword opt-out handler
+  if (inboundText.trim().toUpperCase() === 'STOP') {
+    await supabaseAdmin()
+      .from('contacts')
+      .update({ whatsapp_marketing_opt_in: false })
+      .eq('id', contactRecord.id)
+
+    await supabaseAdmin()
+      .from('shopify_recovery_tracking')
+      .update({ status: 'stopped', updated_at: new Date().toISOString() })
+      .eq('contact_id', contactRecord.id)
+      .eq('status', 'in_progress')
+  }
+
   const automationTriggers: (
     | 'new_contact_created'
     | 'first_inbound_message'

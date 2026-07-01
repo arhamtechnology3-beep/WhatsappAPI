@@ -78,6 +78,31 @@ export async function loadMetrics(db: DB): Promise<MetricsBundle> {
   const openDealsRows = (openDeals.data ?? []) as { value: number | null }[]
   const openDealsValue = openDealsRows.reduce((sum, d) => sum + (d.value ?? 0), 0)
 
+  let cartsRecoveredThisWeek = 0
+  let cartRecoveryRate = 0
+
+  try {
+    const weekStart = daysAgoStart(7).toISOString()
+    const [recoveredCheckouts, totalCheckouts] = await Promise.all([
+      db
+        .from('shopify_checkouts')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'recovered')
+        .gte('updated_at', weekStart),
+      db
+        .from('shopify_checkouts')
+        .select('id', { count: 'exact', head: true })
+        .gte('created_at', weekStart),
+    ])
+
+    const recovered = recoveredCheckouts.count ?? 0
+    const total = totalCheckouts.count ?? 0
+    cartsRecoveredThisWeek = recovered
+    cartRecoveryRate = total > 0 ? Math.round((recovered / total) * 100) : 0
+  } catch (err) {
+    console.warn('[dashboard] shopify_checkouts queries failed (might not be migrated yet):', err)
+  }
+
   return {
     activeConversations: {
       current: openConvCur.count ?? 0,
@@ -96,6 +121,8 @@ export async function loadMetrics(db: DB): Promise<MetricsBundle> {
       current: messagesToday.count ?? 0,
       previous: messagesYesterday.count ?? 0,
     },
+    cartsRecoveredThisWeek,
+    cartRecoveryRate,
   }
 }
 

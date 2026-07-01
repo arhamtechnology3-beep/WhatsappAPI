@@ -66,6 +66,7 @@ export function ContactForm({
   const [tags, setTags] = useState<Tag[]>([]);
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [loadingTags, setLoadingTags] = useState(false);
+  const [whatsappMarketingOptIn, setWhatsappMarketingOptIn] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -74,6 +75,7 @@ export function ContactForm({
       setEmail(contact?.email ?? '');
       setCompany(contact?.company ?? '');
       setSelectedTagIds(contactTags.map((ct) => ct.tag_id));
+      setWhatsappMarketingOptIn((contact as any)?.whatsapp_marketing_opt_in ?? false);
       setDupMatch(null);
       fetchTags();
     }
@@ -154,6 +156,7 @@ export function ContactForm({
             phone: phone.trim(),
             email: email.trim() || null,
             company: company.trim() || null,
+            whatsapp_marketing_opt_in: whatsappMarketingOptIn,
             updated_at: new Date().toISOString(),
           })
           .eq('id', contactId);
@@ -168,6 +171,7 @@ export function ContactForm({
             phone: phone.trim(),
             email: email.trim() || null,
             company: company.trim() || null,
+            whatsapp_marketing_opt_in: whatsappMarketingOptIn,
           })
           .select('id')
           .single();
@@ -322,6 +326,19 @@ export function ContactForm({
               placeholder="Acme Inc."
               className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
             />
+          </div>
+
+          <div className="flex items-center gap-2 py-1">
+            <input
+              type="checkbox"
+              id="cf-opt-in"
+              checked={whatsappMarketingOptIn}
+              onChange={(e) => setWhatsappMarketingOptIn(e.target.checked)}
+              className="size-4 rounded border-border bg-muted text-primary focus:ring-primary"
+            />
+            <Label htmlFor="cf-opt-in" className="text-xs text-foreground cursor-pointer">
+              Opted in to WhatsApp Marketing updates
+            </Label>
           </div>
 
           <div className="space-y-2">

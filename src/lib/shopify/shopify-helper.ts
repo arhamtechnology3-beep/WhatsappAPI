@@ -96,7 +96,7 @@ export async function matchOrCreateShopifyContact(
     if (email && !contact.email) {
       updates.email = email
     }
-    if (name && contact.name === contact.phone) {
+    if (name && (contact.name === 'Shopify Customer' || contact.name === contact.phone || !contact.name)) {
       updates.name = name
     }
     if (Object.keys(updates).length > 0) {

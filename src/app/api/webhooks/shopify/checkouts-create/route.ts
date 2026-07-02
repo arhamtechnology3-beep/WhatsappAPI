@@ -28,9 +28,11 @@ export async function POST(request: Request) {
 
     // Parse checkout attributes
     const checkoutId = String(payload.id)
-    const email = payload.email || null
-    const phone = payload.phone || payload.customer?.phone || null
-    const name = [payload.customer?.first_name, payload.customer?.last_name].filter(Boolean).join(' ') || payload.billing_address?.name || null
+    const email = payload.email || payload.customer?.email || payload.billing_address?.email || null
+    const phone = payload.phone || payload.customer?.phone || payload.billing_address?.phone || payload.shipping_address?.phone || null
+    const firstName = payload.customer?.first_name || payload.billing_address?.first_name || payload.shipping_address?.first_name || null
+    const lastName = payload.customer?.last_name || payload.billing_address?.last_name || payload.shipping_address?.last_name || null
+    const name = [firstName, lastName].filter(Boolean).join(' ') || payload.billing_address?.name || null
     const cartToken = payload.cart_token || null
     const abandonedUrl = payload.abandoned_checkout_url || null
     const totalPrice = parseFloat(payload.total_price || '0')
@@ -42,8 +44,8 @@ export async function POST(request: Request) {
       id: payload.customer?.id,
       email,
       phone,
-      first_name: payload.customer?.first_name,
-      last_name: payload.customer?.last_name,
+      first_name: firstName,
+      last_name: lastName,
     }
 
     const contact = await matchOrCreateShopifyContact(supabase, accountId, userId, customerPayload)

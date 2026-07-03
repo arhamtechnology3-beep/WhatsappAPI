@@ -39,7 +39,7 @@ export default function DemoPage() {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 group">
             <img
-              src="/logo-dark.png"
+              src="/logo-dark.png?v=2"
               alt="Arham Technology Logo"
               className="h-9 md:h-12 w-auto object-contain"
             />
@@ -137,7 +137,7 @@ export default function DemoPage() {
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2">
             <img
-              src="/logo-dark.png"
+              src="/logo-dark.png?v=2"
               alt="Arham Technology Logo"
               className="h-12 w-auto object-contain"
             />

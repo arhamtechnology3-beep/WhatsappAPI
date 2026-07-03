@@ -110,7 +110,7 @@ function LoginPageInner() {
               </div>
             ) : (
               <img
-                src="/logo-transparent.png"
+                src="/logo-transparent.png?v=2"
                 alt="Arham Technology Logo"
                 className="h-16 w-auto object-contain"
               />

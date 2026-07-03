@@ -36,7 +36,7 @@ export default function RootPage() {
           <Link href="/" className="flex items-center gap-2 group">
             {/* White-labeled Logo for Arham Technology */}
             <img
-              src="/logo-dark.png"
+              src="/logo-dark.png?v=2"
               alt="Arham Technology Logo - WhatsApp CRM Services"
               className="h-9 md:h-12 w-auto object-contain group-hover:scale-105 transition-transform duration-200"
             />
@@ -329,7 +329,7 @@ export default function RootPage() {
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2">
             <img
-              src="/logo-dark.png"
+              src="/logo-dark.png?v=2"
               alt="Arham Technology Logo - WhatsApp CRM Services"
               className="h-12 w-auto object-contain"
             />

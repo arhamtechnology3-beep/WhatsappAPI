@@ -182,7 +182,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         <div className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-border px-4">
           <Link href="/dashboard" className="flex items-center gap-2">
             <img
-              src="/logo-transparent.png"
+              src="/logo-transparent.png?v=2"
               alt="Arham Technology Logo"
               className="h-11 w-auto object-contain"
             />

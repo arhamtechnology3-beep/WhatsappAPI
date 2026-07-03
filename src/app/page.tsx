@@ -12,7 +12,8 @@ import {
   CheckCircle2,
   Zap,
   LogIn,
-  LayoutDashboard
+  LayoutDashboard,
+  Star
 } from 'lucide-react'
 
 export const metadata: Metadata = {
@@ -22,6 +23,61 @@ export const metadata: Metadata = {
 }
 
 export default function RootPage() {
+  const plans = [
+    {
+      name: 'Basic Plan',
+      price: '₹999',
+      shopifyPrice: '$19.99',
+      description: 'Ideal for early-stage Shopify stores wanting to automate basic checkouts and alerts.',
+      features: [
+        'Shopify Store Integration',
+        'Abandoned Cart Recovery (Step 1)',
+        'Order Confirmation alerts',
+        '10 Message Templates limit',
+        'Single Team Inbox (1 agent)',
+        'Basic statistics & logs',
+      ],
+      isPopular: false,
+      cta: 'Start Free Trial',
+    },
+    {
+      name: 'Growth Plan',
+      price: '₹1,499',
+      shopifyPrice: '$26.99',
+      description: 'Our most popular plan. Advanced recovery sequences, broadcasts, and scheduling rules.',
+      features: [
+        'Everything in Basic included',
+        'Multi-step Abandoned Cart Recovery (Steps 1, 2 & 3)',
+        'Auto Reply / COD Status confirmations',
+        '20 Message Templates limit',
+        'Broadcast marketing (30k messages/mo)',
+        'Up to 3 team members',
+        'Automation Scheduling (10 rules)',
+        'Priority Slack & email support',
+      ],
+      isPopular: true,
+      cta: 'Start Free Trial',
+    },
+    {
+      name: 'Scale Plan',
+      price: '₹2,499',
+      shopifyPrice: '$36.99',
+      description: 'For high-volume stores needing robust templating, custom tagging, and maximum broadcast quotas.',
+      features: [
+        'Everything in Growth included',
+        'Dynamic 24h Coupon Generator',
+        'Unlimited Sequences & Steps',
+        '50 Message Templates limit',
+        'Broadcast marketing (50k messages/mo)',
+        'Up to 10 team members',
+        'Automation Scheduling (50 rules)',
+        'Dedicated account manager',
+      ],
+      isPopular: false,
+      cta: 'Start Free Trial',
+    },
+  ]
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-indigo-500 selection:text-white overflow-x-hidden">
       {/* Background Gradient Orbs - Wrapped to prevent mobile layout overflow */}
@@ -249,78 +305,66 @@ export default function RootPage() {
         <div className="text-center space-y-3 mb-16">
           <h2 className="text-3xl md:text-4xl font-extrabold text-white">Start for free. Grow with scale.</h2>
           <p className="text-slate-400 max-w-2xl mx-auto text-sm">
-            Try all premium Shopify integrations and WhatsApp templates free for 15 days. No credit card required.
+            No upfront setup fees, no complex pricing. Billed securely through Shopify App Store Billing. Start recovering sales immediately.
           </p>
         </div>
 
-        <div className="grid gap-8 md:grid-cols-2 max-w-3xl mx-auto">
-          {/* Trial Card */}
-          <div className="p-8 rounded-2xl border border-slate-900 bg-slate-950/60 relative overflow-hidden flex flex-col justify-between">
-            <div className="absolute top-0 right-0 bg-indigo-500/10 text-indigo-400 text-[10px] px-3 py-1.5 font-bold tracking-wider uppercase rounded-bl-xl border-l border-b border-slate-850">
-              First 15 Days
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-indigo-400 tracking-wide uppercase">Trial Plan</p>
-              <div className="mt-4 flex items-baseline text-white">
-                <span className="text-5xl font-extrabold tracking-tight">₹0</span>
-                <span className="ml-1 text-sm font-semibold text-slate-400">/ 15 days</span>
-              </div>
-              <p className="mt-4 text-xs text-slate-400 leading-relaxed">
-                Experience full automation, connect your storefront, start collecting customer opt-ins, and recover open carts without paying a single rupee.
-              </p>
-            </div>
-            <div className="mt-8 space-y-3 text-xs text-slate-300">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="size-4 text-indigo-400 shrink-0" />
-                <span>Shopify store integration</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="size-4 text-indigo-400 shrink-0" />
-                <span>Full cart & browse sequence drops</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="size-4 text-indigo-400 shrink-0" />
-                <span>Unlimited contacts and chats</span>
-              </div>
-            </div>
-            <Link href="/signup" className="mt-8 inline-flex items-center justify-center px-4 py-2.5 text-xs font-semibold text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-lg transition-colors">
-              Activate 15-Day Free Trial
-            </Link>
-          </div>
+        {/* Pricing Grid */}
+        <div className="grid gap-8 lg:grid-cols-3 items-stretch max-w-6xl mx-auto">
+          {plans.map((plan) => (
+            <div
+              key={plan.name}
+              className={`p-8 rounded-2xl border flex flex-col justify-between relative overflow-hidden transition-all duration-300 ${
+                plan.isPopular
+                  ? 'border-indigo-500 bg-indigo-950/20 shadow-xl shadow-indigo-500/5 lg:scale-105 z-10'
+                  : 'border-slate-900 bg-slate-950/60'
+              }`}
+            >
+              {plan.isPopular && (
+                <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[10px] px-3.5 py-1.5 font-bold tracking-wider uppercase rounded-bl-xl flex items-center gap-1">
+                  <Star className="size-2.5 fill-white" /> Most Popular
+                </div>
+              )}
 
-          {/* Growth Plan Card */}
-          <div className="p-8 rounded-2xl border border-indigo-500/30 bg-indigo-950/10 relative overflow-hidden flex flex-col justify-between">
-            <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[10px] px-3 py-1.5 font-bold tracking-wider uppercase rounded-bl-xl">
-              Most Popular
+              <div>
+                <p className="text-xs font-semibold text-indigo-400 tracking-wide uppercase">{plan.name}</p>
+                <div className="mt-4 flex items-baseline text-white">
+                  <span className="text-4xl font-extrabold tracking-tight">{plan.price}</span>
+                  <span className="ml-1 text-xs text-slate-400">/ month</span>
+                  <span className="ml-3 text-xs bg-slate-900 border border-slate-800 text-slate-400 rounded-full px-2 py-0.5">
+                    {plan.shopifyPrice} USD
+                  </span>
+                </div>
+                <p className="mt-4 text-xs text-slate-400 leading-relaxed min-h-[40px]">
+                  {plan.description}
+                </p>
+
+                {/* Features List */}
+                <div className="mt-8 space-y-3.5 border-t border-slate-900/60 pt-6">
+                  {plan.features.map((feature) => (
+                    <div key={feature} className="flex items-start gap-2.5 text-xs text-slate-300">
+                      <CheckCircle2 className="size-4 text-indigo-400 shrink-0 mt-0.5" />
+                      <span>{feature}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-8">
+                <Link
+                  href="/signup"
+                  className={`w-full inline-flex items-center justify-center px-4 py-3 rounded-xl text-xs font-bold transition-all ${
+                    plan.isPopular
+                      ? 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-600/30'
+                      : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+                  }`}
+                >
+                  {plan.cta}
+                  <ArrowRight className="ml-1.5 size-3.5" />
+                </Link>
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-semibold text-indigo-400 tracking-wide uppercase">Growth Plan</p>
-              <div className="mt-4 flex items-baseline text-white">
-                <span className="text-5xl font-extrabold tracking-tight">₹1499</span>
-                <span className="ml-1 text-sm font-semibold text-slate-400">/ month</span>
-              </div>
-              <p className="mt-4 text-xs text-slate-400 leading-relaxed">
-                Full-featured CRM and Shopify automation plan billed monthly. Charged only after your 15-day trial period expires.
-              </p>
-            </div>
-            <div className="mt-8 space-y-3 text-xs text-slate-300">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="size-4 text-indigo-400 shrink-0" />
-                <span>All Trial Plan features included</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="size-4 text-indigo-400 shrink-0" />
-                <span>Automatic 24h coupon generator</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="size-4 text-indigo-400 shrink-0" />
-                <span>Dedicated support agent access</span>
-              </div>
-            </div>
-            <Link href="/signup" className="mt-8 inline-flex items-center justify-center px-4 py-2.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg shadow-lg shadow-indigo-600/20 transition-all duration-150">
-              Get Started Now
-            </Link>
-          </div>
+          ))}
         </div>
       </section>
 

@@ -43,9 +43,9 @@ export default function RootPage() {
           </Link>
 
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-300">
-            <a href="#features" className="hover:text-white transition-colors">Features</a>
-            <a href="#how-it-works" className="hover:text-white transition-colors">How it works</a>
-            <a href="#pricing" className="hover:text-white transition-colors">Pricing</a>
+            <Link href="/shopify-whatsapp-automation" className="hover:text-white transition-colors">Shopify App</Link>
+            <Link href="/pricing" className="hover:text-white transition-colors">Pricing</Link>
+            <Link href="/demo" className="hover:text-white transition-colors">Watch Demo</Link>
           </nav>
 
           {/* Desktop Actions */}
@@ -54,7 +54,7 @@ export default function RootPage() {
               Sign in
             </Link>
             <Link href="/signup" className="inline-flex items-center justify-center px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg shadow-lg shadow-indigo-600/20 active:scale-95 transition-all duration-150">
-              Go to Dashboard
+              Get Started
             </Link>
           </div>
 
@@ -93,9 +93,9 @@ export default function RootPage() {
             Start 15-Day Free Trial
             <ArrowRight className="ml-2 size-4 group-hover:translate-x-0.5 transition-transform" />
           </Link>
-          <a href="#features" className="inline-flex items-center justify-center w-full sm:w-auto px-6 py-3.5 text-sm font-semibold text-slate-300 bg-slate-900 hover:bg-slate-800 rounded-xl border border-slate-850 hover:border-slate-700 transition-all duration-150">
-            Learn more
-          </a>
+          <Link href="/shopify-whatsapp-automation" className="inline-flex items-center justify-center w-full sm:w-auto px-6 py-3.5 text-sm font-semibold text-slate-300 bg-slate-900 hover:bg-slate-800 rounded-xl border border-slate-850 hover:border-slate-700 transition-all duration-150">
+            Explore Features
+          </Link>
         </div>
 
         {/* Hero Interactive App Preview */}
@@ -326,7 +326,7 @@ export default function RootPage() {
 
       {/* Footer */}
       <footer className="py-12 border-t border-slate-900 bg-slate-950 px-6 text-center text-xs text-slate-500">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2">
             <img
               src="/logo-dark.png"
@@ -334,7 +334,13 @@ export default function RootPage() {
               className="h-12 w-auto object-contain"
             />
           </div>
-          <p>&copy; {new Date().getFullYear()} Arham Technology. All rights reserved.</p>
+          <div className="flex flex-wrap justify-center gap-6 text-sm text-slate-400">
+            <Link href="/shopify-whatsapp-automation" className="hover:text-white transition-colors">Shopify App</Link>
+            <Link href="/pricing" className="hover:text-white transition-colors">Pricing</Link>
+            <Link href="/demo" className="hover:text-white transition-colors">Watch Demo</Link>
+            <Link href="/login" className="hover:text-white transition-colors">Sign In</Link>
+          </div>
+          <p className="text-slate-500">&copy; {new Date().getFullYear()} Arham Technology. All rights reserved.</p>
         </div>
       </footer>
     </div>

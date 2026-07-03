@@ -14,7 +14,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { MessageSquare, UsersRound } from "lucide-react";
+import { MessageSquare, UsersRound, ShoppingBag } from "lucide-react";
+import { toast } from "sonner";
 
 // `useSearchParams` opts the component out of static prerendering
 // unless it sits under a Suspense boundary. We split the form into
@@ -38,6 +39,8 @@ function LoginPageInner() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [shopifyDomain, setShopifyDomain] = useState("");
+  const [showShopifyInput, setShowShopifyInput] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -66,6 +69,36 @@ function LoginPageInner() {
     }
   };
 
+  const handleGoogleLogin = async () => {
+    setError(null);
+    setLoading(true);
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+    }
+  };
+
+  const handleShopifyLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!shopifyDomain) {
+      setError("Please enter your Shopify store domain");
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    toast.success("Redirecting to Shopify authorization...");
+    setTimeout(() => {
+      router.push("/shopify");
+    }, 800);
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md border-border bg-card">
@@ -79,7 +112,7 @@ function LoginPageInner() {
               <img
                 src="/logo-transparent.png"
                 alt="Arham Technology Logo"
-                className="h-16 w-auto object-contain"
+                className="h-16 w-auto object-contain bg-white px-2 py-1 rounded border border-border"
               />
             )}
           </div>
@@ -146,6 +179,72 @@ function LoginPageInner() {
               {loading ? "Signing in..." : "Sign in"}
             </Button>
           </form>
+
+          <div className="relative my-6">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={loading}
+              onClick={handleGoogleLogin}
+              className="w-full border-border text-foreground hover:bg-muted flex items-center justify-center gap-2"
+            >
+              <svg className="h-4 w-4" aria-hidden="true" focusable="false" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512">
+                <path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 123 24.5 166.3 64.9l-67.5 64.9C258.5 52.6 94.3 116.6 94.3 256c0 86.5 69.1 156.6 153.7 156.6 98.2 0 135-70.4 140.8-106.9H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"></path>
+              </svg>
+              Gmail / Google Account
+            </Button>
+
+            {!showShopifyInput ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={loading}
+                onClick={() => setShowShopifyInput(true)}
+                className="w-full border-border text-foreground hover:bg-muted flex items-center justify-center gap-2"
+              >
+                <ShoppingBag className="h-4 w-4 text-green-500" />
+                Shopify Merchant Account
+              </Button>
+            ) : (
+              <form onSubmit={handleShopifyLogin} className="flex flex-col gap-2 border border-border bg-muted/30 rounded-lg p-3">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="shopifyDomain" className="text-xs font-semibold text-muted-foreground">
+                    Shopify Store Domain
+                  </Label>
+                  <button
+                    type="button"
+                    onClick={() => setShowShopifyInput(false)}
+                    className="text-[10px] text-primary hover:underline"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    id="shopifyDomain"
+                    type="text"
+                    placeholder="your-store.myshopify.com"
+                    value={shopifyDomain}
+                    onChange={(e) => setShopifyDomain(e.target.value)}
+                    required
+                    className="h-9 text-xs border-border bg-muted text-foreground placeholder:text-muted-foreground"
+                  />
+                  <Button type="submit" size="sm" className="h-9 px-3 bg-primary text-primary-foreground">
+                    Connect
+                  </Button>
+                </div>
+              </form>
+            )}
+          </div>
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
             Don&apos;t have an account?{" "}

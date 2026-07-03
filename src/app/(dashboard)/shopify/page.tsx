@@ -27,7 +27,6 @@ import {
   Edit,
   Eye,
   Check,
-  Sparkles,
   Smartphone,
   CheckSquare,
   Play
@@ -141,8 +140,15 @@ export default function ShopifyDashboardPage() {
   const [fulfilledActive, setFulfilledActive] = useState(true)
   const [fulfilledDelay, setFulfilledDelay] = useState<'Instant' | '5 min' | '1 hr' | '10 hr'>('Instant')
 
+  // Cart Recovery steps delay states
+  const [step1Delay, setStep1Delay] = useState<'30 min' | '1 hr' | '2 hr' | '10 hr'>('30 min')
+  const [step2Delay, setStep2Delay] = useState<'12 hr' | '24 hr' | '36 hr' | '48 hr'>('24 hr')
+  const [step3Delay, setStep3Delay] = useState<'24 hr' | '48 hr' | '72 hr' | '96 hr'>('48 hr')
+
   // Phone preview sub-tab: 'COD', 'Prepaid', 'Cart'
   const [phonePreviewTab, setPhonePreviewTab] = useState<'COD' | 'Prepaid' | 'Cart'>('COD')
+  // Phone preview step tab for Cart Recovery: 'Step 1', 'Step 2', 'Step 3'
+  const [phonePreviewStep, setPhonePreviewStep] = useState<'Step 1' | 'Step 2' | 'Step 3'>('Step 1')
 
   const storeDomain = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN || "divyaprabhafoods.myshopify.com"
 
@@ -426,6 +432,25 @@ export default function ShopifyDashboardPage() {
       .replace(/\{\{4\}\}/g, 'WELCOME10')
   }
 
+  const getSequenceStepPreviewText = (stepOrder: number) => {
+    if (stepOrder === 1) {
+      const customBody = customTemplates['wacrm_cart_abandoned_v1']?.body_text
+      return customBody
+        ? customBody.replace(/\{\{1\}\}/g, 'Jesal Patel').replace(/\{\{2\}\}/g, 'Organic Jam Combo').replace(/\{\{3\}\}/g, 'Divyaprabha Foods').replace(/\{\{4\}\}/g, 'https://divyaprabhafoods.com/checkout')
+        : "Hi Jesal Patel, you left Organic Jam Combo in your cart at Divyaprabha Foods. Complete your order here: https://divyaprabhafoods.com/checkout"
+    } else if (stepOrder === 2) {
+      const customBody = customTemplates['wacrm_cart_reminder_step2_v1']?.body_text
+      return customBody
+        ? customBody.replace(/\{\{1\}\}/g, 'Jesal Patel').replace(/\{\{2\}\}/g, 'Organic Jam Combo').replace(/\{\{3\}\}/g, '₹1,499')
+        : "Hi Jesal Patel, still thinking it over? Organic Jam Combo is waiting for you at ₹1,499. Reply STOP to stop these updates."
+    } else {
+      const customBody = customTemplates['wacrm_cart_reminder_step3_v1']?.body_text
+      return customBody
+        ? customBody.replace(/\{\{1\}\}/g, 'Jesal Patel').replace(/\{\{2\}\}/g, 'Organic Jam Combo').replace(/\{\{3\}\}/g, 'https://divyaprabhafoods.com/checkout').replace(/\{\{4\}\}/g, 'WELCOME10')
+        : "Hi Jesal Patel, here's 10% off to help you decide: use code WELCOME10 on Organic Jam Combo, valid 24 hours. Complete your order: https://divyaprabhafoods.com/checkout. Reply STOP to stop these updates."
+    }
+  }
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Top Header Section */}
@@ -528,7 +553,7 @@ export default function ShopifyDashboardPage() {
             activeTab === 'rules' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
           }`}
         >
-          Adv Features & Sequences
+          Cart Recovery
         </button>
         <button
           onClick={() => setActiveTab('billing')}
@@ -704,7 +729,7 @@ export default function ShopifyDashboardPage() {
             </div>
           )}
 
-          {/* Tab 2: Confirm Msg (Competitor Inspired Tab Layout) */}
+          {/* Tab 2: Confirm Msg */}
           {activeTab === 'templates' && (
             <div className="grid gap-6 lg:grid-cols-5 items-start">
               {/* Left Column: Automated Messages List (3/5 width) */}
@@ -938,7 +963,7 @@ export default function ShopifyDashboardPage() {
 
               {/* Right Column: Visual WhatsApp Device Mockup (2/5 width) */}
               <div className="lg:col-span-2 lg:sticky lg:top-4 space-y-4">
-                {/* Editor Overlay (when a template is being configured) */}
+                {/* Editor Overlay */}
                 {editingTemplateName && (
                   <Card className="border-border bg-card p-4 space-y-4 animate-in slide-in-from-top-1 duration-200">
                     <div className="flex justify-between items-center border-b border-border pb-2">
@@ -1009,7 +1034,7 @@ export default function ShopifyDashboardPage() {
                           {getSelectedPreviewText()}
                         </p>
 
-                        {/* Interactive Confirm Buttons inside the simulated bubble */}
+                        {/* Interactive Confirm Buttons */}
                         {phonePreviewTab === 'COD' && (
                           <div className="border-t border-slate-850 pt-2 mt-2 flex flex-col gap-1.5 text-center font-bold text-[9px] text-[#53bdeb]">
                             <div className="bg-slate-900/60 py-1.5 rounded hover:bg-slate-900 cursor-pointer transition-all border border-slate-850">
@@ -1038,184 +1063,235 @@ export default function ShopifyDashboardPage() {
             </div>
           )}
 
-          {/* Tab 3: Advanced Sequences */}
+          {/* Tab 3: Cart Recovery (Rebuilt to match same premium Card & Smartphone Device UI) */}
           {activeTab === 'rules' && (
-            <div className="space-y-6">
-              {/* Opt-in Notice */}
-              <Card className="border-primary/20 bg-primary/5">
-                <CardContent className="p-4 flex gap-3 text-xs text-foreground">
-                  <Info className="size-4 shrink-0 text-primary mt-0.5" />
-                  <div className="space-y-1">
-                    <p className="font-semibold">Compliance Note: Marketing Opt-in Constraint</p>
-                    <p className="text-muted-foreground leading-relaxed">
-                      WhatsApp messaging policies require explicit customer opt-in for promotional content. 
-                      <strong> Step 1 cart reminders</strong> run on transactional customer service context, but 
-                      <strong> Steps 2, 3, and all Browse Abandonment messages</strong> will only be sent to customers 
-                      who have explicitly opted-in to WhatsApp alerts.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
+            <div className="grid gap-6 lg:grid-cols-5 items-start">
+              {/* Left Column: Sequence steps list (3/5 width) */}
+              <div className="lg:col-span-3 space-y-6">
+                <div>
+                  <h3 className="text-base font-bold text-foreground">Cart Recovery Sequences</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Drip recovery WhatsApp alerts sent automatically to buyers who abandon checkout processes.
+                  </p>
+                </div>
 
-              {sequences.length === 0 ? (
-                <div className="text-center py-6 text-sm text-muted-foreground">No recovery sequences configured.</div>
-              ) : (
-                <div className="grid gap-6 lg:grid-cols-5 items-start">
-                  <div className="lg:col-span-3 space-y-6">
-                    {sequences.map((seq) => (
-                      <Card key={seq.id}>
-                        <CardHeader className="bg-muted/10 border-b border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 py-4">
-                          <div>
-                            <CardTitle className="text-base font-semibold">{seq.sequence_name}</CardTitle>
-                            <CardDescription className="text-xs">
-                              {seq.trigger_type === 'cart_abandoned' 
-                                ? 'Drip recovery alerts triggered when checkouts are abandoned' 
-                                : 'Triggers when identified store visitors view products'}
-                            </CardDescription>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge className={seq.is_active ? 'bg-green-500/10 text-green-500 border-none' : 'bg-muted text-muted-foreground border-none'}>
-                              {seq.is_active ? 'Active' : 'Disabled'}
-                            </Badge>
-                            <Button
-                              size="sm"
-                              variant={seq.is_active ? 'destructive' : 'default'}
-                              className="h-8 text-xs"
-                              onClick={() => toggleSequence(seq.id, seq.is_active)}
-                            >
-                              {seq.is_active ? 'Deactivate' : 'Activate'}
-                            </Button>
-                          </div>
-                        </CardHeader>
-                        <CardContent className="divide-y divide-border p-0">
-                          {seq.steps.map((step) => {
-                            const originalRecipe = SHOPIFY_TEMPLATE_LIBRARY.find(t => t.template_name === step.template_name)
-                            const customText = customTemplates[step.template_name]?.body_text || originalRecipe?.body || ''
-                            const isEditing = editingTemplateName === step.template_name
-                            const metaStatus = customTemplates[step.template_name]?.status || step.meta_approval_status
+                {sequences.map((seq) => (
+                  <div key={seq.id} className="space-y-6">
+                    {seq.steps.map((step, idx) => {
+                      const originalRecipe = SHOPIFY_TEMPLATE_LIBRARY.find(t => t.template_name === step.template_name)
+                      const isEditing = editingTemplateName === step.template_name
+                      const metaStatus = customTemplates[step.template_name]?.status || step.meta_approval_status
 
-                            return (
-                              <div key={step.id} className="p-4 space-y-4">
-                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                                  <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-bold text-foreground">Step {step.step_order}</span>
-                                      <Badge className="bg-muted text-muted-foreground border-none text-[9px] py-px">
-                                        Delay: {step.delay_minutes_from_previous_step}m
-                                      </Badge>
-                                      <Badge className={`${getStatusBadgeVariant(metaStatus)} text-[9px] py-px font-semibold uppercase`}>
-                                        {metaStatus}
-                                      </Badge>
-                                    </div>
-                                    <p className="text-[10px] text-muted-foreground font-mono">Template: {step.template_name}</p>
-                                  </div>
-                                  <div className="flex items-center gap-1.5">
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="h-7 text-[10px] border-border text-foreground hover:bg-muted"
-                                      onClick={() => openEditor(step.template_name, originalRecipe?.body || '', step.delay_minutes_from_previous_step)}
-                                    >
-                                      <Edit className="size-3 mr-1" /> Configure Step
-                                    </Button>
-                                  </div>
-                                </div>
+                      // Delay options based on the step order
+                      const delays = step.step_order === 1
+                        ? (['30 min', '1 hr', '2 hr', '10 hr'] as const)
+                        : step.step_order === 2
+                          ? (['12 hr', '24 hr', '36 hr', '48 hr'] as const)
+                          : (['24 hr', '48 hr', '72 hr', '96 hr'] as const)
 
-                                {isEditing && (
-                                  <div className="bg-muted/20 border border-border p-4 rounded-lg space-y-4 animate-in slide-in-from-top-1 duration-200">
-                                    <div className="grid gap-4 sm:grid-cols-2">
-                                      <div className="space-y-1.5">
-                                        <label className="text-[11px] font-bold text-muted-foreground flex items-center gap-1">
-                                          <Clock className="size-3.5 text-primary" /> Edit Delay (Minutes)
-                                        </label>
-                                        <Input
-                                          type="number"
-                                          min="0"
-                                          value={editedDelay}
-                                          onChange={(e) => setEditedDelay(Number(e.target.value))}
-                                          className="h-8 border-border bg-card text-foreground text-xs"
-                                        />
-                                      </div>
-                                      <div className="space-y-1.5 flex flex-col justify-end">
-                                        <div className="flex gap-2">
-                                          <Button
-                                            size="sm"
-                                            className="h-8 bg-primary text-primary-foreground hover:bg-primary/90 text-xs px-3"
-                                            onClick={() => saveTemplateAndDelay(step.id, true)}
-                                          >
-                                            Save Draft
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            className="h-8 bg-green-600 text-white hover:bg-green-500 text-xs px-3 flex items-center gap-1"
-                                            onClick={submitToMeta}
-                                            disabled={submittingMeta}
-                                          >
-                                            {submittingMeta ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
-                                            Submit to Meta
-                                          </Button>
-                                        </div>
-                                      </div>
-                                    </div>
+                      const selectedDelay = step.step_order === 1 
+                        ? step1Delay 
+                        : step.step_order === 2 
+                          ? step2Delay 
+                          : step3Delay
 
-                                    <div className="space-y-1.5">
-                                      <label className="text-[11px] font-bold text-muted-foreground">Edit Template Body</label>
-                                      <Textarea
-                                        value={editedBodyText}
-                                        onChange={(e) => setEditedBodyText(e.target.value)}
-                                        rows={3}
-                                        className="border-border bg-card text-foreground text-xs leading-relaxed focus-visible:ring-primary"
-                                      />
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })}
-                        </CardContent>
-                      </Card>
-                    ))}
-                  </div>
+                      const setSelectedDelay = step.step_order === 1
+                        ? setStep1Delay
+                        : step.step_order === 2
+                          ? setStep2Delay
+                          : setStep3Delay
 
-                  <div className="lg:col-span-2 lg:sticky lg:top-4 space-y-4">
-                    <Card className="overflow-hidden border-border bg-slate-950">
-                      <CardHeader className="pb-3 border-b border-border">
-                        <CardTitle className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
-                          <Smartphone className="size-4 text-primary" /> Live Chat Preview
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="p-4 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat bg-contain min-h-[350px] flex flex-col justify-end">
-                        {editingTemplateName ? (
-                          <div className="bg-[#056162] text-white rounded-lg p-3 max-w-[85%] self-end shadow text-xs space-y-2 relative animate-in zoom-in-95 duration-200 border border-slate-850">
-                            <p className="leading-relaxed whitespace-pre-line text-slate-100">
-                              {getSimulatedMessageText(editedBodyText)}
-                            </p>
-                            
-                            {editingTemplateName.includes('step3') && (
-                              <div className="border-t border-white/20 pt-2 mt-2 flex flex-col gap-1 text-center font-bold text-[10px] text-[#53bdeb] bg-slate-900/60 py-1.5 rounded border border-slate-850 hover:bg-slate-900 cursor-pointer">
-                                🛒 Complete Checkout
-                              </div>
-                            )}
-                            {editingTemplateName.includes('step1') && (
-                              <div className="border-t border-white/20 pt-2 mt-2 flex flex-col gap-1 text-center font-bold text-[10px] text-[#53bdeb] bg-slate-900/60 py-1.5 rounded border border-slate-850 hover:bg-slate-900 cursor-pointer">
-                                🔗 Complete Checkout
-                              </div>
-                            )}
-
-                            <div className="text-[9px] text-white/50 text-right mt-1">
-                              16:45
+                      return (
+                        <Card key={step.id} className="bg-card border border-border">
+                          <CardHeader className="pb-4 flex flex-row items-start justify-between">
+                            <div className="space-y-1">
+                              <CardTitle className="text-sm font-bold flex items-center gap-2">
+                                🔔 Step {step.step_order}: {step.step_order === 1 ? "Abandoned Cart Reminder" : step.step_order === 2 ? "24h Follow-up Coupon" : "Final Discount Offer"}
+                              </CardTitle>
+                              <CardDescription className="text-xs text-muted-foreground leading-relaxed">
+                                {step.step_order === 1 
+                                  ? "First recovery nudge sent quickly to recover the checkout." 
+                                  : step.step_order === 2
+                                    ? "Follow-up reminder offering a support contact or warning on high-demand stock."
+                                    : "Final cart recovery offer giving a custom 10% coupon to incentivize payment."}
+                              </CardDescription>
                             </div>
-                          </div>
-                        ) : (
-                          <div className="text-center p-8 bg-card/90 rounded border border-border text-xs text-muted-foreground w-full">
-                            Select "Configure Step" on any recovery sequence to activate the live WhatsApp preview simulator.
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[11px] font-medium text-muted-foreground">{step.is_active ? "Active" : "Inactive"}</span>
+                              <Switch 
+                                checked={step.is_active} 
+                                onCheckedChange={async (checked) => {
+                                  try {
+                                    const { error } = await supabase
+                                      .from('shopify_automation_sequence_steps')
+                                      .update({ is_active: checked })
+                                      .eq('id', step.id)
+                                    if (error) throw error
+                                    toast.success(`Step ${step.step_order} ${checked ? 'activated' : 'deactivated'}`)
+                                    loadData()
+                                  } catch (err: any) {
+                                    toast.error(err.message)
+                                  }
+                                }}
+                                className="data-[state=checked]:bg-primary" 
+                              />
+                            </div>
+                          </CardHeader>
+                          <CardContent className="space-y-4 pt-0 text-xs">
+                            {/* Template Row */}
+                            <div className="flex items-center justify-between border-t border-border pt-4">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-muted-foreground">TEMPLATE</span>
+                                <Badge className={`${getStatusBadgeVariant(metaStatus)} text-[9px] py-px font-semibold uppercase`}>
+                                  {metaStatus}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Badge className="bg-muted text-foreground border border-border font-mono text-[10px] px-2.5 py-1">
+                                  {step.template_name}
+                                </Badge>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-[10px] border-border text-foreground hover:bg-muted px-2.5"
+                                  onClick={() => openEditor(step.template_name, originalRecipe?.body || '', step.delay_minutes_from_previous_step)}
+                                >
+                                  Change &rarr;
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Send After Delay Row */}
+                            <div className="space-y-2">
+                              <span className="font-semibold text-muted-foreground block">SEND AFTER</span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {delays.map((d: any) => (
+                                  <button
+                                    key={d}
+                                    onClick={() => {
+                                      setSelectedDelay(d)
+                                      const mins = d.includes('min')
+                                        ? parseInt(d)
+                                        : parseInt(d) * 60
+                                      // Save delay directly to DB
+                                      supabase
+                                        .from('shopify_automation_sequence_steps')
+                                        .update({ delay_minutes_from_previous_step: mins })
+                                        .eq('id', step.id)
+                                        .then(() => toast.success(`Step ${step.step_order} delay updated to ${d}`))
+                                    }}
+                                    className={`px-3 py-1.5 rounded text-[11px] font-bold border transition-all ${
+                                      selectedDelay === d
+                                        ? 'bg-primary text-primary-foreground border-primary'
+                                        : 'bg-muted/40 border-border text-muted-foreground hover:text-foreground'
+                                    }`}
+                                  >
+                                    {d}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+
+              {/* Right Column: Visual WhatsApp Device Mockup (2/5 width) */}
+              <div className="lg:col-span-2 lg:sticky lg:top-4 space-y-4">
+                {/* Editor Overlay */}
+                {editingTemplateName && (
+                  <Card className="border-border bg-card p-4 space-y-4 animate-in slide-in-from-top-1 duration-200">
+                    <div className="flex justify-between items-center border-b border-border pb-2">
+                      <h4 className="text-xs font-bold text-foreground">Configure Message Template</h4>
+                      <Button variant="ghost" size="sm" className="h-6 text-[10px] text-muted-foreground" onClick={() => setEditingTemplateName(null)}>Cancel</Button>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-muted-foreground">Template Body Content</label>
+                      <Textarea
+                        value={editedBodyText}
+                        onChange={(e) => setEditedBodyText(e.target.value)}
+                        rows={4}
+                        className="border-border bg-card text-foreground text-xs leading-relaxed"
+                      />
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <Button
+                        size="sm"
+                        className="h-8 bg-green-600 hover:bg-green-500 text-xs text-white px-3 flex items-center gap-1"
+                        onClick={submitToMeta}
+                        disabled={submittingMeta}
+                      >
+                        {submittingMeta ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
+                        Submit to Meta
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="h-8 bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-bold text-white px-3"
+                        onClick={() => saveTemplateAndDelay('', false)}
+                      >
+                        Save Draft
+                      </Button>
+                    </div>
+                  </Card>
+                )}
+
+                {/* Smartphone Device Widget */}
+                <div className="flex justify-center w-full">
+                  <div className="w-[280px] bg-slate-900 rounded-[36px] p-2.5 border-[6px] border-slate-950 shadow-2xl relative">
+                    {/* Device Speaker & Camera Notch */}
+                    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 h-3.5 w-24 bg-slate-950 rounded-full flex justify-center items-center gap-1.5 z-20">
+                      <div className="h-1 w-8 bg-slate-800 rounded-full" />
+                      <div className="h-1.5 w-1.5 bg-slate-800 rounded-full" />
+                    </div>
+
+                    {/* Preview Screen Header Tabs */}
+                    <div className="bg-slate-950 rounded-t-[26px] pt-7 pb-2 px-3 border-b border-slate-850 flex justify-center gap-1.5 text-[9px] font-bold text-slate-400">
+                      {(['Step 1', 'Step 2', 'Step 3'] as const).map((stepVal) => (
+                        <button
+                          key={stepVal}
+                          onClick={() => setPhonePreviewStep(stepVal)}
+                          className={`px-3 py-1 rounded-full transition-all ${
+                            phonePreviewStep === stepVal
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-slate-900 border border-slate-850 hover:text-slate-200'
+                          }`}
+                        >
+                          {stepVal}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* WhatsApp Conversation Body */}
+                    <div className="bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat bg-contain h-[380px] rounded-b-[26px] p-3 flex flex-col justify-end space-y-4">
+                      {/* Incoming Msg Bubble */}
+                      <div className="bg-slate-950/90 text-white rounded-lg p-2.5 max-w-[90%] shadow text-[10px] space-y-1.5 border border-slate-850 select-none animate-in zoom-in-95 duration-100">
+                        <p className="leading-relaxed whitespace-pre-line text-slate-100">
+                          {getSequenceStepPreviewText(phonePreviewStep === 'Step 1' ? 1 : phonePreviewStep === 'Step 2' ? 2 : 3)}
+                        </p>
+
+                        {/* Interactive Buttons */}
+                        {phonePreviewStep === 'Step 1' && (
+                          <div className="border-t border-slate-850 pt-2 mt-2 flex flex-col gap-1 text-center font-bold text-[9px] text-[#53bdeb] bg-slate-900/60 py-1.5 rounded border border-slate-850 hover:bg-slate-900 cursor-pointer">
+                            🛒 Complete Checkout
                           </div>
                         )}
-                      </CardContent>
-                    </Card>
+                        {phonePreviewStep === 'Step 3' && (
+                          <div className="border-t border-slate-850 pt-2 mt-2 flex flex-col gap-1 text-center font-bold text-[9px] text-[#53bdeb] bg-slate-900/60 py-1.5 rounded border border-slate-850 hover:bg-slate-900 cursor-pointer">
+                            🎁 Claim 10% Discount
+                          </div>
+                        )}
+
+                        <div className="text-[8px] text-slate-500 text-right mt-1">
+                          18:40
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              )}
+              </div>
             </div>
           )}
 

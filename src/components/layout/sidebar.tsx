@@ -184,7 +184,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             <img
               src="/logo-transparent.png"
               alt="Arham Technology Logo"
-              className="h-11 w-auto object-contain bg-white px-2 py-1 rounded shadow-sm"
+              className="h-11 w-auto object-contain"
             />
           </Link>
           <button

@@ -112,7 +112,7 @@ function LoginPageInner() {
               <img
                 src="/logo-transparent.png"
                 alt="Arham Technology Logo"
-                className="h-16 w-auto object-contain bg-white px-2 py-1 rounded border border-border"
+                className="h-16 w-auto object-contain"
               />
             )}
           </div>

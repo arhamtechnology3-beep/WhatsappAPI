@@ -7,6 +7,7 @@ import {
   resolvePipelineAndStages,
   markDealAsWon,
   enqueueShopifyNotification,
+  moveDealToStageName,
 } from '@/lib/shopify/shopify-helper'
 
 export async function POST(request: Request) {
@@ -99,9 +100,19 @@ export async function POST(request: Request) {
     }
 
     if (dealId) {
-      // Mark existing deal as Won
-      await markDealAsWon(supabase, dealId, wonStageId)
+      // Move checkout deal to Cart Recovered stage
+      await moveDealToStageName(supabase, dealId, 'Cart Recovered', accountId)
     } else {
+      // Look up Order Confirmed stage ID
+      const { data: st } = await supabase
+        .from('pipeline_stages')
+        .select('id')
+        .eq('pipeline_id', pipelineId)
+        .eq('name', 'Order Confirmed')
+        .maybeSingle()
+
+      const initialStageId = st?.id || wonStageId
+
       // Create a new Won deal directly
       const dealTitle = `Order #${orderNumber} - ${contact.name || 'Shopify Customer'}`
       const { data: newDeal, error: dealError } = await supabase
@@ -110,7 +121,7 @@ export async function POST(request: Request) {
           account_id: accountId,
           user_id: userId,
           pipeline_id: pipelineId,
-          stage_id: wonStageId,
+          stage_id: initialStageId,
           contact_id: contact.id,
           title: dealTitle,
           value: totalPrice,

@@ -129,7 +129,7 @@ export async function resolvePipelineAndStages(
   // Find first pipeline
   const { data: pipeline } = await supabase
     .from('pipelines')
-    .select('id')
+    .select('id, name')
     .eq('account_id', accountId)
     .limit(1)
     .maybeSingle()
@@ -143,7 +143,7 @@ export async function resolvePipelineAndStages(
       .insert({
         account_id: accountId,
         user_id: userId,
-        name: 'Sales Pipeline',
+        name: 'Shopify E-Commerce Pipeline',
       })
       .select()
       .single()
@@ -155,11 +155,11 @@ export async function resolvePipelineAndStages(
 
     // Seed default stages
     const defaultStages = [
-      { name: 'New Lead', color: '#3b82f6', position: 0 },
-      { name: 'Qualified', color: '#eab308', position: 1 },
-      { name: 'Proposal Sent', color: '#f97316', position: 2 },
-      { name: 'Negotiation', color: '#8b5cf6', position: 3 },
-      { name: 'Won', color: '#22c55e', position: 4 },
+      { name: 'Abandoned Cart', color: '#ef4444', position: 0 },
+      { name: 'Nudged / In Recovery', color: '#f59e0b', position: 1 },
+      { name: 'Cart Recovered', color: '#10b981', position: 2 },
+      { name: 'Order Confirmed', color: '#3b82f6', position: 3 },
+      { name: 'Delivered', color: '#22c55e', position: 4 },
     ]
 
     const stagesPayload = defaultStages.map((s) => ({
@@ -172,6 +172,13 @@ export async function resolvePipelineAndStages(
     await supabase.from('pipeline_stages').insert(stagesPayload)
   } else {
     pipelineId = pipeline.id
+    // Rename default Sales Pipeline if it is still named 'Sales Pipeline'
+    if (pipeline.name === 'Sales Pipeline') {
+      await supabase
+        .from('pipelines')
+        .update({ name: 'Shopify E-Commerce Pipeline' })
+        .eq('id', pipelineId)
+    }
   }
 
   // Load stages sorted by position
@@ -185,8 +192,28 @@ export async function resolvePipelineAndStages(
     throw new Error('Failed to resolve stages for pipeline: ' + (stagesError?.message || 'No stages found.'))
   }
 
+  // Automatically migrate existing default B2B stages to E-Commerce stages in DB
+  for (const st of stages) {
+    if (st.name === 'New Lead') {
+      await supabase.from('pipeline_stages').update({ name: 'Abandoned Cart', color: '#ef4444' }).eq('id', st.id)
+      st.name = 'Abandoned Cart'
+    } else if (st.name === 'Qualified') {
+      await supabase.from('pipeline_stages').update({ name: 'Nudged / In Recovery', color: '#f59e0b' }).eq('id', st.id)
+      st.name = 'Nudged / In Recovery'
+    } else if (st.name === 'Proposal Sent') {
+      await supabase.from('pipeline_stages').update({ name: 'Cart Recovered', color: '#10b981' }).eq('id', st.id)
+      st.name = 'Cart Recovered'
+    } else if (st.name === 'Negotiation') {
+      await supabase.from('pipeline_stages').update({ name: 'Order Confirmed', color: '#3b82f6' }).eq('id', st.id)
+      st.name = 'Order Confirmed'
+    } else if (st.name === 'Won') {
+      await supabase.from('pipeline_stages').update({ name: 'Delivered', color: '#22c55e' }).eq('id', st.id)
+      st.name = 'Delivered'
+    }
+  }
+
   const firstStageId = stages[0].id
-  const wonStage = stages.find((s) => s.name.toLowerCase() === 'won') || stages[stages.length - 1]
+  const wonStage = stages.find((s) => s.name.toLowerCase() === 'delivered') || stages[stages.length - 1]
   const wonStageId = wonStage.id
 
   return {
@@ -413,6 +440,43 @@ export async function initializeCheckoutRecoverySequence(
 
   if (insErr) {
     console.error('Error inserting shopify_recovery_tracking:', insErr)
+  }
+}
+
+/**
+ * Automatically moves a Deal's stage by name.
+ */
+export async function moveDealToStageName(
+  supabase: SupabaseClient,
+  dealId: string,
+  stageName: string,
+  accountId: string
+): Promise<void> {
+  try {
+    const { data: pipeline } = await supabase
+      .from('pipelines')
+      .select('id')
+      .eq('account_id', accountId)
+      .limit(1)
+      .maybeSingle()
+
+    if (pipeline) {
+      const { data: stage } = await supabase
+        .from('pipeline_stages')
+        .select('id')
+        .eq('pipeline_id', pipeline.id)
+        .eq('name', stageName)
+        .maybeSingle()
+
+      if (stage) {
+        await supabase
+          .from('deals')
+          .update({ stage_id: stage.id, updated_at: new Date().toISOString() })
+          .eq('id', dealId)
+      }
+    }
+  } catch (err) {
+    console.error(`[shopify-helper] error transitioning deal ${dealId} to stage ${stageName}:`, err)
   }
 }
 

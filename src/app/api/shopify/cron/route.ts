@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
-import { enqueueShopifyNotification } from '@/lib/shopify/shopify-helper'
+import { enqueueShopifyNotification, moveDealToStageName } from '@/lib/shopify/shopify-helper'
 
 export async function GET(request: Request) {
   // 1) Verify cron secret
@@ -80,6 +80,10 @@ export async function GET(request: Request) {
             .from('shopify_checkouts')
             .update({ status: 'abandoned_notified', updated_at: new Date().toISOString() })
             .eq('id', checkout.id)
+          
+          if (checkout.deal_id) {
+            await moveDealToStageName(supabase, checkout.deal_id, 'Nudged / In Recovery', checkout.account_id)
+          }
           checkoutsNotified++
         } else {
           // Mark as expired so it is not processed again in subsequent cron sweeps

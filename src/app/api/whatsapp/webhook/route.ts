@@ -12,6 +12,7 @@ import {
   isTemplateWebhookField,
 } from '@/lib/whatsapp/template-webhook'
 import { fetchShopify } from '@/lib/shopify/shopify-client'
+import { moveDealToStageName } from '@/lib/shopify/shopify-helper'
 
 // The `after()` callback in POST runs within this route's max duration.
 // Inbound processing can fan out to per-media Meta verification calls, so
@@ -688,6 +689,11 @@ async function processMessage(
           .from('shopify_orders')
           .update({ financial_status: newStatus, updated_at: new Date().toISOString() })
           .eq('id', latestOrder.id)
+
+        // Move corresponding deal to Order Confirmed stage
+        if (latestOrder.deal_id) {
+          await moveDealToStageName(supabaseAdmin(), latestOrder.deal_id, 'Order Confirmed', accountId)
+        }
 
         // 3. Send WhatsApp confirmation session message text
         const responseText = interactiveReplyId === 'confirm_cod'

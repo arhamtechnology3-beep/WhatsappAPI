@@ -1,12 +1,21 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
 import { getShopInfo } from '@/lib/shopify/shopify-client'
+import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { getShopifyAccountContext, resolvePipelineAndStages } from '@/lib/shopify/shopify-helper'
 
 export async function GET() {
   try {
     // Restrict to admins and owners
     await requireRole('admin')
     
+    // Automatically trigger database sales pipeline e-commerce migration check
+    const supabase = supabaseAdmin()
+    const { accountId, userId } = await getShopifyAccountContext(supabase)
+    if (accountId && userId) {
+      await resolvePipelineAndStages(supabase, accountId, userId)
+    }
+
     // Call shopify to verify credentials
     const shop = await getShopInfo()
     

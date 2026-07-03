@@ -293,6 +293,7 @@ export async function enqueueShopifyNotification(
     order_number?: string
     total_price?: string
     tracking_url?: string
+    is_cod?: boolean
   }
 ): Promise<{ status: 'enqueued' | 'skipped_not_activated' | 'error'; message?: string }> {
   // 1) Load the rule for this trigger
@@ -312,6 +313,11 @@ export async function enqueueShopifyNotification(
     return { status: 'skipped_not_activated' }
   }
 
+  // Override template for COD confirmations
+  const templateName = (triggerType === 'order_created' && data.is_cod)
+    ? 'wacrm_cod_confirmation_v1'
+    : rule.template_name
+
   // 3) Map template variables from mapping array
   const mapping: string[] = rule.template_variable_mapping || []
   const templateParams = mapping.map((variableName) => {
@@ -327,7 +333,7 @@ export async function enqueueShopifyNotification(
       account_id: accountId,
       contact_id: contactId,
       recipient_phone: phone,
-      template_name: rule.template_name,
+      template_name: templateName,
       template_params: templateParams,
       status: 'pending',
       run_at: runAt,

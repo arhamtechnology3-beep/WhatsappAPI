@@ -72,4 +72,13 @@ export const SHOPIFY_TEMPLATE_LIBRARY: readonly ShopifyTemplateRecipe[] = [
     variables: ['customer_name', 'order_number'],
     default_delay_minutes: 0,
   },
+  {
+    trigger_type: 'order_created',
+    template_name: 'wacrm_cod_confirmation_v1',
+    category: 'UTILITY',
+    language: 'en',
+    body: "Hi {{1}}, please confirm your Cash on Delivery order #{{2}} of ₹{{3}} by clicking the button below.",
+    variables: ['customer_name', 'order_number', 'total_price'],
+    default_delay_minutes: 0,
+  },
 ] as const;

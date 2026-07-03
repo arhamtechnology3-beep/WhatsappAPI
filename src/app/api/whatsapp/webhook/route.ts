@@ -1,7 +1,7 @@
 import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
-import { getMediaUrl, downloadMedia } from '@/lib/whatsapp/meta-api'
+import { getMediaUrl, downloadMedia, sendTextMessage } from '@/lib/whatsapp/meta-api'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
@@ -11,6 +11,7 @@ import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
 } from '@/lib/whatsapp/template-webhook'
+import { fetchShopify } from '@/lib/shopify/shopify-client'
 
 // The `after()` callback in POST runs within this route's max duration.
 // Inbound processing can fan out to per-media Meta verification calls, so
@@ -298,7 +299,8 @@ async function processWebhook(body: { entry?: WhatsAppWebhookEntry[] }) {
           // inserts that need it for NOT NULL FK compliance. Always
           // the admin who saved the WhatsApp config.
           config.user_id,
-          decryptedAccessToken
+          decryptedAccessToken,
+          config.phone_number_id
         )
       }
     }
@@ -532,7 +534,8 @@ async function processMessage(
   // (contacts, conversations). Always the admin who saved the
   // WhatsApp config; the choice is arbitrary post-017 but stable.
   configOwnerUserId: string,
-  accessToken: string
+  accessToken: string,
+  phoneNumberId: string
 ) {
   const senderPhone = normalizePhone(message.from)
   const contactName = contact.profile.name
@@ -637,6 +640,83 @@ async function processMessage(
   if (msgError) {
     console.error('Error inserting message:', msgError)
     return
+  }
+
+  // COD Auto-confirmation handler when interactive quick-reply buttons are clicked
+  if (interactiveReplyId === 'confirm_cod' || interactiveReplyId === 'cancel_cod') {
+    try {
+      // Find the latest COD pending order for this contact
+      const { data: latestOrder, error: orderErr } = await supabaseAdmin()
+        .from('shopify_orders')
+        .select('*')
+        .eq('account_id', accountId)
+        .eq('contact_id', contactRecord.id)
+        .eq('financial_status', 'cod_pending')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (latestOrder) {
+        const orderId = latestOrder.shopify_order_id
+        const orderNumber = latestOrder.order_number
+        const newStatus = interactiveReplyId === 'confirm_cod' ? 'cod_confirmed' : 'cod_cancelled'
+        const newTag = interactiveReplyId === 'confirm_cod' ? 'cod-confirmed' : 'cod-cancelled'
+
+        // 1. Tag the Shopify order via Admin API
+        try {
+          const shopifyRes = await fetchShopify(`/orders/${orderId}.json`)
+          const existingTags = shopifyRes?.order?.tags || ''
+          const newTags = existingTags 
+            ? `${existingTags}, ${newTag}` 
+            : newTag
+
+          await fetchShopify(`/orders/${orderId}.json`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              order: {
+                id: orderId,
+                tags: newTags
+              }
+            })
+          })
+        } catch (shopifyErr: any) {
+          console.error('[webhook] failed to tag shopify order:', shopifyErr.message || shopifyErr)
+        }
+
+        // 2. Update local database order status
+        await supabaseAdmin()
+          .from('shopify_orders')
+          .update({ financial_status: newStatus, updated_at: new Date().toISOString() })
+          .eq('id', latestOrder.id)
+
+        // 3. Send WhatsApp confirmation session message text
+        const responseText = interactiveReplyId === 'confirm_cod'
+          ? `Thank you! Your Cash on Delivery order #${orderNumber} has been confirmed successfully.`
+          : `Your order #${orderNumber} has been cancelled as requested.`
+
+        await sendTextMessage({
+          phoneNumberId,
+          accessToken,
+          to: senderPhone,
+          text: responseText,
+          contextMessageId: message.id
+        })
+
+        // Save confirmation text locally as an outgoing message in wacrm
+        await supabaseAdmin()
+          .from('messages')
+          .insert({
+            conversation_id: conversation.id,
+            sender_type: 'agent',
+            content_type: 'text',
+            content_text: responseText,
+            status: 'sent',
+            created_at: new Date().toISOString(),
+          })
+      }
+    } catch (err: any) {
+      console.error('[webhook] error processing COD quick reply:', err.message || err)
+    }
   }
 
   // Update conversation

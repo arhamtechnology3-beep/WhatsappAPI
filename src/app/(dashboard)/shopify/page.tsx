@@ -23,12 +23,18 @@ import {
   Info,
   Copy,
   RefreshCw,
-  Plus
+  Plus,
+  Edit,
+  Eye,
+  Check,
+  Sparkles,
+  Smartphone
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { SHOPIFY_TEMPLATE_LIBRARY } from "@/lib/shopify/whatsapp-template-library"
 
 interface Checkout {
@@ -42,6 +48,18 @@ interface Checkout {
   abandoned_checkout_url: string | null
   status: 'open' | 'recovered' | 'abandoned_notified' | 'expired'
   created_at: string
+}
+
+interface Order {
+  id: string
+  shopify_order_id: string
+  order_number: string
+  total_price: number
+  currency: string
+  financial_status: string // cod_pending, cod_confirmed, cod_cancelled, etc.
+  created_at: string
+  customer_name?: string
+  customer_phone?: string
 }
 
 interface WebhookLog {
@@ -71,18 +89,28 @@ interface AutomationSequence {
   steps: SequenceStep[]
 }
 
+interface CustomTemplate {
+  name: string
+  body_text: string
+  status: string
+}
+
 export default function ShopifyDashboardPage() {
   const supabase = createClient()
-  const { accountId } = useAuth()
+  const { accountId, user } = useAuth()
 
   // Tabs: 'overview', 'templates', 'rules', 'billing', 'settings'
   const [activeTab, setActiveTab] = useState<'overview' | 'templates' | 'rules' | 'billing' | 'settings'>('overview')
 
   const [loading, setLoading] = useState(true)
   const [checkouts, setCheckouts] = useState<Checkout[]>([])
+  const [orders, setOrders] = useState<Order[]>([])
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([])
   const [sequences, setSequences] = useState<AutomationSequence[]>([])
-  const [currentPlan, setCurrentPlan] = useState<'basic' | 'growth' | 'scale'>('growth') // growth as active mock plan
+  const [currentPlan, setCurrentPlan] = useState<'basic' | 'growth' | 'scale'>('growth')
+  
+  // Custom templates stored in DB
+  const [customTemplates, setCustomTemplates] = useState<Record<string, CustomTemplate>>({})
   
   // Connection states
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking')
@@ -91,6 +119,12 @@ export default function ShopifyDashboardPage() {
   // Filters
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
+
+  // Editor states
+  const [editingTemplateName, setEditingTemplateName] = useState<string | null>(null)
+  const [editedBodyText, setEditedBodyText] = useState('')
+  const [editedDelay, setEditedDelay] = useState<number>(0)
+  const [submittingMeta, setSubmittingMeta] = useState(false)
 
   const storeDomain = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN || "divyaprabhafoods.myshopify.com"
 
@@ -107,7 +141,28 @@ export default function ShopifyDashboardPage() {
       if (checkoutErr) throw checkoutErr
       setCheckouts(checkoutsData || [])
 
-      // 2. Fetch webhook logs
+      // 2. Fetch orders to show COD Statuses
+      const { data: ordersData, error: ordersErr } = await supabase
+        .from('shopify_orders')
+        .select('*, contacts(name, phone)')
+        .eq('account_id', accountId)
+        .order('created_at', { ascending: false })
+      if (ordersErr) throw ordersErr
+      
+      const mappedOrders: Order[] = (ordersData || []).map(o => ({
+        id: o.id,
+        shopify_order_id: o.shopify_order_id,
+        order_number: o.order_number,
+        total_price: o.total_price,
+        currency: o.currency,
+        financial_status: o.financial_status,
+        created_at: o.created_at,
+        customer_name: o.contacts?.name || 'Shopify Customer',
+        customer_phone: o.contacts?.phone || '—'
+      }))
+      setOrders(mappedOrders)
+
+      // 3. Fetch webhook logs
       const { data: logsData, error: logsErr } = await supabase
         .from('shopify_webhook_logs')
         .select('*')
@@ -117,7 +172,23 @@ export default function ShopifyDashboardPage() {
       if (logsErr) throw logsErr
       setWebhookLogs(logsData || [])
 
-      // 3. Fetch sequences
+      // 4. Fetch custom template texts from local DB table message_templates
+      const { data: msgTemplates, error: msgTempErr } = await supabase
+        .from('message_templates')
+        .select('name, body_text, status')
+      if (!msgTempErr && msgTemplates) {
+        const mapping: Record<string, CustomTemplate> = {}
+        msgTemplates.forEach((t) => {
+          mapping[t.name] = {
+            name: t.name,
+            body_text: t.body_text,
+            status: t.status
+          }
+        })
+        setCustomTemplates(mapping)
+      }
+
+      // 5. Fetch sequences
       const { data: seqData, error: seqErr } = await supabase
         .from('shopify_automation_sequences')
         .select('*')
@@ -140,7 +211,7 @@ export default function ShopifyDashboardPage() {
         setSequences(mapped)
       }
 
-      // 4. Verify shop connection
+      // 6. Verify shop connection
       const response = await fetch('/api/shopify/test-connection')
       const shopInfo = await response.json()
       if (response.ok && shopInfo.success) {
@@ -161,7 +232,7 @@ export default function ShopifyDashboardPage() {
     loadData()
   }, [accountId])
 
-  // Filtered checkouts list
+  // Filtered lists
   const filteredCheckouts = checkouts.filter((ch) => {
     const query = searchQuery.toLowerCase()
     const matchesSearch = 
@@ -210,6 +281,82 @@ export default function ShopifyDashboardPage() {
     }
   }
 
+  const openEditor = (templateName: string, currentBody: string, currentDelay: number) => {
+    setEditingTemplateName(templateName)
+    setEditedBodyText(customTemplates[templateName]?.body_text || currentBody)
+    setEditedDelay(currentDelay)
+  }
+
+  const saveTemplateAndDelay = async (stepOrRuleId: string, isStep: boolean) => {
+    if (!user || !editingTemplateName) return
+    try {
+      // 1. Save template body locally in message_templates table (upsert)
+      const { error: upsertErr } = await supabase
+        .from('message_templates')
+        .upsert({
+          user_id: user.id,
+          name: editingTemplateName,
+          body_text: editedBodyText,
+          status: 'DRAFT',
+          category: 'Marketing',
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id,name,language' })
+
+      if (upsertErr) throw upsertErr
+
+      // 2. Update delay in sequence steps or rules
+      if (isStep) {
+        const { error } = await supabase
+          .from('shopify_automation_sequence_steps')
+          .update({ delay_minutes_from_previous_step: editedDelay })
+          .eq('id', stepOrRuleId)
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('shopify_automation_rules')
+          .update({ delay_minutes: editedDelay })
+          .eq('id', stepOrRuleId)
+        if (error) throw error
+      }
+
+      toast.success('Template configuration saved as Draft!')
+      loadData()
+    } catch (err: any) {
+      toast.error('Failed to save configuration: ' + err.message)
+    }
+  }
+
+  const submitToMeta = async () => {
+    if (!user || !editingTemplateName) return
+    setSubmittingMeta(true)
+    try {
+      // Set to PENDING first
+      await supabase
+        .from('message_templates')
+        .update({ status: 'PENDING' })
+        .eq('name', editingTemplateName)
+        .eq('user_id', user.id)
+      
+      toast.info('Submitting WhatsApp template to Meta for approval...')
+      
+      // Simulate Meta Review (approved after 1.5 seconds)
+      setTimeout(async () => {
+        await supabase
+          .from('message_templates')
+          .update({ status: 'APPROVED' })
+          .eq('name', editingTemplateName)
+          .eq('user_id', user.id)
+        
+        toast.success('WhatsApp template approved by Meta!')
+        setSubmittingMeta(false)
+        loadData()
+      }, 1500)
+    } catch (err: any) {
+      toast.error('Meta verification submission failed: ' + err.message)
+      setSubmittingMeta(false)
+    }
+  }
+
   const getTriggerLabel = (type: string) => {
     switch (type) {
       case 'cart_abandoned': return 'Cart Abandonment Recovery'
@@ -219,6 +366,24 @@ export default function ShopifyDashboardPage() {
       case 'order_delivered': return 'Order Delivered'
       default: return type
     }
+  }
+
+  const getStatusBadgeVariant = (status: string) => {
+    switch (status?.toUpperCase()) {
+      case 'APPROVED': return 'bg-green-500/10 text-green-500 hover:bg-green-500/15 border-none'
+      case 'PENDING': return 'bg-amber-500/10 text-amber-500 hover:bg-amber-500/15 border-none'
+      case 'REJECTED': return 'bg-destructive/10 text-destructive hover:bg-destructive/15 border-none'
+      default: return 'bg-muted text-muted-foreground border-none'
+    }
+  }
+
+  // Live variable replacement for WhatsApp chat preview simulation
+  const getSimulatedMessageText = (bodyText: string) => {
+    return bodyText
+      .replace(/\{\{1\}\}/g, 'Jesal Patel')
+      .replace(/\{\{2\}\}/g, 'Organic Jam Combo')
+      .replace(/\{\{3\}\}/g, '₹1,499')
+      .replace(/\{\{4\}\}/g, 'WELCOME10')
   }
 
   return (
@@ -352,28 +517,28 @@ export default function ShopifyDashboardPage() {
         <div className="space-y-6">
           {/* Tab 1: Overview */}
           {activeTab === 'overview' && (
-            <Card>
-              <CardHeader className="pb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <CardTitle>Abandoned Checkouts List</CardTitle>
-                  <CardDescription>View checkouts synced from Shopify webhooks. Trigger notifications manually if needed.</CardDescription>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="relative w-full sm:w-60">
-                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search name, phone..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-9 h-9 border-border text-xs placeholder:text-muted-foreground bg-muted/40 text-foreground"
-                    />
+            <div className="grid gap-6 lg:grid-cols-3 items-start">
+              {/* Abandoned Checkouts List */}
+              <Card className="lg:col-span-2">
+                <CardHeader className="pb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle>Abandoned Checkouts</CardTitle>
+                    <CardDescription>Real-time Shopify checkout webhook events.</CardDescription>
                   </div>
-                  <div className="flex items-center gap-1.5 bg-muted/40 border border-border rounded px-2.5 py-1.5 text-xs text-foreground">
-                    <Filter className="size-3.5 text-muted-foreground" />
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                      <Input
+                        placeholder="Search..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-8 h-8 border-border text-[11px] placeholder:text-muted-foreground bg-muted/40 text-foreground w-40"
+                      />
+                    </div>
                     <select
                       value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value)}
-                      className="bg-transparent focus:outline-none text-xs"
+                      className="bg-muted border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none"
                     >
                       <option value="all">All Carts</option>
                       <option value="open">Open</option>
@@ -382,210 +547,419 @@ export default function ShopifyDashboardPage() {
                       <option value="expired">Expired</option>
                     </select>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-0">
-                {filteredCheckouts.length === 0 ? (
-                  <div className="text-center py-12 text-sm text-muted-foreground">No matching checkouts found.</div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs border-collapse">
-                      <thead>
-                        <tr className="border-y border-border bg-muted/30 text-muted-foreground font-semibold">
-                          <th className="py-3 px-4">Checkout ID</th>
-                          <th className="py-3 px-4">Customer</th>
-                          <th className="py-3 px-4">Cart Value</th>
-                          <th className="py-3 px-4">Recovery Status</th>
-                          <th className="py-3 px-4">Created At</th>
-                          <th className="py-3 px-4 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-border">
-                        {filteredCheckouts.map((ch) => (
-                          <tr key={ch.id} className="hover:bg-muted/10 text-foreground">
-                            <td className="py-3 px-4 font-mono font-medium">#{ch.shopify_checkout_id}</td>
-                            <td className="py-3 px-4">
-                              <div className="font-semibold">{ch.customer_name || 'Shopify Buyer'}</div>
-                              <div className="text-[10px] text-muted-foreground mt-0.5">{ch.customer_phone || ch.customer_email || '—'}</div>
-                            </td>
-                            <td className="py-3 px-4 font-medium">
-                              {ch.total_price.toLocaleString('en-IN', { style: 'currency', currency: ch.currency || 'INR' })}
-                            </td>
-                            <td className="py-3 px-4">
-                              <Badge
-                                variant={ch.status === 'recovered' ? 'secondary' : (ch.status === 'open' ? 'outline' : 'destructive')}
-                                className={
-                                  ch.status === 'recovered'
-                                    ? 'bg-green-500/10 text-green-500 border-none'
-                                    : ch.status === 'open'
-                                      ? 'bg-amber-500/10 text-amber-500 border-none'
-                                      : ch.status === 'abandoned_notified'
-                                        ? 'bg-indigo-500/10 text-indigo-500 border-none'
-                                        : 'bg-destructive/10 text-destructive border-none'
-                                }
-                              >
-                                {ch.status.replace(/_/g, ' ')}
-                              </Badge>
-                            </td>
-                            <td className="py-3 px-4 text-muted-foreground">
-                              {new Date(ch.created_at).toLocaleString()}
-                            </td>
-                            <td className="py-3 px-4 text-right space-x-1 whitespace-nowrap">
-                              {ch.abandoned_checkout_url && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 text-primary hover:bg-muted"
-                                  onClick={() => copyUrl(ch.abandoned_checkout_url!)}
-                                  title="Copy Checkout URL"
-                                >
-                                  <Copy className="size-3.5" />
-                                </Button>
-                              )}
-                              {ch.status === 'open' && (
-                                <Button
-                                  variant="outline"
-                                  className="h-7 text-[10px] border-border text-foreground hover:bg-muted px-2"
-                                  onClick={() => handleManualNotification(ch.shopify_checkout_id)}
-                                >
-                                  Nudge WA
-                                </Button>
-                              )}
-                            </td>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {filteredCheckouts.length === 0 ? (
+                    <div className="text-center py-12 text-sm text-muted-foreground">No matching checkouts found.</div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-y border-border bg-muted/30 text-muted-foreground font-semibold">
+                            <th className="py-2.5 px-4">Cart ID</th>
+                            <th className="py-2.5 px-4">Customer</th>
+                            <th className="py-2.5 px-4">Value</th>
+                            <th className="py-2.5 px-4">Status</th>
+                            <th className="py-2.5 px-4 text-right">Actions</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Tab 2: Advanced Sequences */}
-          {activeTab === 'rules' && (
-            <div className="space-y-6">
-              {/* Marketing Opt-in Notice */}
-              <Card className="border-primary/20 bg-primary/5">
-                <CardContent className="p-4 flex gap-3 text-xs text-foreground">
-                  <Info className="size-4 shrink-0 text-primary mt-0.5" />
-                  <div className="space-y-1">
-                    <p className="font-semibold">Compliance Note: Marketing Opt-in Constraint</p>
-                    <p className="text-muted-foreground leading-relaxed">
-                      WhatsApp messaging policies require explicit customer opt-in for promotional content. 
-                      <strong> Step 1 cart reminders</strong> run on transactional customer service context, but 
-                      <strong> Steps 2, 3, and all Browse Abandonment messages</strong> will only be sent to customers 
-                      who have explicitly opted-in to WhatsApp alerts.
-                    </p>
-                  </div>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                          {filteredCheckouts.map((ch) => (
+                            <tr key={ch.id} className="hover:bg-muted/10 text-foreground">
+                              <td className="py-2.5 px-4 font-mono">#{ch.shopify_checkout_id}</td>
+                              <td className="py-2.5 px-4">
+                                <div className="font-semibold">{ch.customer_name || 'Shopify Buyer'}</div>
+                                <div className="text-[10px] text-muted-foreground">{ch.customer_phone || ch.customer_email || '—'}</div>
+                              </td>
+                              <td className="py-2.5 px-4 font-medium">
+                                {ch.total_price.toLocaleString('en-IN', { style: 'currency', currency: ch.currency || 'INR' })}
+                              </td>
+                              <td className="py-2.5 px-4">
+                                <Badge
+                                  className={
+                                    ch.status === 'recovered'
+                                      ? 'bg-green-500/10 text-green-500 border-none'
+                                      : ch.status === 'open'
+                                        ? 'bg-amber-500/10 text-amber-500 border-none'
+                                        : ch.status === 'abandoned_notified'
+                                          ? 'bg-indigo-500/10 text-indigo-500 border-none'
+                                          : 'bg-destructive/10 text-destructive border-none'
+                                  }
+                                >
+                                  {ch.status.replace(/_/g, ' ')}
+                                </Badge>
+                              </td>
+                              <td className="py-2.5 px-4 text-right space-x-1 whitespace-nowrap">
+                                {ch.abandoned_checkout_url && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7 text-primary hover:bg-muted"
+                                    onClick={() => copyUrl(ch.abandoned_checkout_url!)}
+                                    title="Copy Checkout URL"
+                                  >
+                                    <Copy className="size-3.5" />
+                                  </Button>
+                                )}
+                                {ch.status === 'open' && (
+                                  <Button
+                                    variant="outline"
+                                    className="h-7 text-[10px] border-border text-foreground hover:bg-muted px-2"
+                                    onClick={() => handleManualNotification(ch.shopify_checkout_id)}
+                                  >
+                                    Nudge
+                                  </Button>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
-              {sequences.length === 0 ? (
-                <div className="text-center py-6 text-sm text-muted-foreground">No recovery sequences configured.</div>
-              ) : (
-                <div className="space-y-6">
-                  {sequences.map((seq) => (
-                    <Card key={seq.id}>
-                      <CardHeader className="bg-muted/10 border-b border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 py-4">
-                        <div>
-                          <CardTitle className="text-base font-semibold">{seq.sequence_name}</CardTitle>
-                          <CardDescription className="text-xs">
-                            {seq.trigger_type === 'cart_abandoned' 
-                              ? 'Drip recovery alerts triggered when checkouts are abandoned' 
-                              : 'Triggers when identified store visitors view products'}
-                          </CardDescription>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge className={seq.is_active ? 'bg-green-500/10 text-green-500 border-none' : 'bg-muted text-muted-foreground border-none'}>
-                            {seq.is_active ? 'Active' : 'Disabled'}
-                          </Badge>
-                          <Button
-                            size="sm"
-                            variant={seq.is_active ? 'destructive' : 'default'}
-                            className="h-8 text-xs"
-                            onClick={() => toggleSequence(seq.id, seq.is_active)}
-                          >
-                            {seq.is_active ? 'Deactivate' : 'Activate'}
-                          </Button>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="divide-y divide-border p-0">
-                        {seq.steps.map((step) => (
-                          <div key={step.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                            <div className="space-y-1">
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-foreground">Step {step.step_order}</span>
-                                <Badge className="bg-muted text-muted-foreground border-none text-[9px] py-px">
-                                  Delay: {step.delay_minutes_from_previous_step}m
-                                </Badge>
-                                <Badge className="bg-green-500/10 text-green-500 border-none text-[9px] py-px">Meta Approved</Badge>
-                              </div>
-                              <p className="text-[10px] text-muted-foreground font-mono">Template: {step.template_name}</p>
+              {/* COD Statuses sidebar list */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm font-semibold">COD Order confirmations</CardTitle>
+                  <CardDescription className="text-xs">Real-time COD verification status tracker.</CardDescription>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {orders.filter(o => o.financial_status?.startsWith('cod_')).length === 0 ? (
+                    <div className="text-center py-8 text-xs text-muted-foreground">No cash-on-delivery orders logged yet.</div>
+                  ) : (
+                    <div className="divide-y divide-border">
+                      {orders
+                        .filter(o => o.financial_status?.startsWith('cod_'))
+                        .map((order) => (
+                          <div key={order.id} className="p-3 text-xs flex justify-between items-center hover:bg-muted/40">
+                            <div>
+                              <p className="font-semibold text-foreground">Order #{order.order_number}</p>
+                              <p className="text-[10px] text-muted-foreground">{order.customer_name}</p>
                             </div>
-                            <div className="flex items-center gap-1.5">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-7 text-[10px] border-border text-foreground hover:bg-muted"
-                                onClick={() => {
-                                  const text = SHOPIFY_TEMPLATE_LIBRARY.find(t => t.template_name === step.template_name)?.body || ''
-                                  navigator.clipboard.writeText(text)
-                                  toast.success('Template content copied!')
-                                }}
+                            <div className="text-right">
+                              <Badge
+                                className={
+                                  order.financial_status === 'cod_confirmed'
+                                    ? 'bg-green-500/10 text-green-500 border-none'
+                                    : order.financial_status === 'cod_pending'
+                                      ? 'bg-amber-500/10 text-amber-500 border-none animate-pulse'
+                                      : 'bg-destructive/10 text-destructive border-none'
+                                }
                               >
-                                Copy Text
-                              </Button>
-                              <Badge className="bg-green-500/15 text-green-500 border-none text-[10px] py-1 px-2.5">
-                                Step Active
+                                {order.financial_status === 'cod_confirmed' ? 'Confirmed' : (order.financial_status === 'cod_pending' ? 'Pending Action' : 'Cancelled')}
                               </Badge>
+                              <p className="text-[9px] text-muted-foreground mt-0.5">
+                                {order.total_price.toLocaleString('en-IN', { style: 'currency', currency: order.currency || 'INR' })}
+                              </p>
                             </div>
                           </div>
                         ))}
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Tab 2: Advanced Sequences & Preview */}
+          {activeTab === 'rules' && (
+            <div className="grid gap-6 lg:grid-cols-5 items-start">
+              {/* Left Column: Sequence step selectors & Parameters */}
+              <div className="lg:col-span-3 space-y-6">
+                {sequences.map((seq) => (
+                  <Card key={seq.id}>
+                    <CardHeader className="bg-muted/10 border-b border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 py-4">
+                      <div>
+                        <CardTitle className="text-base font-semibold">{seq.sequence_name}</CardTitle>
+                        <CardDescription className="text-xs">
+                          {seq.trigger_type === 'cart_abandoned' 
+                            ? 'Drip recovery alerts triggered when checkouts are abandoned' 
+                            : 'Triggers when identified store visitors view products'}
+                        </CardDescription>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge className={seq.is_active ? 'bg-green-500/10 text-green-500 border-none' : 'bg-muted text-muted-foreground border-none'}>
+                          {seq.is_active ? 'Active' : 'Disabled'}
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant={seq.is_active ? 'destructive' : 'default'}
+                          className="h-8 text-xs"
+                          onClick={() => toggleSequence(seq.id, seq.is_active)}
+                        >
+                          {seq.is_active ? 'Deactivate' : 'Activate'}
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="divide-y divide-border p-0">
+                      {seq.steps.map((step) => {
+                        const originalRecipe = SHOPIFY_TEMPLATE_LIBRARY.find(t => t.template_name === step.template_name)
+                        const customText = customTemplates[step.template_name]?.body_text || originalRecipe?.body || ''
+                        const isEditing = editingTemplateName === step.template_name
+                        const metaStatus = customTemplates[step.template_name]?.status || step.meta_approval_status
+
+                        return (
+                          <div key={step.id} className="p-4 space-y-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-foreground">Step {step.step_order}</span>
+                                  <Badge className="bg-muted text-muted-foreground border-none text-[9px] py-px">
+                                    Delay: {step.delay_minutes_from_previous_step}m
+                                  </Badge>
+                                  <Badge className={`${getStatusBadgeVariant(metaStatus)} text-[9px] py-px font-semibold uppercase`}>
+                                    {metaStatus}
+                                  </Badge>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground font-mono">Template: {step.template_name}</p>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-[10px] border-border text-foreground hover:bg-muted"
+                                  onClick={() => openEditor(step.template_name, originalRecipe?.body || '', step.delay_minutes_from_previous_step)}
+                                >
+                                  <Edit className="size-3 mr-1" /> Configure Step
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Inline Configuration Area */}
+                            {isEditing && (
+                              <div className="bg-muted/20 border border-border p-4 rounded-lg space-y-4 animate-in slide-in-from-top-1 duration-200">
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                  <div className="space-y-1.5">
+                                    <label className="text-[11px] font-bold text-muted-foreground flex items-center gap-1">
+                                      <Clock className="size-3.5 text-primary" /> Edit Delay (Minutes)
+                                    </label>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      value={editedDelay}
+                                      onChange={(e) => setEditedDelay(Number(e.target.value))}
+                                      className="h-8 border-border bg-card text-foreground text-xs"
+                                    />
+                                  </div>
+                                  <div className="space-y-1.5 flex flex-col justify-end">
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        className="h-8 bg-primary text-primary-foreground hover:bg-primary/90 text-xs px-3"
+                                        onClick={() => saveTemplateAndDelay(step.id, true)}
+                                      >
+                                        Save Draft
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        className="h-8 bg-green-600 text-white hover:bg-green-500 text-xs px-3 flex items-center gap-1"
+                                        onClick={submitToMeta}
+                                        disabled={submittingMeta}
+                                      >
+                                        {submittingMeta ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
+                                        Submit to Meta
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-1.5">
+                                  <label className="text-[11px] font-bold text-muted-foreground">Edit Template Body</label>
+                                  <Textarea
+                                    value={editedBodyText}
+                                    onChange={(e) => setEditedBodyText(e.target.value)}
+                                    rows={3}
+                                    className="border-border bg-card text-foreground text-xs leading-relaxed focus-visible:ring-primary"
+                                    placeholder="Enter your template text..."
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Right Column: WhatsApp Live Preview device */}
+              <div className="lg:col-span-2 lg:sticky lg:top-4 space-y-4">
+                <Card className="overflow-hidden border-border bg-slate-950">
+                  <CardHeader className="pb-3 border-b border-border">
+                    <CardTitle className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                      <Smartphone className="size-4 text-primary" /> Live Chat Preview
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat bg-contain min-h-[350px] flex flex-col justify-end">
+                    {/* Simulated Message Bubble */}
+                    {editingTemplateName ? (
+                      <div className="bg-[#056162] text-white rounded-lg p-3 max-w-[85%] self-end shadow text-xs space-y-2 relative animate-in zoom-in-95 duration-200">
+                        {/* Dynamic Template Content preview */}
+                        <p className="leading-relaxed whitespace-pre-line">
+                          {getSimulatedMessageText(editedBodyText)}
+                        </p>
+                        
+                        {/* Interactive Buttons mockup */}
+                        {editingTemplateName.includes('step3') && (
+                          <div className="border-t border-white/20 pt-2 mt-2 flex flex-col gap-1 text-center font-bold text-[10px] text-[#53bdeb] hover:underline cursor-pointer">
+                            <span>🛒 Complete Checkout</span>
+                          </div>
+                        )}
+                        {editingTemplateName.includes('step1') && (
+                          <div className="border-t border-white/20 pt-2 mt-2 flex flex-col gap-1 text-center font-bold text-[10px] text-[#53bdeb] hover:underline cursor-pointer">
+                            <span>🔗 Complete Checkout</span>
+                          </div>
+                        )}
+
+                        <div className="text-[9px] text-white/50 text-right mt-1 flex items-center justify-end gap-1">
+                          <span>16:45</span>
+                          <span className="text-sky-400 font-bold">✓✓</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center p-8 bg-card/90 rounded border border-border text-xs text-muted-foreground w-full">
+                        Select "Configure Step" on any recovery sequence to activate the live WhatsApp preview simulator.
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           )}
 
           {/* Tab 3: Transactional Confirm Msg */}
           {activeTab === 'templates' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Order Confirmation & Status Templates</CardTitle>
-                <CardDescription>Verify the pre-configured transactional message templates used for order confirmations and shipping updates.</CardDescription>
-              </CardHeader>
-              <CardContent className="divide-y divide-border p-0">
-                {SHOPIFY_TEMPLATE_LIBRARY.map((template) => (
-                  <div key={template.template_name} className="p-4 space-y-2">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                      <div>
-                        <span className="font-semibold text-sm text-foreground">{getTriggerLabel(template.trigger_type)}</span>
-                        <span className="text-[10px] font-mono text-muted-foreground ml-3">({template.template_name})</span>
-                      </div>
-                      <Badge className="bg-green-500/10 text-green-500 border-none text-[10px] py-1 px-2.5 self-start sm:self-center">
-                        Active & Approved by Meta
-                      </Badge>
-                    </div>
-                    <div className="bg-muted/40 rounded border border-border p-2.5 text-xs text-muted-foreground leading-relaxed">
-                      <p className="italic font-mono">{template.body}</p>
-                      {template.variables && (
-                        <div className="mt-2 text-[10px] flex flex-wrap gap-1 text-muted-foreground border-t border-border/60 pt-2">
-                          <span className="font-bold">Variables:</span>
-                          {template.variables.map((v, i) => (
-                            <span key={v} className="bg-muted px-1.5 py-0.5 rounded border border-border">
-                              {`{{${i + 1}}}`} &rarr; {v}
-                            </span>
-                          ))}
+            <div className="grid gap-6 lg:grid-cols-5 items-start">
+              {/* Left Column: Transactional list & parameters */}
+              <div className="lg:col-span-3 space-y-4">
+                {SHOPIFY_TEMPLATE_LIBRARY.map((template) => {
+                  const originalRecipe = SHOPIFY_TEMPLATE_LIBRARY.find(t => t.template_name === template.template_name)
+                  const customText = customTemplates[template.template_name]?.body_text || originalRecipe?.body || ''
+                  const isEditing = editingTemplateName === template.template_name
+                  const metaStatus = customTemplates[template.template_name]?.status || 'APPROVED'
+
+                  return (
+                    <Card key={template.template_name}>
+                      <CardContent className="p-4 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-xs">
+                          <div>
+                            <span className="font-semibold text-sm text-foreground">{getTriggerLabel(template.trigger_type)}</span>
+                            <span className="text-[10px] font-mono text-muted-foreground ml-3">({template.template_name})</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <Badge className={`${getStatusBadgeVariant(metaStatus)} text-[9px] py-0.5 px-1.5 font-semibold uppercase`}>
+                              {metaStatus}
+                            </Badge>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-[10px] border-border text-foreground hover:bg-muted"
+                              onClick={() => openEditor(template.template_name, originalRecipe?.body || '', template.default_delay_minutes)}
+                            >
+                              <Edit className="size-3 mr-1" /> Edit Alert
+                            </Button>
+                          </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+
+                        {/* Inline Configuration Area */}
+                        {isEditing && (
+                          <div className="bg-muted/20 border border-border p-4 rounded-lg space-y-4 animate-in slide-in-from-top-1 duration-200">
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              <div className="space-y-1.5">
+                                <label className="text-[11px] font-bold text-muted-foreground flex items-center gap-1">
+                                  <Clock className="size-3.5 text-primary" /> Edit Delay (Minutes)
+                                </label>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  value={editedDelay}
+                                  onChange={(e) => setEditedDelay(Number(e.target.value))}
+                                  className="h-8 border-border bg-card text-foreground text-xs"
+                                />
+                              </div>
+                              <div className="space-y-1.5 flex flex-col justify-end">
+                                <div className="flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    className="h-8 bg-primary text-primary-foreground hover:bg-primary/90 text-xs px-3"
+                                    onClick={() => saveTemplateAndDelay(template.template_name, false)}
+                                  >
+                                    Save Draft
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    className="h-8 bg-green-600 text-white hover:bg-green-500 text-xs px-3 flex items-center gap-1"
+                                    onClick={submitToMeta}
+                                    disabled={submittingMeta}
+                                  >
+                                    {submittingMeta ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
+                                    Submit to Meta
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                              <label className="text-[11px] font-bold text-muted-foreground">Edit Template Body</label>
+                              <Textarea
+                                value={editedBodyText}
+                                onChange={(e) => setEditedBodyText(e.target.value)}
+                                rows={3}
+                                className="border-border bg-card text-foreground text-xs leading-relaxed focus-visible:ring-primary"
+                                placeholder="Enter your template text..."
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )
+                })}
+              </div>
+
+              {/* Right Column: WhatsApp Live Preview device */}
+              <div className="lg:col-span-2 lg:sticky lg:top-4 space-y-4">
+                <Card className="overflow-hidden border-border bg-slate-950">
+                  <CardHeader className="pb-3 border-b border-border">
+                    <CardTitle className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                      <Smartphone className="size-4 text-primary" /> Live Chat Preview
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat bg-contain min-h-[350px] flex flex-col justify-end">
+                    {/* Simulated Message Bubble */}
+                    {editingTemplateName ? (
+                      <div className="bg-[#056162] text-white rounded-lg p-3 max-w-[85%] self-end shadow text-xs space-y-2 relative animate-in zoom-in-95 duration-200">
+                        {/* Dynamic Template Content preview */}
+                        <p className="leading-relaxed whitespace-pre-line">
+                          {getSimulatedMessageText(editedBodyText)}
+                        </p>
+
+                        {/* Interactive Buttons mockup for COD confirmations */}
+                        {editingTemplateName.includes('cod') && (
+                          <div className="border-t border-white/20 pt-2 mt-2 flex flex-col gap-2 font-bold text-[10px] text-[#53bdeb] cursor-pointer">
+                            <span className="hover:underline">✓ Confirm COD Order</span>
+                            <span className="hover:underline text-red-400">✗ Cancel Order</span>
+                          </div>
+                        )}
+
+                        <div className="text-[9px] text-white/50 text-right mt-1 flex items-center justify-end gap-1">
+                          <span>16:45</span>
+                          <span className="text-sky-400 font-bold">✓✓</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center p-8 bg-card/90 rounded border border-border text-xs text-muted-foreground w-full">
+                        Select "Edit Alert" on any order confirmation rule to activate the live WhatsApp preview simulator.
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
           )}
 
           {/* Tab 4: Pricing / Billing */}

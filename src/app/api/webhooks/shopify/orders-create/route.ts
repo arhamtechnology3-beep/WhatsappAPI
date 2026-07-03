@@ -125,6 +125,15 @@ export async function POST(request: Request) {
       }
     }
 
+    // Detect if Cash on Delivery (COD) order
+    const isCod = 
+      payload.gateway === 'cash_on_delivery' ||
+      payload.payment_gateway_names?.includes('cash_on_delivery') ||
+      payload.payment_gateway_names?.includes('cod') ||
+      payload.payment_gateway_names?.some((name: string) => 
+        name.toLowerCase().includes('cod') || name.toLowerCase().includes('delivery')
+      ) || false
+
     // Insert shopify_orders
     const { error: orderError } = await supabase
       .from('shopify_orders')
@@ -134,7 +143,7 @@ export async function POST(request: Request) {
         contact_id: contact.id,
         deal_id: dealId,
         order_number: orderNumber,
-        financial_status: financialStatus,
+        financial_status: isCod ? 'cod_pending' : financialStatus,
         fulfillment_status: fulfillmentStatus,
         total_price: totalPrice,
         currency,
@@ -159,6 +168,7 @@ export async function POST(request: Request) {
         customer_name: customerFirstName,
         order_number: orderNumber,
         total_price: totalPrice.toFixed(2),
+        is_cod: isCod,
       }
     )
 

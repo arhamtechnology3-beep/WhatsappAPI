@@ -2269,6 +2269,7 @@ export default function ShopifyDashboardPage() {
                       <li className="flex items-center gap-2"><CheckCircle2 className="size-3.5 text-primary" /> 20 templates limit</li>
                       <li className="flex items-center gap-2"><CheckCircle2 className="size-3.5 text-primary" /> Broadcast (30k/mo)</li>
                       <li className="flex items-center gap-2"><CheckCircle2 className="size-3.5 text-primary" /> Schedule (10 rules)</li>
+                      <li className="flex items-center gap-2"><CheckCircle2 className="size-3.5 text-primary" /> CRM Pipelines</li>
                     </ul>
                     {currentPlan === 'growth' ? (
                       <Button className="w-full bg-muted text-muted-foreground cursor-default hover:bg-muted h-9" disabled>Current Subscription</Button>
@@ -2295,6 +2296,7 @@ export default function ShopifyDashboardPage() {
                       <li className="flex items-center gap-2"><CheckCircle2 className="size-3.5 text-primary" /> 50 templates limit</li>
                       <li className="flex items-center gap-2"><CheckCircle2 className="size-3.5 text-primary" /> Broadcast (50k/mo)</li>
                       <li className="flex items-center gap-2"><CheckCircle2 className="size-3.5 text-primary" /> Schedule (50 rules)</li>
+                      <li className="flex items-center gap-2"><CheckCircle2 className="size-3.5 text-primary" /> CRM Pipelines</li>
                     </ul>
                     {currentPlan === 'scale' ? (
                       <Button className="w-full bg-muted text-muted-foreground cursor-default hover:bg-muted h-9" disabled>Current Subscription</Button>

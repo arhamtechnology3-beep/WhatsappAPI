@@ -48,7 +48,9 @@ import {
   SlidersHorizontal,
   Filter,
   X,
+  RefreshCw,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { ContactForm } from '@/components/contacts/contact-form';
 import { ContactDetailView } from '@/components/contacts/contact-detail-view';
 import { ImportModal } from '@/components/contacts/import-modal';
@@ -61,6 +63,7 @@ const PAGE_SIZE = 25;
 
 interface ContactWithTags extends Contact {
   tags?: Tag[];
+  checkout_url?: string;
 }
 
 export default function ContactsPage() {
@@ -87,6 +90,31 @@ export default function ContactsPage() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [syncingShopify, setSyncingShopify] = useState(false);
+  const [quickFilter, setQuickFilter] = useState<'all' | 'abandoned' | 'shopify'>('all');
+
+  const handleSyncShopify = async () => {
+    setSyncingShopify(true);
+    toast.info('Starting sync with Shopify store...');
+    try {
+      const res = await fetch('/api/shopify/sync-customers', {
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to sync customers');
+      }
+      toast.success(`Successfully synced ${data.syncedCount} contacts from Shopify!`);
+      // Reload contact list
+      fetchSeq.current++;
+      fetchContacts();
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Unknown error';
+      toast.error('Shopify Sync failed: ' + errMsg);
+    } finally {
+      setSyncingShopify(false);
+    }
+  };
 
   // Bulk selection (page-scoped — only the loaded rows are selectable)
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -196,11 +224,25 @@ export default function ContactsPage() {
       tagsByContact[ct.contact_id].push(ct.tag_id);
     });
 
+    // Fetch shopify checkouts for these contacts to get their landing/checkout URL
+    const { data: checkoutsData } = await supabase
+      .from('shopify_checkouts')
+      .select('contact_id, abandoned_checkout_url')
+      .in('contact_id', contactIds)
+
+    const checkoutUrlMap: Record<string, string> = {}
+    checkoutsData?.forEach((co) => {
+      if (co.contact_id && co.abandoned_checkout_url) {
+        checkoutUrlMap[co.contact_id] = co.abandoned_checkout_url
+      }
+    })
+
     const enriched: ContactWithTags[] = contactRows.map((c) => ({
       ...c,
       tags: (tagsByContact[c.id] ?? [])
         .map((tid) => tagsMap[tid])
         .filter(Boolean),
+      checkout_url: checkoutUrlMap[c.id] || undefined
     }));
 
     setContacts(enriched);
@@ -212,12 +254,10 @@ export default function ContactsPage() {
   // synchronously in the effect body, so the cascade the lint rule
   // warns about doesn't apply here.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchTags();
   }, [fetchTags]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchContacts();
   }, [fetchContacts]);
 
@@ -337,6 +377,12 @@ export default function ContactsPage() {
     setPage(0);
   }
 
+  const filteredContacts = contacts.filter((c) => {
+    if (quickFilter === 'abandoned') return !!c.checkout_url;
+    if (quickFilter === 'shopify') return !!c.shopify_customer_id;
+    return true;
+  });
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -358,6 +404,15 @@ export default function ContactsPage() {
               Custom fields
             </Button>
           )}
+          <Button
+            variant="outline"
+            className="border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/10"
+            disabled={syncingShopify}
+            onClick={handleSyncShopify}
+          >
+            {syncingShopify ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <RefreshCw className="size-4 mr-1.5" />}
+            Sync Shopify
+          </Button>
           <GatedButton
             variant="outline"
             canAct={canEdit}
@@ -494,6 +549,44 @@ export default function ContactsPage() {
             </button>
           </div>
         )}
+
+        {/* Quick Filter Pills */}
+        <div className="flex flex-wrap gap-1.5 items-center pt-2 border-t border-border/40 text-xs">
+          <span className="text-muted-foreground mr-1 text-[10px] font-bold uppercase tracking-wider">Quick Filters:</span>
+          <button
+            onClick={() => setQuickFilter('all')}
+            className={cn(
+              "px-3 py-1 rounded-full border text-[11px] font-semibold transition-all",
+              quickFilter === 'all'
+                ? "bg-primary border-primary text-primary-foreground font-bold shadow-sm"
+                : "border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground"
+            )}
+          >
+            All Contacts
+          </button>
+          <button
+            onClick={() => setQuickFilter('abandoned')}
+            className={cn(
+              "px-3 py-1 rounded-full border text-[11px] font-semibold transition-all flex items-center gap-1",
+              quickFilter === 'abandoned'
+                ? "bg-amber-600 border-amber-600 text-white font-bold shadow-sm"
+                : "border-border bg-card text-amber-500 hover:bg-amber-500/10 hover:text-amber-500"
+            )}
+          >
+            🛒 Abandoned Cart
+          </button>
+          <button
+            onClick={() => setQuickFilter('shopify')}
+            className={cn(
+              "px-3 py-1 rounded-full border text-[11px] font-semibold transition-all flex items-center gap-1",
+              quickFilter === 'shopify'
+                ? "bg-emerald-600 border-emerald-600 text-white font-bold shadow-sm"
+                : "border-border bg-card text-emerald-500 hover:bg-emerald-500/10 hover:text-emerald-500"
+            )}
+          >
+            🛍️ Shopify Customers
+          </button>
+        </div>
       </div>
 
       {/* Bulk action bar */}
@@ -545,6 +638,7 @@ export default function ContactsPage() {
               <TableHead className="text-muted-foreground hidden md:table-cell">Email</TableHead>
               <TableHead className="text-muted-foreground hidden lg:table-cell">Company</TableHead>
               <TableHead className="text-muted-foreground hidden md:table-cell">Tags</TableHead>
+              <TableHead className="text-muted-foreground hidden lg:table-cell">Page URL</TableHead>
               <TableHead className="text-muted-foreground hidden lg:table-cell">Created</TableHead>
               <TableHead className="text-muted-foreground w-12" />
             </TableRow>
@@ -552,24 +646,24 @@ export default function ContactsPage() {
           <TableBody>
             {loading ? (
               <TableRow className="border-border">
-                <TableCell colSpan={8} className="text-center py-12">
+                <TableCell colSpan={9} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2">
                     <Loader2 className="size-6 animate-spin text-primary" />
                     <p className="text-sm text-muted-foreground">Loading contacts...</p>
                   </div>
                 </TableCell>
               </TableRow>
-            ) : contacts.length === 0 ? (
+            ) : filteredContacts.length === 0 ? (
               <TableRow className="border-border">
-                <TableCell colSpan={8} className="text-center py-12">
+                <TableCell colSpan={9} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2">
                     <Users className="size-8 text-muted-foreground" />
                     <p className="text-sm text-muted-foreground">
-                      {hasActiveFilters
+                      {hasActiveFilters || quickFilter !== 'all'
                         ? 'No contacts match your filters.'
                         : 'No contacts yet.'}
                     </p>
-                    {!hasActiveFilters && (
+                    {!hasActiveFilters && quickFilter === 'all' && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -584,7 +678,7 @@ export default function ContactsPage() {
                 </TableCell>
               </TableRow>
             ) : (
-              contacts.map((contact) => (
+              filteredContacts.map((contact) => (
                 <TableRow
                   key={contact.id}
                   className="border-border hover:bg-muted/50 cursor-pointer"
@@ -634,11 +728,29 @@ export default function ContactsPage() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-xs hidden lg:table-cell">
-                    {new Date(contact.created_at).toLocaleDateString('en-US', {
+                  <TableCell className="text-muted-foreground hidden lg:table-cell text-sm max-w-[200px] truncate">
+                    {contact.checkout_url ? (
+                      <a
+                        href={contact.checkout_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline font-mono text-[11px]"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {contact.checkout_url}
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground text-xs hidden lg:table-cell whitespace-nowrap">
+                    {new Date(contact.created_at).toLocaleString('en-US', {
                       month: 'short',
                       day: 'numeric',
                       year: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      hour12: true,
                     })}
                   </TableCell>
                   <TableCell>

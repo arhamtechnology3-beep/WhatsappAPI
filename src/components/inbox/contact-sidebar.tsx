@@ -10,11 +10,14 @@ import {
   Mail,
   Copy,
   Check,
-  User,
   Tag as TagIcon,
   DollarSign,
   StickyNote,
   Plus,
+  ShoppingBag,
+  ChevronDown,
+  ChevronUp,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -32,6 +35,42 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   const [tags, setTags] = useState<(Tag & { contact_tag_id: string })[]>([]);
   const [newNote, setNewNote] = useState("");
   const [addingNote, setAddingNote] = useState(false);
+  const [shopifyLoading, setShopifyLoading] = useState(false);
+  const [shopifyError, setShopifyError] = useState<string | null>(null);
+  const [shopifyData, setShopifyData] = useState<{
+    customer: {
+      id: number;
+      first_name: string;
+      last_name: string;
+      email: string;
+      phone: string;
+      orders_count: number;
+      total_spent: string;
+      currency: string;
+      default_address?: {
+        city?: string;
+        province?: string;
+        country?: string;
+      };
+    } | null;
+    orders: Array<{
+      id: number;
+      name: string;
+      order_number: number;
+      created_at: string;
+      total_price: string;
+      currency: string;
+      financial_status: string;
+      fulfillment_status: string;
+      line_items: Array<{
+        id: number;
+        title: string;
+        quantity: number;
+        price: string;
+      }>;
+    }>;
+  } | null>(null);
+  const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
 
   const fetchContactData = useCallback(async () => {
     if (!contact) return;
@@ -75,6 +114,55 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchContactData();
   }, [fetchContactData]);
+
+  // Fetch Shopify Customer Data on contact change
+  useEffect(() => {
+    if (!contact) {
+      setShopifyData(null);
+      setShopifyError(null);
+      setExpandedOrderId(null);
+      return;
+    }
+
+    const contactId = contact.id;
+
+    async function fetchShopifyCustomer() {
+      setShopifyLoading(true);
+      setShopifyError(null);
+      try {
+        const res = await fetch(`/api/shopify/customer?contactId=${contactId}`);
+        if (!res.ok) {
+          throw new Error("Failed to fetch Shopify customer details");
+        }
+        const data = await res.json();
+        if (data.success) {
+          setShopifyData(data);
+        } else {
+          setShopifyError(data.error || "Failed to load Shopify customer data");
+        }
+      } catch (err: unknown) {
+        console.error(err);
+        const errMsg = err instanceof Error ? err.message : "An error occurred while fetching Shopify data";
+        setShopifyError(errMsg);
+      } finally {
+        setShopifyLoading(false);
+      }
+    }
+
+    fetchShopifyCustomer();
+  }, [contact]);
+
+  const formatCurrency = useCallback((amount: number, currency: string) => {
+    try {
+      return new Intl.NumberFormat("en-IN", {
+        style: "currency",
+        currency: currency || "INR",
+        maximumFractionDigits: 0,
+      }).format(amount);
+    } catch {
+      return `${currency || "₹"}${amount}`;
+    }
+  }, []);
 
   const handleCopyPhone = useCallback(async () => {
     if (!contact?.phone) return;
@@ -201,6 +289,140 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                 ))
               )}
             </div>
+          </div>
+
+          {/* Divider */}
+          <div className="my-4 border-t border-border" />
+
+          {/* Shopify History Section */}
+          <div>
+            <div className="flex items-center justify-between px-1 mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <span className="flex items-center gap-2">
+                <ShoppingBag className="h-3.5 w-3.5 text-primary" />
+                Shopify History
+              </span>
+              {shopifyLoading && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+            </div>
+
+            {shopifyLoading && !shopifyData && (
+              <div className="flex items-center justify-center py-4 text-xs text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                Fetching Shopify details...
+              </div>
+            )}
+
+            {shopifyError && (
+              <div className="rounded-lg bg-destructive/10 p-2 text-xs text-destructive">
+                {shopifyError}
+              </div>
+            )}
+
+            {!shopifyLoading && !shopifyError && !shopifyData?.customer && (
+              <p className="px-1 text-xs text-muted-foreground">No Shopify customer profile found.</p>
+            )}
+
+            {shopifyData?.customer && (
+              <div className="space-y-3">
+                {/* Metrics Grid */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-border bg-muted/40 p-2 text-center">
+                    <p className="text-[9px] uppercase font-semibold text-muted-foreground tracking-wider">Orders</p>
+                    <p className="text-base font-bold text-foreground mt-0.5">
+                      {shopifyData.customer.orders_count}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-border bg-muted/40 p-2 text-center">
+                    <p className="text-[9px] uppercase font-semibold text-muted-foreground tracking-wider">Total Spent</p>
+                    <p className="text-base font-bold text-foreground mt-0.5">
+                      {formatCurrency(Number(shopifyData.customer.total_spent), shopifyData.customer.currency)}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Orders List */}
+                {shopifyData.orders.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="px-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Orders ({shopifyData.orders.length})
+                    </div>
+                    <div className="space-y-1.5">
+                      {shopifyData.orders.map((order) => {
+                        const isExpanded = expandedOrderId === order.id;
+                        return (
+                          <div
+                            key={order.id}
+                            className="rounded-lg border border-border bg-muted/10 hover:bg-muted/20 transition-all overflow-hidden"
+                          >
+                            <button
+                              onClick={() => setExpandedOrderId(isExpanded ? null : order.id)}
+                              className="flex w-full items-start justify-between p-2.5 text-left outline-none"
+                            >
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="font-semibold text-xs text-foreground">
+                                    {order.name}
+                                  </span>
+                                  <span className={cn(
+                                    "rounded-full px-1 py-0.25 text-[8px] font-semibold uppercase tracking-wider",
+                                    order.financial_status === "paid" 
+                                      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" 
+                                      : "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                  )}>
+                                    {order.financial_status}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-muted-foreground">
+                                  {format(new Date(order.created_at), "dd MMM yyyy")}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-xs text-foreground">
+                                  {formatCurrency(Number(order.total_price), order.currency)}
+                                </span>
+                                {isExpanded ? (
+                                  <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+                                ) : (
+                                  <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                                )}
+                              </div>
+                            </button>
+
+                            {isExpanded && (
+                              <div className="border-t border-border/60 px-2.5 py-2 space-y-2 bg-muted/5">
+                                <div className="space-y-1.5">
+                                  <p className="text-[9px] uppercase font-semibold text-muted-foreground tracking-wider">Items</p>
+                                  {order.line_items.map((item) => (
+                                    <div key={item.id} className="flex justify-between text-xs text-foreground gap-2">
+                                      <span className="truncate max-w-[70%]">
+                                        {item.quantity} x {item.title}
+                                      </span>
+                                      <span className="text-muted-foreground shrink-0">
+                                        {formatCurrency(Number(item.price) * item.quantity, order.currency)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 pt-1.5 border-t border-border/40 text-[9px]">
+                                  <div>
+                                    <p className="font-semibold text-muted-foreground uppercase tracking-wider">Fulfillment</p>
+                                    <p className="text-foreground capitalize">{order.fulfillment_status || "Unfulfilled"}</p>
+                                  </div>
+                                  <div>
+                                    <p className="font-semibold text-muted-foreground uppercase tracking-wider">Payment</p>
+                                    <p className="text-foreground capitalize">{order.financial_status}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Divider */}

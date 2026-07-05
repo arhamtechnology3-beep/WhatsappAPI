@@ -100,6 +100,7 @@ export interface Contact {
   avatar_url?: string;
   created_at: string;
   updated_at: string;
+  shopify_customer_id?: string | null;
 }
 
 export interface Tag {

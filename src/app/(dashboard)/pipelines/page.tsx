@@ -418,6 +418,21 @@ export default function PipelinesPage() {
             onAddDeal={handleAddDeal}
             onEditDeal={handleEditDeal}
           />
+          <div className="mt-6 border border-border rounded-lg bg-card p-4 text-xs text-muted-foreground space-y-2 max-w-4xl">
+            <h4 className="font-semibold text-foreground flex items-center gap-1.5 text-xs">
+              💡 Understanding Weighted Value Calculation
+            </h4>
+            <p className="leading-relaxed">
+              <strong>Weighted Value</strong> forecasts your expected revenue by adjusting deal amounts based on their current stage position. 
+              The system assigns a closing probability starting at <strong>10%</strong> for the first stage (e.g. <em>Abandoned Cart</em>) up to <strong>90%</strong> for the second-to-last stage (e.g. <em>Order Confirmed</em>), and <strong>100%</strong> for won deals.
+            </p>
+            <div className="bg-muted/40 p-2.5 rounded border border-border/60 font-mono text-[11px] text-foreground space-y-1">
+              <span className="font-semibold block text-[10px] text-muted-foreground uppercase tracking-wide">Simple Example:</span>
+              <div>• Deal A (Abandoned Cart) = ₹1,000 × 10% prob = ₹100</div>
+              <div>• Deal B (Order Confirmed) = ₹1,000 × 90% prob = ₹900</div>
+              <div className="border-t border-border/60 pt-1 mt-1 font-bold text-primary">Total Weighted Pipeline Value = ₹1,000 (instead of raw ₹2,000)</div>
+            </div>
+          </div>
         </>
       )}
 

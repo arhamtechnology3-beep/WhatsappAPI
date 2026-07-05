@@ -33,6 +33,7 @@ import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { SHOPIFY_TEMPLATE_LIBRARY } from "@/lib/shopify/whatsapp-template-library"
 import InboxPage from "@/app/(dashboard)/inbox/page"
+import PipelinesPage from "@/app/(dashboard)/pipelines/page"
 import Image from "next/image"
 import type { Broadcast } from "@/types"
 
@@ -100,8 +101,8 @@ export default function ShopifyDashboardPage() {
   const supabase = createClient()
   const { accountId, user, accountRole } = useAuth()
 
-  // Tabs: 'overview', 'templates', 'confirm_msg', 'adv_features', 'settings', 'billing', 'chats'
-  const [activeTab, setActiveTab] = useState<'overview' | 'templates' | 'confirm_msg' | 'adv_features' | 'settings' | 'billing' | 'chats'>('overview')
+  // Tabs: 'overview', 'templates', 'confirm_msg', 'adv_features', 'settings', 'billing', 'chats', 'pipelines'
+  const [activeTab, setActiveTab] = useState<'overview' | 'templates' | 'confirm_msg' | 'adv_features' | 'settings' | 'billing' | 'chats' | 'pipelines'>('overview')
   const [activeSubTab, setActiveSubTab] = useState<'broadcast' | 'schedule' | 'auto_reply' | 'flow_bot'>('broadcast')
 
   // Force agents to the Chats tab only
@@ -599,9 +600,9 @@ export default function ShopifyDashboardPage() {
   }
 
   return (
-    <div className={cn("space-y-4 animate-in fade-in duration-200", activeTab === 'chats' && "space-y-0 h-[calc(100vh-3.5rem)] overflow-hidden -m-4 sm:-m-6")}>
+    <div className={cn("space-y-4 animate-in fade-in duration-200", (activeTab === 'chats' || activeTab === 'pipelines') && "space-y-0 h-[calc(100vh-3.5rem)] overflow-hidden -m-4 sm:-m-6")}>
       
-      {activeTab !== 'chats' && (
+      {activeTab !== 'chats' && activeTab !== 'pipelines' && (
         <div className="flex items-center justify-between border-b border-border pb-3">
           <div className="flex items-center gap-2">
             <ShoppingBag className="size-4.5 text-primary" />
@@ -677,6 +678,16 @@ export default function ShopifyDashboardPage() {
             >
               Billing
             </button>
+            {currentPlan !== 'basic' && (
+              <button
+                onClick={() => setActiveTab('pipelines')}
+                className={`py-3 px-4 font-medium border-b-2 transition-all ${
+                  activeTab === 'pipelines' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Pipelines
+              </button>
+            )}
           </>
         )}
         <button
@@ -2302,6 +2313,13 @@ export default function ShopifyDashboardPage() {
       {activeTab === 'chats' && (
         <div className="flex-1 overflow-hidden h-[calc(100vh-6.5rem)] relative animate-in fade-in duration-300">
           <InboxPage />
+        </div>
+      )}
+
+      {/* Tab 8: Pipelines (Live CRM Pipelines embedded) */}
+      {activeTab === 'pipelines' && currentPlan !== 'basic' && (
+        <div className="flex-1 overflow-hidden h-[calc(100vh-6.5rem)] relative animate-in fade-in duration-300">
+          <PipelinesPage />
         </div>
       )}
     </div>

@@ -21,7 +21,8 @@ import {
   Reply,
   Bot,
   Pencil,
-  Trash2
+  Trash2,
+  Lock as LockIcon
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -902,7 +903,14 @@ export default function ShopifyDashboardPage() {
               <Card className="lg:col-span-3">
                 <CardHeader className="pb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <CardTitle>WhatsApp Templates</CardTitle>
+                    <CardTitle className="flex items-center gap-2">
+                      <span>WhatsApp Templates</span>
+                      {templatesList.length >= (currentPlan === 'basic' ? 10 : currentPlan === 'growth' ? 20 : 50) && (
+                        <Badge className="bg-destructive/10 text-destructive border-none text-[9px] py-0 px-2 font-normal select-none">
+                          Limit Reached ({templatesList.length}/{currentPlan === 'basic' ? 10 : currentPlan === 'growth' ? 20 : 50})
+                        </Badge>
+                      )}
+                    </CardTitle>
                     <CardDescription>Approved Meta templates linked to your WhatsApp Business API.</CardDescription>
                   </div>
                   <div className="flex items-center gap-2">
@@ -918,7 +926,14 @@ export default function ShopifyDashboardPage() {
                     <Button 
                       size="sm" 
                       className="bg-primary text-primary-foreground hover:bg-primary/90 h-8 text-xs font-bold text-white px-3 flex items-center gap-1"
-                      onClick={() => toast.info("Redirecting to Meta Template Builder...")}
+                      onClick={() => {
+                        const limit = currentPlan === 'basic' ? 10 : currentPlan === 'growth' ? 20 : 50
+                        if (templatesList.length >= limit) {
+                          toast.error(`Template limit reached for your ${currentPlan.toUpperCase()} plan (${templatesList.length}/${limit}). Please upgrade on the Billing tab to create more.`)
+                          return
+                        }
+                        toast.info("Redirecting to Meta Template Builder...")
+                      }}
                     >
                       <Plus className="size-3.5" /> Create
                     </Button>
@@ -1542,7 +1557,40 @@ export default function ShopifyDashboardPage() {
 
           {/* Tab 4: Adv Features (Broadcast history, Scheduled trigger, Auto-reply settings, Flow Bot) */}
           {activeTab === 'adv_features' && (
-            <div className="space-y-6">
+            currentPlan === 'basic' ? (
+              <Card className="border border-purple-500/20 bg-purple-500/[0.02] p-8 text-center max-w-xl mx-auto my-12 animate-in fade-in duration-200">
+                <CardHeader className="space-y-2">
+                  <div className="mx-auto size-12 rounded-full bg-purple-500/10 flex items-center justify-center mb-2">
+                    <LockIcon className="size-6 text-purple-500 animate-bounce" />
+                  </div>
+                  <CardTitle className="text-lg font-bold text-foreground">Advanced Features Gated</CardTitle>
+                  <CardDescription className="text-xs text-muted-foreground leading-relaxed">
+                    Broadcast campaigns, automation scheduling, auto status replies, and the visual flow bot are only available on the <strong>Growth</strong> or <strong>Scale</strong> plans.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-[11px] text-muted-foreground">
+                    Upgrade your subscription in the <strong>Billing</strong> tab to unlock these features for your Shopify store.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+                    <Button
+                      className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs px-6 h-9"
+                      onClick={() => changePlan('growth')}
+                    >
+                      Upgrade to Growth
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="border-purple-500/20 text-purple-500 hover:bg-purple-500/10 font-bold text-xs px-6 h-9"
+                      onClick={() => changePlan('scale')}
+                    >
+                      Upgrade to Scale
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-6">
               {/* Secondary Navigation Pills */}
               <div className="flex gap-2 border-b border-border pb-3 text-xs">
                 <button
@@ -1869,7 +1917,8 @@ export default function ShopifyDashboardPage() {
                 </Card>
               )}
             </div>
-          )}
+          )
+        )}
 
           {/* Tab 5: Settings & Webhook Logs */}
           {activeTab === 'settings' && (

@@ -37,6 +37,7 @@ export async function POST(request: Request) {
     const {
       name,
       phone,
+      email,
       address,
       city,
       state,
@@ -91,13 +92,64 @@ export async function POST(request: Request) {
       }
     }
 
-    // 2) Construct Draft Order body
-    const draftOrderPayload = {
+    // 2) Find or create Shopify customer so email & phone are saved on the profile
+    let shopifyCustomerId: number | null = null
+    try {
+      // Search by phone first
+      if (phone) {
+        const cleanPhone = phone.trim()
+        let searchRes = await fetchShopify(`/customers/search.json?query=phone:${encodeURIComponent(cleanPhone)}&limit=1`)
+        if (searchRes.customers && searchRes.customers.length > 0) {
+          shopifyCustomerId = searchRes.customers[0].id
+          // Update customer with latest name/email if we have them
+          const updatePayload: any = {
+            customer: { first_name: firstName, last_name: lastName }
+          }
+          if (email) updatePayload.customer.email = email
+          await fetchShopify(`/customers/${shopifyCustomerId}.json`, {
+            method: 'PUT',
+            body: JSON.stringify(updatePayload)
+          }).catch(() => {})
+        }
+      }
+      // Fallback: search by email
+      if (!shopifyCustomerId && email) {
+        const searchRes = await fetchShopify(`/customers/search.json?query=email:${encodeURIComponent(email.trim())}&limit=1`)
+        if (searchRes.customers && searchRes.customers.length > 0) {
+          shopifyCustomerId = searchRes.customers[0].id
+        }
+      }
+      // Create customer if still not found
+      if (!shopifyCustomerId) {
+        const createPayload: any = {
+          customer: {
+            first_name: firstName,
+            last_name: lastName,
+            phone: phone || undefined,
+            email: email || undefined,
+            verified_email: !!email,
+          }
+        }
+        const createRes = await fetchShopify('/customers.json', {
+          method: 'POST',
+          body: JSON.stringify(createPayload)
+        })
+        if (createRes && createRes.customer) {
+          shopifyCustomerId = createRes.customer.id
+        }
+      }
+    } catch (customerErr) {
+      console.warn('[create-order] Customer find/create failed (non-fatal):', customerErr)
+    }
+
+    // 3) Construct Draft Order body
+    const draftOrderPayload: any = {
       draft_order: {
         line_items: line_items.map((item: any) => ({
           variant_id: item.variant_id,
           quantity: item.quantity
         })),
+        ...(shopifyCustomerId ? { customer: { id: shopifyCustomerId } } : {}),
         use_customer_default_address: false,
         shipping_address: {
           first_name: firstName,
@@ -128,10 +180,10 @@ export async function POST(request: Request) {
     }
 
     if (appliedDiscount) {
-      (draftOrderPayload.draft_order as any).applied_discount = appliedDiscount
+      draftOrderPayload.draft_order.applied_discount = appliedDiscount
     }
 
-    // 3) Create Draft Order in Shopify
+    // 4) Create Draft Order in Shopify
     const draftRes = await fetchShopify('/draft_orders.json', {
       method: 'POST',
       body: JSON.stringify(draftOrderPayload)
@@ -144,7 +196,7 @@ export async function POST(request: Request) {
     const draftOrder = draftRes.draft_order
     let orderResult = null
 
-    // 4) For COD, complete the Draft Order immediately to generate real Order
+    // 5) For COD, complete the Draft Order immediately to generate real Order
     if (payment_method === 'cod') {
       const completeRes = await fetchShopify(`/draft_orders/${draftOrder.id}/complete.json`, {
         method: 'PUT',

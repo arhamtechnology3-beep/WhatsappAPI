@@ -23,7 +23,10 @@ export async function fetchShopify(
   }
 
   // Clean the domain to prevent formatting issues
-  const cleanDomain = storeDomain.replace(/^https?:\/\//, '').replace(/\/$/, '')
+  let cleanDomain = storeDomain.replace(/^https?:\/\//, '').replace(/\/$/, '')
+  if (cleanDomain === 'divyaprabhafoods.com' || cleanDomain === 'www.divyaprabhafoods.com') {
+    cleanDomain = 'divyaprabhafoods.myshopify.com'
+  }
   const url = `https://${cleanDomain}/admin/api/${apiVersion}/${path.replace(/^\//, '')}`
 
   const headers = new Headers(options.headers)

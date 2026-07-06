@@ -31,10 +31,19 @@ export async function fetchShopify(
   headers.set('Content-Type', 'application/json')
   headers.set('Accept', 'application/json')
 
+  console.log(`[shopify-client] Requesting URL: ${url}`)
+  console.log(`[shopify-client] Method: ${options.method || 'GET'}`)
+  console.log(`[shopify-client] Headers:`, Object.fromEntries(headers.entries()))
+  if (options.body) {
+    console.log(`[shopify-client] Body Length: ${options.body.toString().length}`)
+  }
+
   const response = await fetch(url, {
     ...options,
     headers,
   })
+
+  console.log(`[shopify-client] Response Status: ${response.status} ${response.statusText}`)
 
   if (!response.ok) {
     const errorText = await response.text()

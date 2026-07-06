@@ -48,7 +48,7 @@ export async function fetchShopify(
   if (!response.ok) {
     const errorText = await response.text()
     console.error(`[shopify-client] error response from ${url}:`, errorText)
-    throw new Error(`Shopify API error: ${response.status} ${response.statusText} - ${errorText}`)
+    throw new Error(`Shopify API error: ${response.status} ${response.statusText} - URL: ${url} - Error: ${errorText}`)
   }
 
   return response.json()

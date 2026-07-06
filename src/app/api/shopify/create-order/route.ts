@@ -147,7 +147,8 @@ export async function POST(request: Request) {
     // 4) For COD, complete the Draft Order immediately to generate real Order
     if (payment_method === 'cod') {
       const completeRes = await fetchShopify(`/draft_orders/${draftOrder.id}/complete.json`, {
-        method: 'POST'
+        method: 'PUT',
+        body: '{}'
       })
       if (completeRes && completeRes.draft_order && completeRes.draft_order.order_id) {
         // Fetch the completed order details

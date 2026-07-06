@@ -67,8 +67,25 @@ export async function matchOrCreateShopifyContact(
 
   const shopifyCustomerId = customer.id ? String(customer.id) : null
 
+  // 2.5) Fallback to shopify_customer_id
+  if (!contact && shopifyCustomerId) {
+    const { data } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('shopify_customer_id', shopifyCustomerId)
+      .maybeSingle()
+    contact = data
+  }
+
   // 3) Create contact if missing
   if (!contact) {
+    // Skip creating a contact with no identifiers — it can't be used for WhatsApp
+    if (!phone && !email) {
+      console.warn('[shopify-helper] skipping contact creation: no phone or email in payload')
+      return null
+    }
+
     const { data: newContact, error: createError } = await supabase
       .from('contacts')
       .insert({
@@ -88,13 +105,17 @@ export async function matchOrCreateShopifyContact(
     }
     contact = newContact
   } else {
-    // 4) Update contact details if missing
+    // 4) Update contact details if missing or now available
     const updates: any = {}
     if (shopifyCustomerId && contact.shopify_customer_id !== shopifyCustomerId) {
       updates.shopify_customer_id = shopifyCustomerId
     }
     if (email && !contact.email) {
       updates.email = email
+    }
+    // Fill in phone if the existing contact has a blank phone but we now have one
+    if (phone && !contact.phone) {
+      updates.phone = phone
     }
     if (name && (contact.name === 'Shopify Customer' || contact.name === contact.phone || !contact.name)) {
       updates.name = name
@@ -398,6 +419,7 @@ export async function initializeCheckoutRecoverySequence(
     .select('id')
     .eq('shopify_checkout_id', checkout.id)
     .in('status', ['in_progress', 'converted'])
+    .limit(1)
     .maybeSingle()
 
   if (existingTracking) return

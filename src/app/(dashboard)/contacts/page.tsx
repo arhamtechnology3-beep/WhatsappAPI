@@ -180,11 +180,22 @@ export default function ContactsPage() {
       contactRows = rows.map((r) => r.contact);
       count = rows.length > 0 ? Number(rows[0].total_count) : 0;
     } else {
+      let selectFields = '*'
+      if (quickFilter === 'abandoned') {
+        selectFields = '*, shopify_checkouts!inner(id, status)'
+      }
+
       let query = supabase
         .from('contacts')
-        .select('*', { count: 'exact' })
+        .select(selectFields, { count: 'exact' })
         .order('created_at', { ascending: false })
         .range(from, to);
+
+      if (quickFilter === 'abandoned') {
+        query = query.in('shopify_checkouts.status', ['open', 'abandoned_notified'])
+      } else if (quickFilter === 'shopify') {
+        query = query.not('shopify_customer_id', 'is', null).neq('shopify_customer_id', '')
+      }
 
       if (term) {
         const like = `%${term}%`;
@@ -198,7 +209,7 @@ export default function ContactsPage() {
         setLoading(false);
         return;
       }
-      contactRows = data ?? [];
+      contactRows = (data as unknown as Contact[]) ?? [];
       count = exactCount ?? 0;
     }
 
@@ -247,7 +258,7 @@ export default function ContactsPage() {
 
     setContacts(enriched);
     setLoading(false);
-  }, [supabase, page, search, selectedTagIds, tagsMap]);
+  }, [supabase, page, search, selectedTagIds, tagsMap, quickFilter]);
 
   // Load-once-on-mount-ish data fetches. Each setter inside runs
   // inside an async promise completion (Supabase await), not
@@ -377,11 +388,7 @@ export default function ContactsPage() {
     setPage(0);
   }
 
-  const filteredContacts = contacts.filter((c) => {
-    if (quickFilter === 'abandoned') return !!c.checkout_url;
-    if (quickFilter === 'shopify') return !!c.shopify_customer_id;
-    return true;
-  });
+  const filteredContacts = contacts;
 
   return (
     <div className="space-y-6">
@@ -554,7 +561,7 @@ export default function ContactsPage() {
         <div className="flex flex-wrap gap-1.5 items-center pt-2 border-t border-border/40 text-xs">
           <span className="text-muted-foreground mr-1 text-[10px] font-bold uppercase tracking-wider">Quick Filters:</span>
           <button
-            onClick={() => setQuickFilter('all')}
+            onClick={() => { setQuickFilter('all'); setPage(0); }}
             className={cn(
               "px-3 py-1 rounded-full border text-[11px] font-semibold transition-all",
               quickFilter === 'all'
@@ -565,7 +572,7 @@ export default function ContactsPage() {
             All Contacts
           </button>
           <button
-            onClick={() => setQuickFilter('abandoned')}
+            onClick={() => { setQuickFilter('abandoned'); setPage(0); }}
             className={cn(
               "px-3 py-1 rounded-full border text-[11px] font-semibold transition-all flex items-center gap-1",
               quickFilter === 'abandoned'
@@ -576,7 +583,7 @@ export default function ContactsPage() {
             🛒 Abandoned Cart
           </button>
           <button
-            onClick={() => setQuickFilter('shopify')}
+            onClick={() => { setQuickFilter('shopify'); setPage(0); }}
             className={cn(
               "px-3 py-1 rounded-full border text-[11px] font-semibold transition-all flex items-center gap-1",
               quickFilter === 'shopify'

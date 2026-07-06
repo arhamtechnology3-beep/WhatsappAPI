@@ -31,8 +31,8 @@ export async function POST(request: Request) {
     // Parse order attributes
     const orderId = String(payload.id)
     const orderNumber = String(payload.order_number)
-    const email = payload.email || null
-    const phone = payload.phone || payload.customer?.phone || null
+    const email = payload.email || payload.customer?.email || payload.billing_address?.email || null
+    const phone = payload.phone || payload.customer?.phone || payload.billing_address?.phone || payload.shipping_address?.phone || null
     const cartToken = payload.cart_token || null
     const totalPrice = parseFloat(payload.total_price || '0')
     const currency = payload.currency || 'USD'
@@ -50,6 +50,12 @@ export async function POST(request: Request) {
     }
 
     const contact = await matchOrCreateShopifyContact(supabase, accountId, userId, customerPayload)
+
+    // If no identifiable customer data (no phone, no email), skip processing
+    if (!contact) {
+      console.warn('[shopify-webhook] orders-create: skipped — no phone or email in payload')
+      return NextResponse.json({ success: true, skipped: true })
+    }
 
     // Resolve pipeline stages
     const { pipelineId, wonStageId } = await resolvePipelineAndStages(supabase, accountId, userId)

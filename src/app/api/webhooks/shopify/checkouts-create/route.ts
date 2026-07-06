@@ -27,7 +27,13 @@ export async function POST(request: Request) {
     accountId = resolvedAccountId
 
     // Parse checkout attributes
-    const checkoutId = String(payload.id)
+    const checkoutId = payload.id ? String(payload.id) : (payload.token ? String(payload.token) : null)
+
+    if (!checkoutId) {
+      console.warn('[shopify-webhook] checkouts-create: skipped — no checkout id or token in payload')
+      return NextResponse.json({ success: true, skipped: true })
+    }
+
     const email = payload.email || payload.customer?.email || payload.billing_address?.email || null
     const phone = payload.phone || payload.customer?.phone || payload.billing_address?.phone || payload.shipping_address?.phone || null
     const firstName = payload.customer?.first_name || payload.billing_address?.first_name || payload.shipping_address?.first_name || null
@@ -50,6 +56,12 @@ export async function POST(request: Request) {
 
     const contact = await matchOrCreateShopifyContact(supabase, accountId, userId, customerPayload)
 
+    // If no identifiable customer data (no phone, no email), skip processing
+    if (!contact) {
+      console.warn('[shopify-webhook] checkouts-create: skipped — no phone or email in payload')
+      return NextResponse.json({ success: true, skipped: true })
+    }
+
     // Create deal
     const dealTitle = `Cart - ${contact.name || 'Shopify Customer'}`
     const dealId = await createOrUpdateShopifyDeal(
@@ -62,6 +74,10 @@ export async function POST(request: Request) {
       totalPrice,
       currency
     )
+
+    // Check if checkout is already completed
+    const isCompleted = !!payload.completed_at
+    const status = isCompleted ? 'recovered' : 'open'
 
     // Upsert shopify_checkouts
     const { error: upsertErr } = await supabase
@@ -79,7 +95,7 @@ export async function POST(request: Request) {
         total_price: totalPrice,
         currency,
         line_items: lineItems,
-        status: 'open',
+        status,
         updated_at: new Date().toISOString(),
       }, { onConflict: 'shopify_checkout_id' })
 
@@ -87,14 +103,16 @@ export async function POST(request: Request) {
       throw upsertErr
     }
 
-    // Initialize sequence recovery tracking
-    await initializeCheckoutRecoverySequence(
-      supabase,
-      accountId,
-      contact.id,
-      checkoutId,
-      payload.created_at || new Date().toISOString()
-    )
+    // Initialize sequence recovery tracking if not already completed
+    if (!isCompleted) {
+      await initializeCheckoutRecoverySequence(
+        supabase,
+        accountId,
+        contact.id,
+        checkoutId,
+        payload.created_at || new Date().toISOString()
+      )
+    }
 
     // Log success
     await supabase.from('shopify_webhook_logs').insert({

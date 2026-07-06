@@ -6,6 +6,7 @@ import {
   matchOrCreateShopifyContact,
   createOrUpdateShopifyDeal,
   initializeCheckoutRecoverySequence,
+  moveDealToStageName,
 } from '@/lib/shopify/shopify-helper'
 
 export async function POST(request: Request) {
@@ -27,7 +28,13 @@ export async function POST(request: Request) {
     accountId = resolvedAccountId
 
     // Parse checkout attributes
-    const checkoutId = String(payload.id)
+    const checkoutId = payload.id ? String(payload.id) : (payload.token ? String(payload.token) : null)
+
+    if (!checkoutId) {
+      console.warn('[shopify-webhook] checkouts-update: skipped — no checkout id or token in payload')
+      return NextResponse.json({ success: true, skipped: true })
+    }
+
     const email = payload.email || payload.customer?.email || payload.billing_address?.email || null
     const phone = payload.phone || payload.customer?.phone || payload.billing_address?.phone || payload.shipping_address?.phone || null
     const firstName = payload.customer?.first_name || payload.billing_address?.first_name || payload.shipping_address?.first_name || null
@@ -50,6 +57,12 @@ export async function POST(request: Request) {
 
     const contact = await matchOrCreateShopifyContact(supabase, accountId, userId, customerPayload)
 
+    // If no identifiable customer data (no phone, no email), skip processing
+    if (!contact) {
+      console.warn('[shopify-webhook] checkouts-update: skipped — no phone or email in payload')
+      return NextResponse.json({ success: true, skipped: true })
+    }
+
     // Update deal
     const dealTitle = `Cart - ${contact.name || 'Shopify Customer'}`
     const dealId = await createOrUpdateShopifyDeal(
@@ -71,7 +84,8 @@ export async function POST(request: Request) {
       .eq('shopify_checkout_id', checkoutId)
       .maybeSingle()
 
-    const status = existing?.status || 'open'
+    const isCompleted = !!payload.completed_at
+    const status = isCompleted ? 'recovered' : (existing?.status || 'open')
 
     const { error: upsertErr } = await supabase
       .from('shopify_checkouts')
@@ -96,14 +110,35 @@ export async function POST(request: Request) {
       throw upsertErr
     }
 
-    // Initialize sequence recovery tracking (will early-exit if already tracking)
-    await initializeCheckoutRecoverySequence(
-      supabase,
-      accountId,
-      contact.id,
-      checkoutId,
-      payload.created_at || new Date().toISOString()
-    )
+    // If the checkout was completed/recovered, update tracking status to converted
+    if (isCompleted) {
+      const { data: checkoutRow } = await supabase
+        .from('shopify_checkouts')
+        .select('id')
+        .eq('shopify_checkout_id', checkoutId)
+        .maybeSingle()
+
+      if (checkoutRow) {
+        await supabase
+          .from('shopify_recovery_tracking')
+          .update({ status: 'converted', updated_at: new Date().toISOString() })
+          .eq('shopify_checkout_id', checkoutRow.id)
+          .eq('status', 'in_progress')
+      }
+
+      if (dealId) {
+        await moveDealToStageName(supabase, dealId, 'Cart Recovered', accountId)
+      }
+    } else {
+      // Initialize sequence recovery tracking (will early-exit if already tracking)
+      await initializeCheckoutRecoverySequence(
+        supabase,
+        accountId,
+        contact.id,
+        checkoutId,
+        payload.created_at || new Date().toISOString()
+      )
+    }
 
     // Log success
     await supabase.from('shopify_webhook_logs').insert({

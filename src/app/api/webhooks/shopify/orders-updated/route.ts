@@ -27,8 +27,8 @@ export async function POST(request: Request) {
 
     const orderId = String(payload.id)
     const orderNumber = String(payload.order_number)
-    const email = payload.email || null
-    const phone = payload.phone || payload.customer?.phone || null
+    const email = payload.email || payload.customer?.email || payload.billing_address?.email || null
+    const phone = payload.phone || payload.customer?.phone || payload.billing_address?.phone || payload.shipping_address?.phone || null
     const financialStatus = payload.financial_status || null
     const fulfillmentStatus = payload.fulfillment_status || 'unfulfilled'
     const totalPrice = parseFloat(payload.total_price || '0')

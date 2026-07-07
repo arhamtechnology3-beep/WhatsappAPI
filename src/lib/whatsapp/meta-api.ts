@@ -30,8 +30,14 @@ interface MetaErrorResponse {
 async function throwMetaError(response: Response, fallback: string): Promise<never> {
   let message = fallback
   try {
-    const data = (await response.json()) as MetaErrorResponse
-    if (data.error?.message) message = data.error.message
+    const data = (await response.json()) as any
+    console.error('[throwMetaError] Full Meta API Error:', JSON.stringify(data, null, 2))
+    if (data.error?.message) {
+      message = data.error.message
+      if (data.error.error_data?.details) {
+        message += ` - ${data.error.error_data.details}`
+      }
+    }
   } catch {
     // response body wasn't JSON — keep the fallback
   }

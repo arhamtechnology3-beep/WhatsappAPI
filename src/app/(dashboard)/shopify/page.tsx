@@ -231,7 +231,7 @@ export default function ShopifyDashboardPage() {
       const defaultTemplates: CustomTemplate[] = [
         {
           name: 'wacrm_cart_abandoned_v1',
-          body_text: "Still thinking about {{2}}, {{1}}? 😉\n\nWe saw you checking it out and saved it in your cart at {{3}}! Grab it now before it sells out.\n\n✅ Fresh & hygienically packed\n✅ Chemical preservative free\n✅ Free shipping on orders above ₹499\n\n👉 Click below to complete your checkout in 1-click:\n{{4}}",
+          body_text: "Hey {{1}}! 😉\n\nStill thinking about {{2}}? We saw you checking it out and saved it in your cart at {{3}}! Grab it now before it sells out.\n\n✅ Fresh & hygienically packed\n✅ Chemical preservative free\n✅ Free shipping on orders above ₹499\n\n👉 Click below to complete your checkout in 1-click:\n{{4}}",
           status: 'DRAFT',
           category: 'Marketing',
           language: 'en',
@@ -240,7 +240,7 @@ export default function ShopifyDashboardPage() {
         },
         {
           name: 'wacrm_cart_reminder_step2_v1',
-          body_text: "Still thinking about {{2}}? 🤔\n\nYour cart is waiting for you, {{1}}! Order today at only ₹{{3}} and experience authentic dadi-nani ka swad!\n\n✅ Hygienic packaging\n✅ Real ingredients, no preservatives\n✅ Cash on Delivery (COD) available\n\nReply STOP to opt out.",
+          body_text: "Hey {{1}}! 🤔\n\nStill thinking about {{2}}? Your cart is waiting for you! Order today at only ₹{{3}} and experience authentic dadi-nani ka swad!\n\n✅ Hygienic packaging\n✅ Real ingredients, no preservatives\n✅ Cash on Delivery (COD) available\n\nReply STOP to opt out.",
           status: 'DRAFT',
           category: 'Marketing',
           language: 'en',
@@ -249,7 +249,7 @@ export default function ShopifyDashboardPage() {
         },
         {
           name: 'wacrm_cart_reminder_step3_v1',
-          body_text: "Hey {{1}}! 🎁\n\nHere is a special 10% OFF discount to help you decide. Use code {{4}} on {{2}} (valid for next 24 hours only!).\n\n✅ Handmade by local women\n✅ Guaranteed premium quality\n✅ Super fast doorstep delivery\n\n👉 Complete your order here:\n{{3}}\n\nReply STOP to opt out.",
+          body_text: "Hey {{1}}! 🎁\n\nStill thinking about {{2}}? Complete your order here: {{3}} and use code {{4}} for a special 10% OFF!\n\n✅ Handmade by local women\n✅ Guaranteed premium quality\n✅ Super fast doorstep delivery\n\nReply STOP to opt out.",
           status: 'DRAFT',
           category: 'Marketing',
           language: 'en',
@@ -267,7 +267,7 @@ export default function ShopifyDashboardPage() {
         },
         {
           name: 'wacrm_order_confirmed_v1',
-          body_text: "Woohoo! 🎉 Your order #{{2}} is confirmed, {{1}}!\n\nWe are preparing your fresh treats of ₹{{3}} with lots of love. We'll send you tracking details as soon as it ships! 🚚✨\n\n✅ Handcrafted with care\n✅ Preservative free\n✅ Fast doorstep delivery\n\nThank you for supporting handcrafted food! ❤️",
+          body_text: "Hey {{1}}! Woohoo! 🎉 Your order #{{2}} of ₹{{3}} is confirmed!\n\nWe are preparing your fresh treats with lots of love. We'll send you tracking details as soon as it ships! 🚚✨\n\n✅ Handcrafted with care\n✅ Preservative free\n✅ Fast doorstep delivery\n\nThank you for supporting handcrafted food! ❤️",
           status: 'DRAFT',
           category: 'Utility',
           language: 'en',
@@ -285,7 +285,7 @@ export default function ShopifyDashboardPage() {
         },
         {
           name: 'wacrm_order_delivered_v1',
-          body_text: "Delivered! 🎁\n\nYour DivyaPrabha Foods order #{{2}} has been successfully delivered, {{1}}! We hope you absolutely love it.\n\n✅ Freshness & taste guaranteed\n✅ 100% natural ingredients\n\nReply here if you need any help! ❤️",
+          body_text: "Hey {{1}}! Delivered! 🎁\n\nYour DivyaPrabha Foods order #{{2}} has been successfully delivered! We hope you absolutely love it.\n\n✅ Freshness & taste guaranteed\n✅ 100% natural ingredients\n\nReply here if you need any help! ❤️",
           status: 'DRAFT',
           category: 'Utility',
           language: 'en',

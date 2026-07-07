@@ -188,7 +188,14 @@ export function TemplateManager() {
 
   async function fetchTemplates(userId: string) {
     try {
-      setLoading(true);
+      // Clean up legacy default templates with invalid 'en' language code
+      await supabase
+        .from('message_templates')
+        .delete()
+        .eq('user_id', userId)
+        .eq('language', 'en')
+        .like('name', 'wacrm_%');
+
       const { data, error } = await supabase
         .from('message_templates')
         .select('*')
@@ -225,7 +232,7 @@ export function TemplateManager() {
               body_text: recipe.body,
               status: 'DRAFT',
               category: recipe.category === 'UTILITY' ? 'Utility' : 'Marketing',
-              language: recipe.language === 'en' ? 'en' : 'en_US',
+              language: recipe.language,
               header_type: 'image',
               header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800',
             })),
@@ -238,7 +245,7 @@ export function TemplateManager() {
                 body_text: recipe.body,
                 status: 'DRAFT',
                 category: recipe.category === 'UTILITY' ? 'Utility' : 'Marketing',
-                language: recipe.language === 'en' ? 'en' : 'en_US',
+                language: recipe.language,
                 header_type: 'image',
                 header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800',
               }

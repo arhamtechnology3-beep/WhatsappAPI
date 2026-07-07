@@ -234,7 +234,7 @@ export default function ShopifyDashboardPage() {
           body_text: "Hey {{1}}! 😉\n\nStill thinking about {{2}}? We saw you checking it out and saved it in your cart at {{3}}! Grab it now before it sells out.\n\n✅ Fresh & hygienically packed\n✅ Chemical preservative free\n✅ Free shipping on orders above ₹499\n\n👉 Click below to complete your checkout in 1-click:\n{{4}}",
           status: 'DRAFT',
           category: 'Marketing',
-          language: 'en',
+          language: 'en_US',
           header_type: 'image',
           header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
         },
@@ -243,7 +243,7 @@ export default function ShopifyDashboardPage() {
           body_text: "Hey {{1}}! 🤔\n\nStill thinking about {{2}}? Your cart is waiting for you! Order today at only ₹{{3}} and experience authentic dadi-nani ka swad!\n\n✅ Hygienic packaging\n✅ Real ingredients, no preservatives\n✅ Cash on Delivery (COD) available\n\nReply STOP to opt out.",
           status: 'DRAFT',
           category: 'Marketing',
-          language: 'en',
+          language: 'en_US',
           header_type: 'image',
           header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
         },
@@ -252,7 +252,7 @@ export default function ShopifyDashboardPage() {
           body_text: "Hey {{1}}! 🎁\n\nStill thinking about {{2}}? Complete your order here: {{3}} and use code {{4}} for a special 10% OFF!\n\n✅ Handmade by local women\n✅ Guaranteed premium quality\n✅ Super fast doorstep delivery\n\nReply STOP to opt out.",
           status: 'DRAFT',
           category: 'Marketing',
-          language: 'en',
+          language: 'en_US',
           header_type: 'image',
           header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
         },
@@ -261,7 +261,7 @@ export default function ShopifyDashboardPage() {
           body_text: "Hey {{1}}! 👀\n\nWe saw you checking out {{2}} at only ₹{{3}}. It's one of our best-sellers!\n\n✅ Handcrafted with care & love\n✅ Hygienic glass bottle packaging\n✅ Cash on Delivery (COD) available\n\n👉 Grab yours here before it's gone:\n{{4}}\n\nReply STOP to opt out.",
           status: 'DRAFT',
           category: 'Marketing',
-          language: 'en',
+          language: 'en_US',
           header_type: 'image',
           header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
         },
@@ -270,7 +270,7 @@ export default function ShopifyDashboardPage() {
           body_text: "Hey {{1}}! Woohoo! 🎉 Your order #{{2}} of ₹{{3}} is confirmed!\n\nWe are preparing your fresh treats with lots of love. We'll send you tracking details as soon as it ships! 🚚✨\n\n✅ Handcrafted with care\n✅ Preservative free\n✅ Fast doorstep delivery\n\nThank you for supporting handcrafted food! ❤️",
           status: 'DRAFT',
           category: 'Utility',
-          language: 'en',
+          language: 'en_US',
           header_type: 'image',
           header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
         },
@@ -279,7 +279,7 @@ export default function ShopifyDashboardPage() {
           body_text: "Great news, {{1}}! 🚚\n\nYour order #{{2}} from DivyaPrabha Foods is on its way to you!\n\n✅ Freshness sealed\n✅ Contactless delivery\n✅ Safe transit tracking\n\n👉 Track your package here:\n{{3}} 🎉",
           status: 'DRAFT',
           category: 'Utility',
-          language: 'en',
+          language: 'en_US',
           header_type: 'image',
           header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
         },
@@ -288,7 +288,7 @@ export default function ShopifyDashboardPage() {
           body_text: "Hey {{1}}! Delivered! 🎁\n\nYour DivyaPrabha Foods order #{{2}} has been successfully delivered! We hope you absolutely love it.\n\n✅ Freshness & taste guaranteed\n✅ 100% natural ingredients\n\nReply here if you need any help! ❤️",
           status: 'DRAFT',
           category: 'Utility',
-          language: 'en',
+          language: 'en_US',
           header_type: 'image',
           header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
         },
@@ -297,7 +297,7 @@ export default function ShopifyDashboardPage() {
           body_text: "Hey {{1}}! 😍 Your order #{{2}} of ₹{{3}} from DivyaPrabha Foods is almost ready to ship.\n\nSince you chose Cash on Delivery, please confirm below to lock in fast shipping! 🚀\n\n✅ Fresh & hygienically packed\n✅ 100% natural ingredients\n\n👇 Click 'Yes, confirm order' below to ship it today!",
           status: 'DRAFT',
           category: 'Utility',
-          language: 'en',
+          language: 'en_US',
           header_type: 'image',
           header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
         }
@@ -309,6 +309,14 @@ export default function ShopifyDashboardPage() {
       })
 
       if (user) {
+        // Clean up legacy default templates with invalid 'en' language code
+        await supabase
+          .from('message_templates')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('language', 'en')
+          .like('name', 'wacrm_%')
+
         const { data: msgTemplates } = await supabase
           .from('message_templates')
           .select('name, body_text, status, category, language, header_type, header_media_url')

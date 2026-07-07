@@ -422,14 +422,17 @@ export default function ShopifyDashboardPage() {
     if (!user || !editingTemplateName) return
     try {
       // 1. Save template body locally in message_templates table (upsert)
+      const templateRec = customTemplates[editingTemplateName]
+      const currentStatus = templateRec?.status || 'DRAFT'
+      const category = templateRec?.category || 'Marketing'
       const { error: upsertErr } = await supabase
         .from('message_templates')
         .upsert({
           user_id: user.id,
           name: editingTemplateName,
           body_text: editedBodyText,
-          status: 'APPROVED',
-          category: 'Marketing',
+          status: currentStatus,
+          category,
           updated_at: new Date().toISOString()
         }, { onConflict: 'user_id,name,language' })
 
@@ -1068,17 +1071,32 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
                                 </Badge>
                               </td>
                               <td className="py-2.5 px-4 text-right">
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm" 
-                                  className="h-7 text-[10px] px-2 text-primary font-semibold"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setSelectedTemplateName(temp.name);
-                                  }}
-                                >
-                                  Preview &rarr;
-                                </Button>
+                                <div className="flex justify-end items-center gap-1.5">
+                                  <Button 
+                                    variant="ghost" 
+                                    size="sm" 
+                                    className="h-7 text-[10px] px-2 text-primary font-semibold"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedTemplateName(temp.name);
+                                    }}
+                                  >
+                                    Preview
+                                  </Button>
+                                  {(temp.status === 'DRAFT' || temp.status === 'REJECTED') && (
+                                    <Button 
+                                      size="sm" 
+                                      className="h-7 text-[10px] px-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const recipe = SHOPIFY_TEMPLATE_LIBRARY.find(t => t.template_name === temp.name);
+                                        openEditor(temp.name, temp.body_text, recipe?.default_delay_minutes || 0);
+                                      }}
+                                    >
+                                      Submit
+                                    </Button>
+                                  )}
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -1090,7 +1108,42 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
               </Card>
 
               {/* Right side: Mobile Mockup Preview (2/5 width) */}
-              <div className="lg:col-span-2 lg:sticky lg:top-4 flex flex-col items-center space-y-4">
+              <div className="lg:col-span-2 lg:sticky lg:top-4 flex flex-col items-center space-y-4 w-full">
+                {editingTemplateName && (
+                  <Card className="border-border bg-card p-4 space-y-4 animate-in slide-in-from-top-1 duration-200 w-full max-w-[325px]">
+                    <div className="flex justify-between items-center border-b border-border pb-2">
+                      <h4 className="text-xs font-bold text-foreground">Configure Message Template</h4>
+                      <Button variant="ghost" size="sm" className="h-6 text-[10px] text-muted-foreground" onClick={() => setEditingTemplateName(null)}>Cancel</Button>
+                    </div>
+                    <div className="space-y-1.5 text-left w-full">
+                      <label className="text-[10px] font-bold text-muted-foreground">Template Body Content</label>
+                      <Textarea
+                        value={editedBodyText}
+                        onChange={(e) => setEditedBodyText(e.target.value)}
+                        rows={4}
+                        className="border-border bg-card text-foreground text-xs leading-relaxed"
+                      />
+                    </div>
+                    <div className="flex gap-2 justify-end w-full">
+                      <Button
+                        size="sm"
+                        className="h-8 bg-green-600 hover:bg-green-500 text-xs text-white px-3 flex items-center gap-1 font-bold"
+                        onClick={submitToMeta}
+                        disabled={submittingMeta}
+                      >
+                        {submittingMeta ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}
+                        Submit to Meta
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="h-8 bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-bold text-white px-3"
+                        onClick={() => saveTemplateAndDelay('', false)}
+                      >
+                        Save Draft
+                      </Button>
+                    </div>
+                  </Card>
+                )}
                 <p className="text-xs font-semibold text-muted-foreground">Message Preview</p>
                 <div className="w-[325px] bg-slate-900 rounded-[36px] p-3 border-[6px] border-slate-950 shadow-2xl relative">
                   {/* Speaker and Camera notch */}

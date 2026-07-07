@@ -318,20 +318,42 @@ export default function ShopifyDashboardPage() {
         const existingNames = new Set((msgTemplates || []).map((t) => t.name))
         const missingTemplates = defaultTemplates.filter((dt) => !existingNames.has(dt.name))
 
-        if (missingTemplates.length > 0 && accountId) {
-          const insertRows = missingTemplates.map((dt) => ({
-            account_id: accountId,
-            user_id: user.id,
-            name: dt.name,
-            body_text: dt.body_text,
-            status: 'DRAFT',
-            category: dt.category || 'Marketing',
-            language: dt.language || 'en',
-            header_type: dt.header_type || null,
-            header_media_url: dt.header_media_url || null
-          }))
+        // Detect if any existing draft templates contain the old copywriting
+        const draftTemplatesToUpdate = (msgTemplates || []).filter((t) => {
+          const dt = defaultTemplates.find((dt) => dt.name === t.name)
+          return dt && t.status === 'DRAFT' && t.body_text !== dt.body_text
+        })
 
-          await supabase.from('message_templates').insert(insertRows)
+        if ((missingTemplates.length > 0 || draftTemplatesToUpdate.length > 0) && accountId) {
+          const insertRows = [
+            ...missingTemplates.map((dt) => ({
+              account_id: accountId,
+              user_id: user.id,
+              name: dt.name,
+              body_text: dt.body_text,
+              status: 'DRAFT',
+              category: dt.category || 'Marketing',
+              language: dt.language || 'en',
+              header_type: dt.header_type || null,
+              header_media_url: dt.header_media_url || null
+            })),
+            ...draftTemplatesToUpdate.map((t) => {
+              const dt = defaultTemplates.find((dt) => dt.name === t.name)!
+              return {
+                account_id: accountId,
+                user_id: user.id,
+                name: dt.name,
+                body_text: dt.body_text,
+                status: 'DRAFT',
+                category: dt.category || 'Marketing',
+                language: dt.language || 'en',
+                header_type: dt.header_type || null,
+                header_media_url: dt.header_media_url || null
+              }
+            })
+          ]
+
+          await supabase.from('message_templates').upsert(insertRows, { onConflict: 'user_id,name,language' })
 
           // Re-fetch templates
           const { data: refetchedTemplates } = await supabase

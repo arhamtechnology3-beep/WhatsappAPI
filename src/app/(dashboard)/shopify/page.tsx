@@ -32,6 +32,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { SHOPIFY_TEMPLATE_LIBRARY } from "@/lib/shopify/whatsapp-template-library"
+import { extractVariableIndices } from "@/lib/whatsapp/template-validators"
 import InboxPage from "@/app/(dashboard)/inbox/page"
 import PipelinesPage from "@/app/(dashboard)/pipelines/page"
 import Image from "next/image"
@@ -226,14 +227,14 @@ export default function ShopifyDashboardPage() {
       // 4. Fetch custom template texts from local DB table message_templates
       // Fallback/merge with default Shopify WhatsApp templates library
       const defaultTemplates: CustomTemplate[] = [
-        { name: 'wacrm_cod_confirmation_v1', body_text: 'Hi {{1}}, please confirm your Cash on Delivery order #{{2}} of ₹{{3}} by clicking the button below.', status: 'APPROVED', category: 'Utility', language: 'en' },
-        { name: 'wacrm_order_confirmed_v1', body_text: "Hi {{1}}, your order #{{2}} of ₹{{3}} is confirmed! We'll notify you when it ships.", status: 'APPROVED', category: 'Utility', language: 'en' },
-        { name: 'wacrm_cart_abandoned_v1', body_text: 'Hi {{1}}, you left {{2}} in your cart at {{3}}. Complete your order here: {{4}}', status: 'APPROVED', category: 'Marketing', language: 'en' },
-        { name: 'wacrm_cart_reminder_step2_v1', body_text: 'Hi {{1}}, still thinking it over? {{2}} is waiting for you at ₹{{3}}. Reply STOP to stop these updates.', status: 'APPROVED', category: 'Marketing', language: 'en' },
-        { name: 'wacrm_cart_reminder_step3_v1', body_text: "Hi {{1}}, here's 10% off to help you decide: use code {{4}} on {{2}}, valid 24 hours. Complete your order: {{3}}. Reply STOP to stop these updates.", status: 'APPROVED', category: 'Marketing', language: 'en' },
-        { name: 'wacrm_browse_abandoned_v1', body_text: "Hi {{1}}, still interested in {{2}}? It's ₹{{3}}. Check it out: {{4}}. Reply STOP to stop these updates.", status: 'APPROVED', category: 'Marketing', language: 'en' },
-        { name: 'wacrm_order_shipped_v1', body_text: 'Hi {{1}}, your order #{{2}} has shipped! Track it here: {{3}}', status: 'APPROVED', category: 'Utility', language: 'en' },
-        { name: 'wacrm_order_delivered_v1', body_text: 'Hi {{1}}, your order #{{2}} was delivered. We hope you love it! Reply to this message if you need anything.', status: 'APPROVED', category: 'Utility', language: 'en' }
+        { name: 'wacrm_cod_confirmation_v1', body_text: 'Hi {{1}}, please confirm your Cash on Delivery order #{{2}} of ₹{{3}} by clicking the button below.', status: 'DRAFT', category: 'Utility', language: 'en' },
+        { name: 'wacrm_order_confirmed_v1', body_text: "Hi {{1}}, your order #{{2}} of ₹{{3}} is confirmed! We'll notify you when it ships.", status: 'DRAFT', category: 'Utility', language: 'en' },
+        { name: 'wacrm_cart_abandoned_v1', body_text: 'Hi {{1}}, you left {{2}} in your cart at {{3}}. Complete your order here: {{4}}', status: 'DRAFT', category: 'Marketing', language: 'en' },
+        { name: 'wacrm_cart_reminder_step2_v1', body_text: 'Hi {{1}}, still thinking it over? {{2}} is waiting for you at ₹{{3}}. Reply STOP to stop these updates.', status: 'DRAFT', category: 'Marketing', language: 'en' },
+        { name: 'wacrm_cart_reminder_step3_v1', body_text: "Hi {{1}}, here's 10% off to help you decide: use code {{4}} on {{2}}, valid 24 hours. Complete your order: {{3}}. Reply STOP to stop these updates.", status: 'DRAFT', category: 'Marketing', language: 'en' },
+        { name: 'wacrm_browse_abandoned_v1', body_text: "Hi {{1}}, still interested in {{2}}? It's ₹{{3}}. Check it out: {{4}}. Reply STOP to stop these updates.", status: 'DRAFT', category: 'Marketing', language: 'en' },
+        { name: 'wacrm_order_shipped_v1', body_text: 'Hi {{1}}, your order #{{2}} has shipped! Track it here: {{3}}', status: 'DRAFT', category: 'Utility', language: 'en' },
+        { name: 'wacrm_order_delivered_v1', body_text: 'Hi {{1}}, your order #{{2}} was delivered. We hope you love it! Reply to this message if you need anything.', status: 'DRAFT', category: 'Utility', language: 'en' }
       ]
 
       const mapping: Record<string, CustomTemplate> = {}
@@ -247,17 +248,52 @@ export default function ShopifyDashboardPage() {
           .select('name, body_text, status, category, language')
           .eq('user_id', user.id)
         
-        if (msgTemplates) {
-          msgTemplates.forEach((t) => {
-            const item = {
-              name: t.name,
-              body_text: t.body_text,
-              status: t.status,
-              category: t.category || 'Marketing',
-              language: t.language || 'en_US'
-            }
-            mapping[t.name] = item
-          })
+        // Seed default templates if they are missing in the database
+        const existingNames = new Set((msgTemplates || []).map((t) => t.name))
+        const missingTemplates = defaultTemplates.filter((dt) => !existingNames.has(dt.name))
+
+        if (missingTemplates.length > 0 && accountId) {
+          const insertRows = missingTemplates.map((dt) => ({
+            account_id: accountId,
+            user_id: user.id,
+            name: dt.name,
+            body_text: dt.body_text,
+            status: 'DRAFT',
+            category: dt.category || 'Marketing',
+            language: dt.language || 'en'
+          }))
+
+          await supabase.from('message_templates').insert(insertRows)
+
+          // Re-fetch templates
+          const { data: refetchedTemplates } = await supabase
+            .from('message_templates')
+            .select('name, body_text, status, category, language')
+            .eq('user_id', user.id)
+
+          if (refetchedTemplates) {
+            refetchedTemplates.forEach((t) => {
+              mapping[t.name] = {
+                name: t.name,
+                body_text: t.body_text,
+                status: t.status,
+                category: t.category || 'Marketing',
+                language: t.language || 'en_US'
+              }
+            })
+          }
+        } else {
+          if (msgTemplates) {
+            msgTemplates.forEach((t) => {
+              mapping[t.name] = {
+                name: t.name,
+                body_text: t.body_text,
+                status: t.status,
+                category: t.category || 'Marketing',
+                language: t.language || 'en_US'
+              }
+            })
+          }
         }
       }
 
@@ -511,32 +547,80 @@ export default function ShopifyDashboardPage() {
     }
   }
 
+const DEFAULT_SAMPLE_VALUES: Record<string, string[]> = {
+  wacrm_cod_confirmation_v1: ['Jesal Patel', '1234', '1499'],
+  wacrm_order_confirmed_v1: ['Jesal Patel', '1234', '1499'],
+  wacrm_cart_abandoned_v1: ['Jesal Patel', 'Organic Jam Combo', 'Divyaprabha Foods', 'https://divyaprabhafoods.com/checkout'],
+  wacrm_cart_reminder_step2_v1: ['Jesal Patel', 'Organic Jam Combo', '1499'],
+  wacrm_cart_reminder_step3_v1: ['Jesal Patel', 'Organic Jam Combo', 'https://divyaprabhafoods.com/checkout', 'WELCOME10'],
+  wacrm_browse_abandoned_v1: ['Jesal Patel', 'Organic Jam Combo', '1499', 'https://divyaprabhafoods.com/checkout'],
+  wacrm_order_shipped_v1: ['Jesal Patel', '1234', 'https://track.com/12345'],
+  wacrm_order_delivered_v1: ['Jesal Patel', '1234'],
+}
+
+function getAutoSampleValues(templateName: string, varCount: number): string[] {
+  const defaults = DEFAULT_SAMPLE_VALUES[templateName] || []
+  const samples: string[] = []
+  for (let i = 0; i < varCount; i++) {
+    samples.push(defaults[i] || `Value ${i + 1}`)
+  }
+  return samples
+}
+
   const submitToMeta = async () => {
     if (!user || !editingTemplateName) return
     setSubmittingMeta(true)
     try {
-      await supabase
-        .from('message_templates')
-        .update({ status: 'PENDING' })
-        .eq('name', editingTemplateName)
-        .eq('user_id', user.id)
+      const templateRec = customTemplates[editingTemplateName]
+      const category = templateRec?.category || 'Marketing'
+      const language = templateRec?.language || 'en'
+      
+      let buttons: any[] | undefined = undefined
+      if (editingTemplateName === 'wacrm_cod_confirmation_v1') {
+        buttons = [
+          { type: 'QUICK_REPLY', text: 'Yes, confirm order' },
+          { type: 'QUICK_REPLY', text: 'Cancel order' }
+        ]
+      }
+      
+      const bodyVars = extractVariableIndices(editedBodyText)
+      const sample_values: any = {}
+      if (bodyVars.length > 0) {
+        sample_values.body = getAutoSampleValues(editingTemplateName, bodyVars.length)
+      }
       
       toast.info('Submitting WhatsApp template to Meta for approval...')
       
-      setTimeout(async () => {
-        await supabase
-          .from('message_templates')
-          .update({ status: 'APPROVED' })
-          .eq('name', editingTemplateName)
-          .eq('user_id', user.id)
-        
-        toast.success('WhatsApp template approved by Meta!')
-        setSubmittingMeta(false)
-        loadData()
-      }, 1200)
+      const res = await fetch('/api/whatsapp/templates/submit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editingTemplateName,
+          category,
+          language,
+          body_text: editedBodyText,
+          buttons,
+          sample_values: Object.keys(sample_values).length > 0 ? sample_values : undefined
+        })
+      })
+      
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data?.error || `Submission failed (HTTP ${res.status})`)
+      }
+      
+      toast.success(
+        data.dry_run
+          ? 'Template submitted successfully (dry-run — no Meta call)'
+          : 'Submitted to Meta — typical review time is 24 hours. Status updates automatically.'
+      )
+      
+      setEditingTemplateName(null)
+      loadData()
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Unknown error'
       toast.error('Meta verification submission failed: ' + errMsg)
+    } finally {
       setSubmittingMeta(false)
     }
   }

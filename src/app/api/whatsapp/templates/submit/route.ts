@@ -243,6 +243,22 @@ export async function POST(request: Request) {
       )
     }
 
+    // Propagate status change to sequence steps and rules
+    const localStatus = normalizeStatus(metaStatus)
+    const mappedApprovalStatus = localStatus === 'APPROVED' ? 'approved' :
+                                 localStatus === 'REJECTED' ? 'rejected' :
+                                 localStatus === 'PENDING' ? 'pending' : 'not_submitted'
+    await supabase
+      .from('shopify_automation_sequence_steps')
+      .update({ meta_approval_status: mappedApprovalStatus })
+      .eq('account_id', accountId)
+      .eq('template_name', payload.name)
+    await supabase
+      .from('shopify_automation_rules')
+      .update({ meta_approval_status: mappedApprovalStatus })
+      .eq('account_id', accountId)
+      .eq('template_name', payload.name)
+
     return NextResponse.json({
       success: true,
       template: row,

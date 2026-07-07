@@ -47,6 +47,7 @@ import type {
   TemplateSampleValues,
 } from '@/types';
 import { templateStatusConfig } from '@/lib/template-status';
+import { SHOPIFY_TEMPLATE_LIBRARY } from '@/lib/shopify/whatsapp-template-library';
 import {
   extractVariableIndices,
   TEMPLATE_LIMITS,
@@ -194,6 +195,50 @@ export function TemplateManager() {
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
       if (error) throw error;
+
+      // Seed default templates if they are missing in the database
+      const existingNames = new Set((data || []).map((t) => t.name));
+      const missingRecipes = SHOPIFY_TEMPLATE_LIBRARY.filter(
+        (recipe) => !existingNames.has(recipe.template_name)
+      );
+
+      if (missingRecipes.length > 0) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('account_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+        const accountId = profile?.account_id;
+
+        if (accountId) {
+          const insertRows = missingRecipes.map((recipe) => ({
+            account_id: accountId,
+            user_id: userId,
+            name: recipe.template_name,
+            body_text: recipe.body,
+            status: 'DRAFT',
+            category: recipe.category === 'UTILITY' ? 'Utility' : 'Marketing',
+            language: recipe.language === 'en' ? 'en' : 'en_US',
+          }));
+
+          const { error: insertErr } = await supabase
+            .from('message_templates')
+            .insert(insertRows);
+
+          if (!insertErr) {
+            // Re-fetch templates to include drafts
+            const { data: refetched, error: refetchErr } = await supabase
+              .from('message_templates')
+              .select('*')
+              .eq('user_id', userId)
+              .order('created_at', { ascending: false });
+            if (refetchErr) throw refetchErr;
+            setTemplates(refetched || []);
+            return;
+          }
+        }
+      }
+
       setTemplates(data || []);
     } catch (err) {
       console.error('Failed to fetch templates:', err);

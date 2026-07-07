@@ -134,7 +134,7 @@ async function handleStatusUpdate(
     .from('message_templates')
     .update(update)
     .eq('meta_template_id', metaTemplateId)
-    .select('id')
+    .select('name, account_id')
 
   if (error) {
     console.error(
@@ -152,6 +152,27 @@ async function handleStatusUpdate(
     )
     return
   }
+
+  // Propagate status change to sequence steps and rules
+  const mappedApprovalStatus = status === 'APPROVED' ? 'approved' :
+                               status === 'REJECTED' ? 'rejected' :
+                               status === 'PENDING' ? 'pending' : 'not_submitted'
+  for (const row of data) {
+    if (row.name && row.account_id) {
+      await supabase
+        .from('shopify_automation_sequence_steps')
+        .update({ meta_approval_status: mappedApprovalStatus })
+        .eq('account_id', row.account_id)
+        .eq('template_name', row.name)
+
+      await supabase
+        .from('shopify_automation_rules')
+        .update({ meta_approval_status: mappedApprovalStatus })
+        .eq('account_id', row.account_id)
+        .eq('template_name', row.name)
+    }
+  }
+
   if (data.length > 1) {
     console.warn(
       `[template-webhook] status update matched ${data.length} rows for meta_template_id ${metaTemplateId} — investigate.`,

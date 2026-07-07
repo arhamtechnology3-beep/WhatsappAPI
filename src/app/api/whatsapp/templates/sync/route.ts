@@ -20,6 +20,15 @@ import type { TemplateButton, TemplateSampleValues } from '@/types'
 const META_API_VERSION = 'v21.0'
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`
 
+function isIrrelevantTemplate(name: string): boolean {
+  const lowerName = name.toLowerCase()
+  return (
+    lowerName.startsWith('jaspers_') ||
+    lowerName.startsWith('sample_') ||
+    lowerName === 'hello_world'
+  )
+}
+
 interface MetaButton {
   type: string
   text: string
@@ -178,6 +187,14 @@ export async function POST() {
 
     const accessToken = decrypt(config.access_token)
 
+    // Clean up any existing irrelevant templates in our DB
+    await supabase
+      .from('message_templates')
+      .delete()
+      .eq('account_id', accountId)
+      .or('name.ilike.jaspers_%,name.ilike.sample_%,name.eq.hello_world')
+
+
     const metaTemplates: MetaTemplate[] = []
     let nextUrl:
       | string
@@ -215,6 +232,9 @@ export async function POST() {
     const errors: { name: string; language: string; message: string }[] = []
 
     for (const t of metaTemplates) {
+      if (isIrrelevantTemplate(t.name)) {
+        continue
+      }
       const body = (t.components ?? []).find((c) => c.type === 'BODY')
       const header = (t.components ?? []).find((c) => c.type === 'HEADER')
       const footer = (t.components ?? []).find((c) => c.type === 'FOOTER')
@@ -284,6 +304,20 @@ export async function POST() {
           })
         } else {
           updated++
+          // Propagate status change to sequence steps and rules
+          const mappedApprovalStatus = row.status === 'APPROVED' ? 'approved' :
+                                       row.status === 'REJECTED' ? 'rejected' :
+                                       row.status === 'PENDING' ? 'pending' : 'not_submitted'
+          await supabase
+            .from('shopify_automation_sequence_steps')
+            .update({ meta_approval_status: mappedApprovalStatus })
+            .eq('account_id', accountId)
+            .eq('template_name', t.name)
+          await supabase
+            .from('shopify_automation_rules')
+            .update({ meta_approval_status: mappedApprovalStatus })
+            .eq('account_id', accountId)
+            .eq('template_name', t.name)
         }
       } else {
         const { error: insErr } = await supabase
@@ -297,6 +331,20 @@ export async function POST() {
           })
         } else {
           inserted++
+          // Propagate status change to sequence steps and rules
+          const mappedApprovalStatus = row.status === 'APPROVED' ? 'approved' :
+                                       row.status === 'REJECTED' ? 'rejected' :
+                                       row.status === 'PENDING' ? 'pending' : 'not_submitted'
+          await supabase
+            .from('shopify_automation_sequence_steps')
+            .update({ meta_approval_status: mappedApprovalStatus })
+            .eq('account_id', accountId)
+            .eq('template_name', t.name)
+          await supabase
+            .from('shopify_automation_rules')
+            .update({ meta_approval_status: mappedApprovalStatus })
+            .eq('account_id', accountId)
+            .eq('template_name', t.name)
         }
       }
     }

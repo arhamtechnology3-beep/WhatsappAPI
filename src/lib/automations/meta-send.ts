@@ -96,13 +96,33 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
 
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'template') {
+      const { data: templateRow } = await db
+        .from('message_templates')
+        .select('*')
+        .eq('account_id', input.accountId)
+        .eq('name', input.templateName)
+        .eq('language', input.language || 'en')
+        .maybeSingle()
+
+      const messageParams: any = {
+        body: input.params,
+      }
+
+      if (input.templateName === 'wacrm_cod_confirmation_v1') {
+        messageParams.buttonParams = {
+          '0': 'confirm_cod',
+          '1': 'cancel_cod',
+        }
+      }
+
       const r = await sendTemplateMessage({
         phoneNumberId: config.phone_number_id,
         accessToken,
         to: phone,
         templateName: input.templateName,
         language: input.language,
-        params: input.params,
+        template: templateRow || undefined,
+        messageParams,
       })
       return r.messageId
     }

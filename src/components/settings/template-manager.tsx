@@ -219,6 +219,8 @@ export function TemplateManager() {
             status: 'DRAFT',
             category: recipe.category === 'UTILITY' ? 'Utility' : 'Marketing',
             language: recipe.language === 'en' ? 'en' : 'en_US',
+            header_type: 'image',
+            header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800',
           }));
 
           const { error: insertErr } = await supabase

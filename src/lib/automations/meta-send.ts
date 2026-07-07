@@ -57,6 +57,19 @@ type SendInput =
   | (SendTextArgs & { kind: 'text' })
   | (SendTemplateArgs & { kind: 'template' })
 
+function getProductImageUrlFromLineItems(lineItems: any): string | null {
+  if (!Array.isArray(lineItems) || lineItems.length === 0) return null
+  const firstItem = lineItems[0]
+  if (!firstItem) return null
+  const url =
+    firstItem.image_url ||
+    firstItem.image ||
+    firstItem.featured_image?.url ||
+    firstItem.variant?.image?.src ||
+    null
+  return url
+}
+
 async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: string }> {
   const db = supabaseAdmin()
 
@@ -113,6 +126,44 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
           '0': 'confirm_cod',
           '1': 'cancel_cod',
         }
+      }
+
+      // If the template has an image header, resolve the product image URL dynamically
+      if (templateRow?.header_type === 'image') {
+        let resolvedImageUrl: string | null = null
+
+        // 1. Try checkout line items
+        const { data: checkout } = await db
+          .from('shopify_checkouts')
+          .select('line_items')
+          .eq('contact_id', input.contactId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (checkout?.line_items) {
+          resolvedImageUrl = getProductImageUrlFromLineItems(checkout.line_items)
+        }
+
+        // 2. Try order line items
+        if (!resolvedImageUrl) {
+          const { data: order } = await db
+            .from('shopify_orders')
+            .select('line_items')
+            .eq('contact_id', input.contactId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          if (order?.line_items) {
+            resolvedImageUrl = getProductImageUrlFromLineItems(order.line_items)
+          }
+        }
+
+        messageParams.headerMediaUrl =
+          resolvedImageUrl ||
+          templateRow.header_media_url ||
+          'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
       }
 
       const r = await sendTemplateMessage({

@@ -96,6 +96,8 @@ interface CustomTemplate {
   status: string
   category?: string
   language?: string
+  header_type?: string
+  header_media_url?: string
 }
 
 export default function ShopifyDashboardPage() {
@@ -227,14 +229,78 @@ export default function ShopifyDashboardPage() {
       // 4. Fetch custom template texts from local DB table message_templates
       // Fallback/merge with default Shopify WhatsApp templates library
       const defaultTemplates: CustomTemplate[] = [
-        { name: 'wacrm_cod_confirmation_v1', body_text: 'Hi {{1}}, please confirm your Cash on Delivery order #{{2}} of ₹{{3}} by clicking the button below.', status: 'DRAFT', category: 'Utility', language: 'en' },
-        { name: 'wacrm_order_confirmed_v1', body_text: "Hi {{1}}, your order #{{2}} of ₹{{3}} is confirmed! We'll notify you when it ships.", status: 'DRAFT', category: 'Utility', language: 'en' },
-        { name: 'wacrm_cart_abandoned_v1', body_text: 'Hi {{1}}, you left {{2}} in your cart at {{3}}. Complete your order here: {{4}}', status: 'DRAFT', category: 'Marketing', language: 'en' },
-        { name: 'wacrm_cart_reminder_step2_v1', body_text: 'Hi {{1}}, still thinking it over? {{2}} is waiting for you at ₹{{3}}. Reply STOP to stop these updates.', status: 'DRAFT', category: 'Marketing', language: 'en' },
-        { name: 'wacrm_cart_reminder_step3_v1', body_text: "Hi {{1}}, here's 10% off to help you decide: use code {{4}} on {{2}}, valid 24 hours. Complete your order: {{3}}. Reply STOP to stop these updates.", status: 'DRAFT', category: 'Marketing', language: 'en' },
-        { name: 'wacrm_browse_abandoned_v1', body_text: "Hi {{1}}, still interested in {{2}}? It's ₹{{3}}. Check it out: {{4}}. Reply STOP to stop these updates.", status: 'DRAFT', category: 'Marketing', language: 'en' },
-        { name: 'wacrm_order_shipped_v1', body_text: 'Hi {{1}}, your order #{{2}} has shipped! Track it here: {{3}}', status: 'DRAFT', category: 'Utility', language: 'en' },
-        { name: 'wacrm_order_delivered_v1', body_text: 'Hi {{1}}, your order #{{2}} was delivered. We hope you love it! Reply to this message if you need anything.', status: 'DRAFT', category: 'Utility', language: 'en' }
+        {
+          name: 'wacrm_cart_abandoned_v1',
+          body_text: "Still thinking about {{2}}, {{1}}? 😉\n\nWe saw you checking it out and saved it in your cart at {{3}}! Grab it now before it sells out.\n\n✅ Fresh & hygienically packed\n✅ Chemical preservative free\n✅ Free shipping on orders above ₹499\n\n👉 Click below to complete your checkout in 1-click:\n{{4}}",
+          status: 'DRAFT',
+          category: 'Marketing',
+          language: 'en',
+          header_type: 'image',
+          header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
+        },
+        {
+          name: 'wacrm_cart_reminder_step2_v1',
+          body_text: "Still thinking about {{2}}? 🤔\n\nYour cart is waiting for you, {{1}}! Order today at only ₹{{3}} and experience authentic dadi-nani ka swad!\n\n✅ Hygienic packaging\n✅ Real ingredients, no preservatives\n✅ Cash on Delivery (COD) available\n\nReply STOP to opt out.",
+          status: 'DRAFT',
+          category: 'Marketing',
+          language: 'en',
+          header_type: 'image',
+          header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
+        },
+        {
+          name: 'wacrm_cart_reminder_step3_v1',
+          body_text: "Hey {{1}}! 🎁\n\nHere is a special 10% OFF discount to help you decide. Use code {{4}} on {{2}} (valid for next 24 hours only!).\n\n✅ Handmade by local women\n✅ Guaranteed premium quality\n✅ Super fast doorstep delivery\n\n👉 Complete your order here:\n{{3}}\n\nReply STOP to opt out.",
+          status: 'DRAFT',
+          category: 'Marketing',
+          language: 'en',
+          header_type: 'image',
+          header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
+        },
+        {
+          name: 'wacrm_browse_abandoned_v1',
+          body_text: "Hey {{1}}! 👀\n\nWe saw you checking out {{2}} at only ₹{{3}}. It's one of our best-sellers!\n\n✅ Handcrafted with care & love\n✅ Hygienic glass bottle packaging\n✅ Cash on Delivery (COD) available\n\n👉 Grab yours here before it's gone:\n{{4}}\n\nReply STOP to opt out.",
+          status: 'DRAFT',
+          category: 'Marketing',
+          language: 'en',
+          header_type: 'image',
+          header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
+        },
+        {
+          name: 'wacrm_order_confirmed_v1',
+          body_text: "Woohoo! 🎉 Your order #{{2}} is confirmed, {{1}}!\n\nWe are preparing your fresh treats of ₹{{3}} with lots of love. We'll send you tracking details as soon as it ships! 🚚✨\n\n✅ Handcrafted with care\n✅ Preservative free\n✅ Fast doorstep delivery\n\nThank you for supporting handcrafted food! ❤️",
+          status: 'DRAFT',
+          category: 'Utility',
+          language: 'en',
+          header_type: 'image',
+          header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
+        },
+        {
+          name: 'wacrm_order_shipped_v1',
+          body_text: "Great news, {{1}}! 🚚\n\nYour order #{{2}} from DivyaPrabha Foods is on its way to you!\n\n✅ Freshness sealed\n✅ Contactless delivery\n✅ Safe transit tracking\n\n👉 Track your package here:\n{{3}} 🎉",
+          status: 'DRAFT',
+          category: 'Utility',
+          language: 'en',
+          header_type: 'image',
+          header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
+        },
+        {
+          name: 'wacrm_order_delivered_v1',
+          body_text: "Delivered! 🎁\n\nYour DivyaPrabha Foods order #{{2}} has been successfully delivered, {{1}}! We hope you absolutely love it.\n\n✅ Freshness & taste guaranteed\n✅ 100% natural ingredients\n\nReply here if you need any help! ❤️",
+          status: 'DRAFT',
+          category: 'Utility',
+          language: 'en',
+          header_type: 'image',
+          header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
+        },
+        {
+          name: 'wacrm_cod_confirmation_v1',
+          body_text: "Hey {{1}}! 😍 Your order #{{2}} of ₹{{3}} from DivyaPrabha Foods is almost ready to ship.\n\nSince you chose Cash on Delivery, please confirm below to lock in fast shipping! 🚀\n\n✅ Fresh & hygienically packed\n✅ 100% natural ingredients\n\n👇 Click 'Yes, confirm order' below to ship it today!",
+          status: 'DRAFT',
+          category: 'Utility',
+          language: 'en',
+          header_type: 'image',
+          header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
+        }
       ]
 
       const mapping: Record<string, CustomTemplate> = {}
@@ -245,7 +311,7 @@ export default function ShopifyDashboardPage() {
       if (user) {
         const { data: msgTemplates } = await supabase
           .from('message_templates')
-          .select('name, body_text, status, category, language')
+          .select('name, body_text, status, category, language, header_type, header_media_url')
           .eq('user_id', user.id)
         
         // Seed default templates if they are missing in the database
@@ -260,7 +326,9 @@ export default function ShopifyDashboardPage() {
             body_text: dt.body_text,
             status: 'DRAFT',
             category: dt.category || 'Marketing',
-            language: dt.language || 'en'
+            language: dt.language || 'en',
+            header_type: dt.header_type || null,
+            header_media_url: dt.header_media_url || null
           }))
 
           await supabase.from('message_templates').insert(insertRows)
@@ -268,7 +336,7 @@ export default function ShopifyDashboardPage() {
           // Re-fetch templates
           const { data: refetchedTemplates } = await supabase
             .from('message_templates')
-            .select('name, body_text, status, category, language')
+            .select('name, body_text, status, category, language, header_type, header_media_url')
             .eq('user_id', user.id)
 
           if (refetchedTemplates) {
@@ -278,7 +346,9 @@ export default function ShopifyDashboardPage() {
                 body_text: t.body_text,
                 status: t.status,
                 category: t.category || 'Marketing',
-                language: t.language || 'en_US'
+                language: t.language || 'en_US',
+                header_type: t.header_type || undefined,
+                header_media_url: t.header_media_url || undefined
               }
             })
           }
@@ -290,7 +360,9 @@ export default function ShopifyDashboardPage() {
                 body_text: t.body_text,
                 status: t.status,
                 category: t.category || 'Marketing',
-                language: t.language || 'en_US'
+                language: t.language || 'en_US',
+                header_type: t.header_type || undefined,
+                header_media_url: t.header_media_url || undefined
               }
             })
           }
@@ -584,6 +656,18 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
           { type: 'QUICK_REPLY', text: 'Yes, confirm order' },
           { type: 'QUICK_REPLY', text: 'Cancel order' }
         ]
+      } else if (editingTemplateName.startsWith('wacrm_')) {
+        let btnText = 'Shop Now'
+        if (editingTemplateName.includes('shipped')) {
+          btnText = 'Track Order'
+        } else if (editingTemplateName.includes('confirmed')) {
+          btnText = 'View Order'
+        } else if (editingTemplateName.includes('cart') || editingTemplateName.includes('abandoned')) {
+          btnText = 'Complete Checkout'
+        }
+        buttons = [
+          { type: 'URL', text: btnText, url: 'https://divyaprabhafoods.com' }
+        ]
       }
       
       const bodyVars = extractVariableIndices(editedBodyText)
@@ -602,6 +686,8 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
           category,
           language,
           body_text: editedBodyText,
+          header_type: editingTemplateName.startsWith('wacrm_') ? 'image' : undefined,
+          header_media_url: editingTemplateName.startsWith('wacrm_') ? 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800' : undefined,
           buttons,
           sample_values: Object.keys(sample_values).length > 0 ? sample_values : undefined
         })
@@ -1160,7 +1246,7 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
                   <div className="bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat bg-contain h-[460px] rounded-b-[26px] p-3 flex flex-col justify-end space-y-4">
                     <div className="bg-slate-950/90 text-white rounded-lg p-3 max-w-[95%] shadow text-[11.5px] space-y-2 border border-slate-850 select-none animate-in zoom-in-95 duration-100">
                       
-                      {selectedTemplateName.includes('reminder') || selectedTemplateName.includes('cart') || selectedTemplateName.includes('abandoned') ? (
+                      {selectedTemplateName.startsWith('wacrm_') ? (
                         <div className="w-full h-32 mb-1.5 rounded overflow-hidden relative border border-slate-850/60 bg-slate-900 flex items-center justify-center">
                           <Image src="/organic-jam.png" alt="Organic Jam Combo" fill className="object-cover" unoptimized />
                         </div>

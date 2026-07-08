@@ -138,6 +138,7 @@ export function TemplateManager() {
   // submit handler from POST /submit to PATCH /[id] and changes the
   // dialog title + CTA. Set to the template id to pre-fill from a row.
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [isDraftEdit, setIsDraftEdit] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   // Template selected for the confirm-delete dialog. The destructive
   // action goes through this two-step so a slip on the trash icon
@@ -309,6 +310,7 @@ export function TemplateManager() {
 
   function openEdit(template: MessageTemplate) {
     setEditingId(template.id);
+    setIsDraftEdit(!template.meta_template_id || template.status === 'DRAFT');
     setForm({
       name: template.name,
       category: template.category,
@@ -327,6 +329,7 @@ export function TemplateManager() {
 
   function openCreate() {
     setEditingId(null);
+    setIsDraftEdit(false);
     setForm(emptyForm);
     setDialogOpen(true);
   }
@@ -338,18 +341,19 @@ export function TemplateManager() {
     try {
       setSubmitting(true);
       const isEdit = editingId !== null;
-      const url = isEdit
-        ? `/api/whatsapp/templates/${editingId}`
-        : '/api/whatsapp/templates/submit';
+      const useSubmitEndpoint = !isEdit || isDraftEdit;
+      const url = useSubmitEndpoint
+        ? '/api/whatsapp/templates/submit'
+        : `/api/whatsapp/templates/${editingId}`;
       const res = await fetch(url, {
-        method: isEdit ? 'PATCH' : 'POST',
+        method: useSubmitEndpoint ? 'POST' : 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildSubmitPayload()),
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(
-          data?.error || `${isEdit ? 'Edit' : 'Submit'} failed (HTTP ${res.status})`,
+          data?.error || `${(isEdit && !isDraftEdit) ? 'Edit' : 'Submit'} failed (HTTP ${res.status})`,
         );
       }
       // Refresh first, then close — re-opening the dialog
@@ -357,16 +361,17 @@ export function TemplateManager() {
       if (user) await fetchTemplates(user.id);
       toast.success(
         data.dry_run
-          ? isEdit
+          ? (isEdit && !isDraftEdit)
             ? 'Template updated (dry-run — no Meta call)'
             : 'Template saved (dry-run — no Meta call)'
-          : isEdit
+          : (isEdit && !isDraftEdit)
             ? 'Edit submitted — Meta typically reviews within 24 hours.'
             : 'Submitted to Meta — typical review time is 24 hours. Status updates automatically.',
       );
       setDialogOpen(false);
       setForm(emptyForm);
       setEditingId(null);
+      setIsDraftEdit(false);
     } catch (err) {
       console.error('Submit error:', err);
       toast.error(err instanceof Error ? err.message : 'Failed to submit');
@@ -647,13 +652,13 @@ export function TemplateManager() {
                     )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0 ml-2">
-                    {statusKey === 'APPROVED' && (
+                    {(statusKey === 'APPROVED' || statusKey === 'DRAFT') && (
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => openEdit(template)}
-                        title="Editing triggers Meta re-review — status flips to PENDING."
-                        aria-label="Edit template"
+                        title={statusKey === 'DRAFT' ? "Edit and submit draft template" : "Editing triggers Meta re-review — status flips to PENDING."}
+                        aria-label={statusKey === 'DRAFT' ? "Edit draft template" : "Edit template"}
                         className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
                       >
                         <Pencil className="size-3.5" />
@@ -710,6 +715,7 @@ export function TemplateManager() {
           setDialogOpen(open);
           if (!open) {
             setEditingId(null);
+            setIsDraftEdit(false);
             setForm(emptyForm);
           }
         }}
@@ -721,7 +727,9 @@ export function TemplateManager() {
             </DialogTitle>
             <DialogDescription className="text-muted-foreground">
               {editingId
-                ? 'Save your changes to re-submit to Meta. Status will flip back to PENDING during review.'
+                ? isDraftEdit
+                  ? 'Submit this draft template to Meta for approval.'
+                  : 'Save your changes to re-submit to Meta. Status will flip back to PENDING during review.'
                 : 'Build a template and submit it to Meta for approval. Once approved, you can use it in broadcasts and the inbox.'}
             </DialogDescription>
           </DialogHeader>
@@ -1149,9 +1157,9 @@ export function TemplateManager() {
               {submitting ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  {editingId ? 'Saving…' : 'Submitting…'}
+                  {editingId && !isDraftEdit ? 'Saving…' : 'Submitting…'}
                 </>
-              ) : editingId ? (
+              ) : editingId && !isDraftEdit ? (
                 'Save & Resubmit'
               ) : (
                 'Submit for Approval'

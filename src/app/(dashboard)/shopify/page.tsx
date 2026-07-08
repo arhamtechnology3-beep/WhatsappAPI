@@ -500,8 +500,22 @@ export default function ShopifyDashboardPage() {
   const totalDeliveredBroadcasts = broadcastsList.reduce((sum, b) => sum + (b.delivered_count || 0), 0)
   const totalFailedBroadcasts = broadcastsList.reduce((sum, b) => sum + (b.failed_count || ((b.total_recipients || 0) - (b.delivered_count || 0))), 0)
 
-  const handleManualNotification = (checkoutId: string) => {
-    toast.success(`Triggered manual WhatsApp notification for Checkout #${checkoutId}`)
+  const handleManualNotification = async (checkoutId: string) => {
+    try {
+      const res = await fetch('/api/shopify/checkout/nudge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ checkout_id: checkoutId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to send recovery nudge.')
+      }
+      toast.success('Manual recovery nudge sent successfully!')
+      loadData()
+    } catch (err: any) {
+      toast.error(err.message || 'Error triggering nudge.')
+    }
   }
 
   const copyUrl = (url: string) => {

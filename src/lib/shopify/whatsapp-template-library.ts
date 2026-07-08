@@ -14,7 +14,7 @@ export const SHOPIFY_TEMPLATE_LIBRARY: readonly ShopifyTemplateRecipe[] = [
     template_name: 'wacrm_cart_abandoned_v1',
     category: 'MARKETING',
     language: 'en_US',
-    body: "Hey {{1}}! 😉\n\nStill thinking about {{2}}? We saw you checking it out and saved it in your cart at {{3}}! Grab it now before it sells out.\n\n✅ Fresh & hygienically packed\n✅ Chemical preservative free\n✅ Free shipping on orders above ₹499\n\n👉 Click below to complete your checkout in 1-click:\n{{4}}",
+    body: "Hey {{1}}! 😉\n\nStill thinking about {{2}}? We saw you checking it out and saved it in your cart at {{3}}! Grab it now before it sells out.\n\n✅ Fresh & hygienically packed\n✅ Chemical preservative free\n✅ Free shipping on orders above ₹499\n\n👉 Click below to complete your checkout in 1-click:\n{{4}}\n\nHappy shopping! 🛍️",
     variables: ['customer_name', 'product_name', 'store_name', 'checkout_url'],
     default_delay_minutes: 30,
   },

@@ -231,7 +231,7 @@ export default function ShopifyDashboardPage() {
       const defaultTemplates: CustomTemplate[] = [
         {
           name: 'wacrm_cart_abandoned_v1',
-          body_text: "Hey {{1}}! 😉\n\nStill thinking about {{2}}? We saw you checking it out and saved it in your cart at {{3}}! Grab it now before it sells out.\n\n✅ Fresh & hygienically packed\n✅ Chemical preservative free\n✅ Free shipping on orders above ₹499\n\n👉 Click below to complete your checkout in 1-click:\n{{4}}",
+          body_text: "Hey {{1}}! 😉\n\nStill thinking about {{2}}? We saw you checking it out and saved it in your cart at {{3}}! Grab it now before it sells out.\n\n✅ Fresh & hygienically packed\n✅ Chemical preservative free\n✅ Free shipping on orders above ₹499\n\n👉 Click below to complete your checkout in 1-click:\n{{4}}\n\nHappy shopping! 🛍️",
           status: 'DRAFT',
           category: 'Marketing',
           language: 'en_US',

@@ -331,6 +331,15 @@ export function validateTemplatePayload(payload: TemplatePayload): {
   const headerResult = validateHeader(payload);
   validateButtons(payload.buttons);
   validateSampleValues(payload, bodyVars.length, headerResult.variableCount);
+
+  // Meta restriction: Variables cannot be at the very start or end of template body text.
+  if (payload.body_text.trim().startsWith('{{')) {
+    throw new Error('Variables cannot be at the start of the template body text (Meta rule). Please add some static text before the first variable.');
+  }
+  if (payload.body_text.trim().endsWith('}}')) {
+    throw new Error('Variables cannot be at the end of the template body text (Meta rule). Please add some static text or punctuation after the last variable.');
+  }
+
   return {
     bodyVarCount: bodyVars.length,
     headerVarCount: headerResult.variableCount,

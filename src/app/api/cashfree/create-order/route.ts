@@ -55,6 +55,7 @@ export async function POST(request: Request) {
     const nameParts = (name || 'Customer').trim().split(/\s+/)
     const firstName = nameParts[0] || 'Customer'
     const lastName = nameParts.slice(1).join(' ') || 'Customer'
+    const cleanPhone = (phone || '').replace(/\D/g, '').slice(-10)
 
     // 1) Look up discount value if discount code is provided
     let appliedDiscount = null
@@ -203,7 +204,7 @@ export async function POST(request: Request) {
         order_id: internalOrderId,
         account_id: accountId,
         cart_snapshot: cart_items,
-        customer_details: { name, email, phone },
+        customer_details: { name, email, phone: cleanPhone },
         shipping_address: shipping_address,
         amount: parseFloat(draftOrder.total_price),
         currency: 'INR',
@@ -221,7 +222,7 @@ export async function POST(request: Request) {
     const proto = request.headers.get('x-forwarded-proto') || 'https'
     const appBaseUrl = `${proto}://${host}`
 
-    const stableCustomerId = crypto.createHash('sha256').update(phone || email || internalOrderId).digest('hex').substring(0, 32)
+    const stableCustomerId = crypto.createHash('sha256').update(cleanPhone || email || internalOrderId).digest('hex').substring(0, 32)
     const cashfreeRequest = {
       order_amount: parseFloat(draftOrder.total_price),
       order_currency: 'INR',
@@ -230,7 +231,7 @@ export async function POST(request: Request) {
         customer_id: stableCustomerId,
         customer_name: name || 'Customer',
         customer_email: email || undefined,
-        customer_phone: phone
+        customer_phone: cleanPhone
       },
       order_meta: {
         return_url: `${appBaseUrl}/checkout/return?order_id={order_id}`,

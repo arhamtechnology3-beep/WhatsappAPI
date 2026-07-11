@@ -173,7 +173,16 @@ export async function POST(request: Request) {
         }
       ];
 
-      while (attempts < 2) {
+      const geminiModels = [
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-latest"
+      ];
+
+      let success = false;
+
+      while (attempts < 2 && !success) {
         attempts++;
         console.log(`[AI Bot Generator] Gemini call attempt #${attempts}`);
 
@@ -188,49 +197,64 @@ export async function POST(request: Request) {
           });
         }
 
-        try {
-          const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                contents,
-                systemInstruction: {
-                  parts: [{ text: SYSTEM_PROMPT }]
-                },
-                generationConfig: {
-                  responseMimeType: "application/json"
-                }
-              }),
+        // Try models sequentially
+        for (const modelName of geminiModels) {
+          try {
+            console.log(`[AI Bot Generator] Querying Gemini model: ${modelName}`);
+            const response = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  contents,
+                  systemInstruction: {
+                    parts: [{ text: SYSTEM_PROMPT }]
+                  },
+                  generationConfig: {
+                    responseMimeType: "application/json"
+                  }
+                }),
+              }
+            );
+
+            if (!response.ok) {
+              const rawErr = await response.text();
+              // If model name is not found (404), try next model in the array
+              if (response.status === 404 || rawErr.includes("NOT_FOUND")) {
+                console.warn(`[AI Bot Generator] Model ${modelName} returned 404, falling back...`);
+                continue;
+              }
+              throw new Error(`Gemini API request failed: ${response.status} - ${rawErr}`);
             }
-          );
 
-          if (!response.ok) {
-            const rawErr = await response.text();
-            throw new Error(`Gemini API request failed: ${response.status} - ${rawErr}`);
-          }
+            const resData = await response.json();
+            const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-          const resData = await response.json();
-          const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            parsedFlow = JSON.parse(rawText.trim());
 
-          parsedFlow = JSON.parse(rawText.trim());
+            // Validate structure
+            const valResult = validateFlowGraph(parsedFlow);
+            if (!valResult.success) {
+              throw new Error(`Validation Error: ${valResult.error}`);
+            }
 
-          // Validate structure
-          const valResult = validateFlowGraph(parsedFlow);
-          if (!valResult.success) {
-            throw new Error(`Validation Error: ${valResult.error}`);
-          }
-
-          parsedFlow = valResult.data;
-          break; // Success! Exit loop
-        } catch (err: any) {
-          console.warn(`[AI Bot Generator] Gemini attempt #${attempts} failed:`, err.message);
-          lastError = err.message || "Failed to generate or validate flow structure";
-          if (attempts >= 2) {
-            return NextResponse.json({ error: `AI generation failed: ${lastError}` }, { status: 400 });
+            parsedFlow = valResult.data;
+            success = true;
+            break; // Success! Exit model loop
+          } catch (err: any) {
+            console.warn(`[AI Bot Generator] Error with model ${modelName} on attempt #${attempts}:`, err.message);
+            lastError = err.message || "Failed to generate or validate flow structure";
+            // If it is not a 404, we break early to let the outer loop handle retries/corrections
+            if (!err.message.includes("404") && !err.message.includes("NOT_FOUND")) {
+              break;
+            }
           }
         }
+      }
+
+      if (!success) {
+        return NextResponse.json({ error: `AI generation failed: ${lastError}` }, { status: 400 });
       }
     } else {
       // Fallback to Anthropic Claude (if configured)

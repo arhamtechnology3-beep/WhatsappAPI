@@ -1363,14 +1363,17 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
                     </div>
                   ) : (() => {
                     const q = visitorSearch.toLowerCase()
-                    const filtered = visitorSessions.filter(s =>
-                      !q ||
-                      (s.associated_phone || '').includes(q) ||
-                      (s.associated_email || '').toLowerCase().includes(q) ||
-                      (s.contact_name || '').toLowerCase().includes(q) ||
-                      (s.last_page || '').toLowerCase().includes(q) ||
-                      (s.referrer_source || '').toLowerCase().includes(q)
-                    )
+                    const filtered = visitorSessions.filter(s => {
+                      if (!s.associated_phone) return false;
+                      return (
+                        !q ||
+                        s.associated_phone.includes(q) ||
+                        (s.associated_email || '').toLowerCase().includes(q) ||
+                        (s.contact_name || '').toLowerCase().includes(q) ||
+                        (s.last_page || '').toLowerCase().includes(q) ||
+                        (s.referrer_source || '').toLowerCase().includes(q)
+                      );
+                    })
                     return (
                       <div className="overflow-x-auto">
                         <table className="w-full text-left text-xs border-collapse">

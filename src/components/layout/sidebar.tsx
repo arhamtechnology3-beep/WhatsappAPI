@@ -24,6 +24,7 @@ import {
   Zap,
   ShoppingBag,
   BarChart3,
+  Plug,
 } from "lucide-react";
 import type { AccountRole } from "@/lib/auth/roles";
 
@@ -98,6 +99,7 @@ const navItems: NavItem[] = [
   { href: "/broadcasts", label: "Broadcasts", icon: Radio },
   { href: "/automations", label: "Automations", icon: Zap },
   { href: "/flows", label: "Flows", icon: Workflow, beta: true },
+  { href: "/integrations", label: "Integration", icon: Plug },
 ];
 
 const bottomNavItems = [

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
-import { cashfree } from '@/lib/cashfree/cashfree-client'
+import { getCashfreeClient } from '@/lib/cashfree/cashfree-client'
 import { completeOrderConversion } from '@/lib/cashfree/conversion'
 
 export async function POST(request: Request) {
@@ -36,9 +36,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, message: 'Missing order_id, ignored' })
   }
 
-  // 1) Verify signature BEFORE any DB read/write or Shopify call
+  const supabase = supabaseAdmin()
+
+  // 1) Fetch database record (read-only) to resolve account context
+  const { data: orderRecord, error: fetchErr } = await supabase
+    .from('cashfree_orders')
+    .select('account_id')
+    .eq('order_id', orderId)
+    .maybeSingle()
+
+  if (fetchErr || !orderRecord) {
+    console.error(`[cashfree-webhook] Failed to retrieve cashfree order record for Order ${orderId}:`, fetchErr)
+    return new NextResponse('Order not found', { status: 400 })
+  }
+
+  const accountId = orderRecord.account_id
+
+  // 2) Get Cashfree Client dynamically using accountId
+  const cashfreeInstance = await getCashfreeClient(supabase, accountId)
+
+  // 3) Verify signature BEFORE any DB updates or Shopify calls
   try {
-    cashfree.PGVerifyWebhookSignature(signature, rawBody, timestamp)
+    cashfreeInstance.PGVerifyWebhookSignature(signature, rawBody, timestamp)
     console.log(`[cashfree-webhook] Webhook signature verified successfully for Order ${orderId}`)
   } catch (err: any) {
     // Webhook Signature Failure Log Path: Logs event type + order ID, but avoids full PII/secrets.
@@ -48,8 +67,6 @@ export async function POST(request: Request) {
 
   console.log(`[cashfree-webhook] Processing Event: ${eventType}, Internal Order ID: ${orderId}`)
 
-  const supabase = supabaseAdmin()
-
   try {
     if (eventType === 'PAYMENT_SUCCESS_WEBHOOK') {
       const paymentStatus = payload.data?.payment?.payment_status
@@ -58,7 +75,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: true, message: 'Payment status not success' })
       }
 
-      // 2) Atomic status transition: Attempt to claim PROCESSING lock
+      // 4) Atomic status transition: Attempt to claim PROCESSING lock
       // Single UPDATE WHERE status = 'PENDING' is guaranteed atomic by Postgres row-level locks.
       const { data: claimedRows, error: claimErr } = await supabase
         .from('cashfree_orders')
@@ -81,9 +98,10 @@ export async function POST(request: Request) {
 
       console.log(`[cashfree-webhook] Lock claimed successfully for order ${orderId}. Transitioning to Shopify order...`)
 
-      // 3) Complete Draft Order conversion using the shared utility function
+      // 5) Complete Draft Order conversion using the shared utility function
       const conversionResult = await completeOrderConversion(orderId, supabase)
 
+      // Webhooks must return 200 OK even if Shopify conversion failed (so Cashfree stops retrying).
       return NextResponse.json(conversionResult)
 
     } else if (eventType === 'PAYMENT_FAILED_WEBHOOK' || eventType === 'PAYMENT_USER_DROPPED_WEBHOOK') {

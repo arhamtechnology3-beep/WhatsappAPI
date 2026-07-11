@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { fetchShopify } from '@/lib/shopify/shopify-client'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { getShopifyAccountContext } from '@/lib/shopify/shopify-helper'
-import { cashfree } from '@/lib/cashfree/cashfree-client'
+import { getCashfreeClient } from '@/lib/cashfree/cashfree-client'
 import crypto from 'crypto'
 
 // Allow CORS preflight and actual requests from the Shopify storefront domain
@@ -235,7 +235,8 @@ export async function POST(request: Request) {
       order_note: 'CartRescue custom checkout order'
     }
 
-    const cashfreeRes = await cashfree.PGCreateOrder(cashfreeRequest)
+    const cashfreeInstance = await getCashfreeClient(supabase, accountId)
+    const cashfreeRes = await cashfreeInstance.PGCreateOrder(cashfreeRequest)
     if (!cashfreeRes || !cashfreeRes.data || !cashfreeRes.data.payment_session_id) {
       // Mark as failed in DB
       await supabase

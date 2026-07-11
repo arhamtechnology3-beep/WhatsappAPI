@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
-import { cashfree } from '@/lib/cashfree/cashfree-client'
+import { getCashfreeClient } from '@/lib/cashfree/cashfree-client'
 import { completeOrderConversion } from '@/lib/cashfree/conversion'
 
 // Allow CORS preflight and actual requests from the Shopify storefront domain
@@ -104,7 +104,8 @@ export async function GET(
 
     // 3) Fallback: Fetch order details from Cashfree directly (if webhook is delayed)
     console.log(`[cashfree-order-status] Polling Cashfree directly for order ${order_id}`)
-    const cashfreeRes = await cashfree.PGFetchOrder(order_id)
+    const cashfreeInstance = await getCashfreeClient(supabase, orderRecord.account_id)
+    const cashfreeRes = await cashfreeInstance.PGFetchOrder(order_id)
     if (!cashfreeRes || !cashfreeRes.data) {
       throw new Error('No response data from Cashfree API')
     }

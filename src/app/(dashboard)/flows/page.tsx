@@ -482,7 +482,7 @@ export default function FlowsPage() {
               <Sparkles className="size-4.5 text-primary" /> Create Bot with AI
             </DialogTitle>
             <DialogDescription className="text-muted-foreground text-xs">
-              Describe the WhatsApp conversation tree you want in natural language. Claude will parse the logic and construct a complete draft graph.
+              Describe the WhatsApp conversation tree you want in natural language. Gemini or Claude will parse the logic and construct a complete draft graph.
             </DialogDescription>
           </DialogHeader>
 

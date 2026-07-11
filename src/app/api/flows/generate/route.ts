@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/flows/admin-client";
 import { validateFlowGraph } from "@/lib/flows/zod-schema";
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 const SYSTEM_PROMPT = `
 You are an expert AI bot flow generator for "wacrm", a WhatsApp CRM tool.
@@ -54,10 +55,10 @@ Your response must be ONLY a valid JSON object matching the following TypeScript
 - There must be no orphan edges.
 
 ### Response Constraint:
-Do not include any pre-amble, conversational explanations, or markdown codeblocks in your final response. Respond ONLY with valid, raw, parseable JSON.
+Respond ONLY with valid, raw, parseable JSON. Do not write text summaries.
 `;
 
-const FEW_SHOT_EXAMPLES = [
+const CLAUDE_FEW_SHOT = [
   {
     role: "user",
     content: "Create a bot that welcomes customers, asks for their email, and then handsoff to an agent."
@@ -144,90 +145,169 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Requirement description is required." }, { status: 400 });
     }
 
-    if (!ANTHROPIC_API_KEY) {
+    if (!GEMINI_API_KEY && !ANTHROPIC_API_KEY) {
       return NextResponse.json(
-        { error: "Claude API key is not configured. Please add ANTHROPIC_API_KEY to your env variables." },
+        { error: "AI API Key is not configured. Please add GEMINI_API_KEY (Free via Google AI Studio) or ANTHROPIC_API_KEY to your environment variables." },
         { status: 500 }
       );
     }
 
     let parsedFlow: any = null;
-    let attempts = 0;
     let lastError = "";
 
-    const userMessage = {
-      role: "user",
-      content: `Generate a WhatsApp bot flow for this requirement: "${requirement}"`
-    };
-
-    const messages = [...FEW_SHOT_EXAMPLES, userMessage];
-
-    while (attempts < 2) {
-      attempts++;
-      console.log(`[AI Bot Generator] Claude call attempt #${attempts}`);
-
-      if (attempts === 2 && lastError) {
-        messages.push({
-          role: "assistant",
-          content: parsedFlow ? JSON.stringify(parsedFlow) : "Error generating valid json"
-        });
-        messages.push({
+    // 2. Call the active LLM (Gemini preferred as it offers a free tier)
+    if (GEMINI_API_KEY) {
+      let attempts = 0;
+      const contents = [
+        {
           role: "user",
-          content: `The previous response failed validation with error: "${lastError}". Please correct the JSON schema matching the strict system prompt requirements and output only raw, parseable JSON.`
-        });
+          parts: [{ text: "Create a bot that welcomes customers, asks for their email, and then handsoff to an agent." }]
+        },
+        {
+          role: "model",
+          parts: [{ text: CLAUDE_FEW_SHOT[1].content }]
+        },
+        {
+          role: "user",
+          parts: [{ text: `Generate a WhatsApp bot flow for this requirement: "${requirement}"` }]
+        }
+      ];
+
+      while (attempts < 2) {
+        attempts++;
+        console.log(`[AI Bot Generator] Gemini call attempt #${attempts}`);
+
+        if (attempts === 2 && lastError) {
+          contents.push({
+            role: "model",
+            parts: [{ text: parsedFlow ? JSON.stringify(parsedFlow) : "Error generating valid json" }]
+          });
+          contents.push({
+            role: "user",
+            parts: [{ text: `The previous response failed validation with error: "${lastError}". Please correct the JSON schema matching the strict system prompt requirements and output only raw, parseable JSON.` }]
+          });
+        }
+
+        try {
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents,
+                systemInstruction: {
+                  parts: [{ text: SYSTEM_PROMPT }]
+                },
+                generationConfig: {
+                  responseMimeType: "application/json"
+                }
+              }),
+            }
+          );
+
+          if (!response.ok) {
+            const rawErr = await response.text();
+            throw new Error(`Gemini API request failed: ${response.status} - ${rawErr}`);
+          }
+
+          const resData = await response.json();
+          const rawText = resData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+
+          parsedFlow = JSON.parse(rawText.trim());
+
+          // Validate structure
+          const valResult = validateFlowGraph(parsedFlow);
+          if (!valResult.success) {
+            throw new Error(`Validation Error: ${valResult.error}`);
+          }
+
+          parsedFlow = valResult.data;
+          break; // Success! Exit loop
+        } catch (err: any) {
+          console.warn(`[AI Bot Generator] Gemini attempt #${attempts} failed:`, err.message);
+          lastError = err.message || "Failed to generate or validate flow structure";
+          if (attempts >= 2) {
+            return NextResponse.json({ error: `AI generation failed: ${lastError}` }, { status: 400 });
+          }
+        }
       }
+    } else {
+      // Fallback to Anthropic Claude (if configured)
+      let attempts = 0;
+      const messages = [
+        ...CLAUDE_FEW_SHOT,
+        {
+          role: "user",
+          content: `Generate a WhatsApp bot flow for this requirement: "${requirement}"`
+        }
+      ];
 
-      try {
-        const response = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "x-api-key": ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            model: "claude-3-5-sonnet-20241022",
-            max_tokens: 4000,
-            system: SYSTEM_PROMPT,
-            messages: messages.filter(m => m.role === "user" || m.role === "assistant"),
-          }),
-        });
+      while (attempts < 2) {
+        attempts++;
+        console.log(`[AI Bot Generator] Claude call attempt #${attempts}`);
 
-        if (!response.ok) {
-          const rawErr = await response.text();
-          throw new Error(`Claude API request failed: ${response.status} - ${rawErr}`);
+        if (attempts === 2 && lastError) {
+          messages.push({
+            role: "assistant",
+            content: parsedFlow ? JSON.stringify(parsedFlow) : "Error generating valid json"
+          });
+          messages.push({
+            role: "user",
+            content: `The previous response failed validation with error: "${lastError}". Please correct the JSON schema matching the strict system prompt requirements and output only raw, parseable JSON.`
+          });
         }
 
-        const resData = await response.json();
-        const rawContent = resData.content?.[0]?.text || "";
+        try {
+          const response = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: {
+              "x-api-key": ANTHROPIC_API_KEY!,
+              "anthropic-version": "2023-06-01",
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              model: "claude-3-5-sonnet-20241022",
+              max_tokens: 4000,
+              system: SYSTEM_PROMPT,
+              messages: messages.filter(m => m.role === "user" || m.role === "assistant"),
+            }),
+          });
 
-        // Extract JSON block in case Claude wrapped it in markdown quotes
-        let cleanJson = rawContent.trim();
-        const jsonMatch = cleanJson.match(/```json\s*([\s\S]*?)\s*```/);
-        if (jsonMatch) {
-          cleanJson = jsonMatch[1];
-        }
+          if (!response.ok) {
+            const rawErr = await response.text();
+            throw new Error(`Claude API request failed: ${response.status} - ${rawErr}`);
+          }
 
-        parsedFlow = JSON.parse(cleanJson);
+          const resData = await response.json();
+          const rawContent = resData.content?.[0]?.text || "";
 
-        // Validate structure
-        const valResult = validateFlowGraph(parsedFlow);
-        if (!valResult.success) {
-          throw new Error(`Validation Error: ${valResult.error}`);
-        }
+          let cleanJson = rawContent.trim();
+          const jsonMatch = cleanJson.match(/```json\s*([\s\S]*?)\s*```/);
+          if (jsonMatch) {
+            cleanJson = jsonMatch[1];
+          }
 
-        parsedFlow = valResult.data;
-        break; // Success! Exit loop
-      } catch (err: any) {
-        console.warn(`[AI Bot Generator] Attempt #${attempts} failed:`, err.message);
-        lastError = err.message || "Failed to generate or validate flow structure";
-        if (attempts >= 2) {
-          return NextResponse.json({ error: `AI generation failed: ${lastError}` }, { status: 400 });
+          parsedFlow = JSON.parse(cleanJson);
+
+          const valResult = validateFlowGraph(parsedFlow);
+          if (!valResult.success) {
+            throw new Error(`Validation Error: ${valResult.error}`);
+          }
+
+          parsedFlow = valResult.data;
+          break; // Success! Exit loop
+        } catch (err: any) {
+          console.warn(`[AI Bot Generator] Claude attempt #${attempts} failed:`, err.message);
+          lastError = err.message || "Failed to generate or validate flow structure";
+          if (attempts >= 2) {
+            return NextResponse.json({ error: `AI generation failed: ${lastError}` }, { status: 400 });
+          }
         }
       }
     }
 
-    // 2. Save flow graph in database as a draft
+    // 3. Save flow graph in database as a draft
     const admin = supabaseAdmin();
     const { data: flow, error: flowErr } = await admin
       .from("flows")
@@ -264,7 +344,6 @@ export async function POST(request: Request) {
     );
 
     if (nodesErr) {
-      // Rollback flow header creation to keep clean DB state
       await admin.from("flows").delete().eq("id", flow.id);
       console.error("[AI Bot Generator] DB nodes insert error:", nodesErr);
       return NextResponse.json({ error: nodesErr.message }, { status: 500 });

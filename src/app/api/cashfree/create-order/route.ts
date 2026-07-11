@@ -197,6 +197,15 @@ export async function POST(request: Request) {
     const supabase = supabaseAdmin()
     const { accountId } = await getShopifyAccountContext(supabase)
 
+    // Fetch config to determine environment (sandbox vs production)
+    const { data: config } = await supabase
+      .from('cashfree_config')
+      .select('environment')
+      .eq('account_id', accountId)
+      .maybeSingle()
+
+    const environment = config?.environment?.toLowerCase() || process.env.CASHFREE_ENV?.toLowerCase() || 'sandbox'
+
     // 7) Insert pending record into cashfree_orders table
     const { error: dbErr } = await supabase
       .from('cashfree_orders')
@@ -255,7 +264,8 @@ export async function POST(request: Request) {
     const responseData = {
       success: true,
       payment_session_id: cashfreeRes.data.payment_session_id,
-      order_id: internalOrderId
+      order_id: internalOrderId,
+      environment: environment
     }
 
     return NextResponse.json(responseData, { headers: response.headers })

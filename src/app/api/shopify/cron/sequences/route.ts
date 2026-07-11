@@ -164,7 +164,7 @@ export async function GET(request: Request) {
         const storeName = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN || 'Our Store'
 
         const mapping: string[] = step.template_variable_mapping || []
-        const templateParams = mapping.map((variableName) => {
+        let templateParams = mapping.map((variableName) => {
           if (variableName === 'customer_name') return customerName
           if (variableName === 'product_name') return productName
           if (variableName === 'store_name') return storeName
@@ -174,6 +174,28 @@ export async function GET(request: Request) {
           if (variableName === 'discount_code') return discountCode || 'WELCOME10'
           return ''
         })
+
+        // Guard: if mapping is empty/misconfigured but we have real data,
+        // auto-fill params based on template name to prevent #132000 from Meta.
+        if (templateParams.length === 0) {
+          const tn = step.template_name || ''
+          if (tn.includes('cart_abandoned') || tn.includes('cart_reminder_step2')) {
+            // wacrm_cart_abandoned_v1: {{customer_name}}, {{product_name}}, {{store_name}}, {{checkout_url}}
+            templateParams = [customerName, productName, storeName, checkoutUrl]
+          } else if (tn.includes('cart_reminder_step3')) {
+            // wacrm_cart_reminder_step3_v1: {{customer_name}}, {{product_name}}, {{checkout_url}}, {{discount_code}}
+            templateParams = [customerName, productName, checkoutUrl, discountCode || 'WELCOME10']
+          } else if (tn.includes('browse_abandoned')) {
+            // wacrm_browse_abandoned_v1: {{customer_name}}, {{product_name}}, {{total_price}}, {{product_url}}
+            templateParams = [customerName, productName, totalPrice, productUrl]
+          }
+          if (templateParams.length > 0) {
+            console.warn(
+              `[sequence-cron] step ${step.id} has empty template_variable_mapping for "${tn}" — ` +
+              `using auto-built fallback params: ${JSON.stringify(templateParams)}`
+            )
+          }
+        }
 
         // Fetch account context to resolve owner user ID
         const { data: account } = await supabase

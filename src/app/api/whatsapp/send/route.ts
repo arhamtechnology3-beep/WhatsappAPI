@@ -381,14 +381,19 @@ export async function POST(request: Request) {
           break
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
-          // Only retry when the failure is specifically that the
-          // recipient isn't in Meta's allowed list. Any other error
-          // (bad token, invalid template, etc.) bubbles up immediately.
-          if (!isRecipientNotAllowedError(message)) {
-            throw err
+          // #131030 = sandbox restriction: number not in Meta's allowed test list.
+          // All format variants of the same number will fail identically —
+          // bail immediately (1 API call, not 4) and log once.
+          if (isRecipientNotAllowedError(message)) {
+            console.warn(
+              `[whatsapp/send] #131030 sandbox — ${variant} not in Meta test recipient list. ` +
+              `Add it at: developers.facebook.com/apps → WhatsApp → API Setup → Test numbers.`
+            )
+            lastError = err
+            break // other variants will fail identically
           }
-          lastError = err
-          console.warn(`[whatsapp/send] variant "${variant}" rejected by Meta, trying next…`)
+          // Any other error (bad template, bad token, etc.) bubbles up immediately
+          throw err
         }
       }
 

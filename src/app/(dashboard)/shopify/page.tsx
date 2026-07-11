@@ -22,7 +22,13 @@ import {
   Bot,
   Pencil,
   Trash2,
-  Lock as LockIcon
+  Lock as LockIcon,
+  Monitor,
+  Smartphone,
+  Globe,
+  UserCheck,
+  Eye,
+  Users as UsersIcon
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -37,6 +43,31 @@ import InboxPage from "@/app/(dashboard)/inbox/page"
 import PipelinesPage from "@/app/(dashboard)/pipelines/page"
 import Image from "next/image"
 import type { Broadcast } from "@/types"
+
+interface VisitorSession {
+  id: string
+  visitor_id: string
+  session_id: string
+  device_type: string
+  referrer_source: string
+  session_start: string
+  pages_viewed_count: number
+  cart_events_count: number
+  last_page: string | null
+  associated_phone: string | null
+  associated_email: string | null
+  associated_name: string | null
+  contact_name: string | null
+  contact_id: string | null
+  is_identified: boolean
+}
+
+interface VisitorStats {
+  total: number
+  mobile: number
+  identified: number
+  linked_to_contact: number
+}
 
 interface Checkout {
   id: string
@@ -104,8 +135,8 @@ export default function ShopifyDashboardPage() {
   const supabase = createClient()
   const { accountId, user, accountRole } = useAuth()
 
-  // Tabs: 'overview', 'templates', 'confirm_msg', 'adv_features', 'settings', 'billing', 'chats', 'pipelines'
-  const [activeTab, setActiveTab] = useState<'overview' | 'templates' | 'confirm_msg' | 'adv_features' | 'settings' | 'billing' | 'chats' | 'pipelines'>('overview')
+  // Tabs: 'overview', 'visitors', 'templates', 'confirm_msg', 'adv_features', 'settings', 'billing', 'chats', 'pipelines'
+  const [activeTab, setActiveTab] = useState<'overview' | 'visitors' | 'templates' | 'confirm_msg' | 'adv_features' | 'settings' | 'billing' | 'chats' | 'pipelines'>('overview')
   const [activeSubTab, setActiveSubTab] = useState<'broadcast' | 'schedule' | 'auto_reply' | 'flow_bot'>('broadcast')
 
   // Force agents to the Chats tab only
@@ -121,6 +152,13 @@ export default function ShopifyDashboardPage() {
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([])
   const [sequences, setSequences] = useState<AutomationSequence[]>([])
   const [currentPlan, setCurrentPlan] = useState<'basic' | 'growth' | 'scale'>('growth')
+
+  // Visitor sessions state
+  const [visitorSessions, setVisitorSessions] = useState<VisitorSession[]>([])
+  const [visitorsLoading, setVisitorsLoading] = useState(false)
+  const [visitorSearch, setVisitorSearch] = useState('')
+  const [visitorStats, setVisitorStats] = useState<VisitorStats>({ total: 0, mobile: 0, identified: 0, linked_to_contact: 0 })
+  const [visitorsLoaded, setVisitorsLoaded] = useState(false)
   
   // Custom templates and list of templates
   const [customTemplates, setCustomTemplates] = useState<Record<string, CustomTemplate>>({})
@@ -468,6 +506,34 @@ export default function ShopifyDashboardPage() {
   useEffect(() => {
     loadData()
   }, [loadData])
+
+  // Load visitor sessions (lazy — only when Visitors tab is opened)
+  const loadVisitorSessions = useCallback(async () => {
+    if (visitorsLoading) return
+    setVisitorsLoading(true)
+    try {
+      const res = await fetch('/api/shopify/visitor-sessions')
+      const data = await res.json()
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to load visitor sessions.')
+        return
+      }
+      setVisitorSessions(data.sessions || [])
+      setVisitorStats(data.stats || { total: 0, mobile: 0, identified: 0, linked_to_contact: 0 })
+      setVisitorsLoaded(true)
+    } catch (err: unknown) {
+      toast.error('Error loading visitor sessions.')
+    } finally {
+      setVisitorsLoading(false)
+    }
+  }, [visitorsLoading])
+
+  // Auto-load visitor sessions when the Visitors tab becomes active
+  useEffect(() => {
+    if (activeTab === 'visitors' && !visitorsLoaded) {
+      loadVisitorSessions()
+    }
+  }, [activeTab, visitorsLoaded, loadVisitorSessions])
 
   // Filtered lists
   const filteredCheckouts = checkouts.filter((ch) => {
@@ -853,6 +919,19 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
               Overview
             </button>
             <button
+              onClick={() => setActiveTab('visitors')}
+              className={`py-3 px-4 font-medium border-b-2 transition-all flex items-center gap-1.5 ${
+                activeTab === 'visitors' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <span>Visitors</span>
+              {visitorStats.total > 0 && (
+                <span className="bg-primary/10 text-primary text-[9px] font-bold px-1.5 py-0.5 rounded-full select-none">
+                  {visitorStats.total}
+                </span>
+              )}
+            </button>
+            <button
               onClick={() => setActiveTab('templates')}
               className={`py-3 px-4 font-medium border-b-2 transition-all ${
                 activeTab === 'templates' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -1124,7 +1203,243 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
             </div>
           )}
 
-          {/* Tab 2: Templates (WhatsApp Template Roster) */}
+          {/* Tab 2: Visitors — Anonymous + Identified Visitor Sessions */}
+          {activeTab === 'visitors' && (
+            <div className="space-y-5 animate-in fade-in duration-250">
+
+              {/* Stat Cards */}
+              <div className="grid gap-4 md:grid-cols-4">
+                <Card className="bg-card/50">
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Sessions</CardTitle>
+                    <Globe className="size-4 text-primary" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-extrabold text-foreground">{visitorStats.total}</div>
+                    <p className="text-[10px] text-muted-foreground mt-1">All storefront visitor sessions recorded</p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-card/50">
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Mobile Visitors</CardTitle>
+                    <Smartphone className="size-4 text-blue-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-extrabold text-foreground">{visitorStats.mobile}</div>
+                    <p className="text-[10px] text-muted-foreground mt-1">Sessions from mobile devices</p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-card/50">
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Identified</CardTitle>
+                    <UserCheck className="size-4 text-amber-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-extrabold text-foreground">{visitorStats.identified}</div>
+                    <p className="text-[10px] text-muted-foreground mt-1">Visitors with phone or email captured</p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-card/50">
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Linked Contacts</CardTitle>
+                    <UsersIcon className="size-4 text-green-500" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-extrabold text-foreground">{visitorStats.linked_to_contact}</div>
+                    <p className="text-[10px] text-muted-foreground mt-1">Sessions matched to a CRM contact</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Session Table */}
+              <Card>
+                <CardHeader className="pb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Eye className="size-4 text-primary" />
+                      Visitor Sessions
+                    </CardTitle>
+                    <CardDescription className="text-xs mt-0.5">
+                      Anonymous and identified visitors on your Shopify storefront — latest 200 sessions
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                      <input
+                        type="text"
+                        placeholder="Search phone, email, page..."
+                        value={visitorSearch}
+                        onChange={(e) => setVisitorSearch(e.target.value)}
+                        className="pl-8 h-8 border border-border rounded-md text-[11px] placeholder:text-muted-foreground bg-muted/40 text-foreground w-48 focus:outline-none focus:ring-1 focus:ring-primary px-2"
+                      />
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setVisitorsLoaded(false); loadVisitorSessions() }}
+                      disabled={visitorsLoading}
+                      className="border-border hover:bg-muted h-8 px-2"
+                    >
+                      {visitorsLoading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0">
+                  {visitorsLoading ? (
+                    <div className="flex h-40 items-center justify-center text-sm text-muted-foreground">
+                      <Loader2 className="mr-2 size-5 animate-spin text-primary" /> Loading visitor sessions...
+                    </div>
+                  ) : visitorSessions.length === 0 ? (
+                    <div className="text-center py-14 text-sm text-muted-foreground">
+                      <Globe className="size-10 mx-auto mb-3 opacity-20" />
+                      <p className="font-medium">No visitor sessions found.</p>
+                      <p className="text-xs mt-1 text-muted-foreground/70">Visitor sessions are captured via <code className="bg-muted px-1 rounded">visitor-identifier.js</code> on your Shopify storefront.</p>
+                    </div>
+                  ) : (() => {
+                    const q = visitorSearch.toLowerCase()
+                    const filtered = visitorSessions.filter(s =>
+                      !q ||
+                      (s.associated_phone || '').includes(q) ||
+                      (s.associated_email || '').toLowerCase().includes(q) ||
+                      (s.contact_name || '').toLowerCase().includes(q) ||
+                      (s.last_page || '').toLowerCase().includes(q) ||
+                      (s.referrer_source || '').toLowerCase().includes(q)
+                    )
+                    return (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="border-y border-border bg-muted/30 text-muted-foreground font-semibold">
+                              <th className="py-2.5 px-4">Visitor</th>
+                              <th className="py-2.5 px-4">Device</th>
+                              <th className="py-2.5 px-4">Source</th>
+                              <th className="py-2.5 px-4 text-center">Pages</th>
+                              <th className="py-2.5 px-4 text-center">Cart</th>
+                              <th className="py-2.5 px-4">Last Page</th>
+                              <th className="py-2.5 px-4">CRM Contact</th>
+                              <th className="py-2.5 px-4 text-right">When</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border">
+                            {filtered.map((s) => (
+                              <tr key={s.session_id} className="hover:bg-muted/10 text-foreground">
+                                {/* Visitor identity */}
+                                <td className="py-2.5 px-4">
+                                  {s.is_identified ? (
+                                    <div>
+                                      {s.associated_name && (
+                                        <div className="font-semibold text-foreground">{s.associated_name}</div>
+                                      )}
+                                      {s.associated_phone && (
+                                        <div className="text-[10px] text-muted-foreground font-mono">{s.associated_phone}</div>
+                                      )}
+                                      {s.associated_email && !s.associated_phone && (
+                                        <div className="text-[10px] text-muted-foreground">{s.associated_email}</div>
+                                      )}
+                                      {!s.associated_phone && !s.associated_email && !s.associated_name && (
+                                        <Badge className="bg-amber-500/10 text-amber-600 border-none text-[9px] py-0 px-1.5">Identified</Badge>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <Badge className="bg-muted text-muted-foreground border-none text-[9px] py-0 px-1.5 font-normal">Anonymous</Badge>
+                                  )}
+                                </td>
+                                {/* Device */}
+                                <td className="py-2.5 px-4">
+                                  <div className="flex items-center gap-1.5">
+                                    {s.device_type === 'Mobile' ? (
+                                      <Smartphone className="size-3 text-blue-400" />
+                                    ) : s.device_type === 'Tablet' ? (
+                                      <Monitor className="size-3 text-purple-400" />
+                                    ) : (
+                                      <Monitor className="size-3 text-muted-foreground" />
+                                    )}
+                                    <span className="text-muted-foreground">{s.device_type}</span>
+                                  </div>
+                                </td>
+                                {/* Referrer */}
+                                <td className="py-2.5 px-4 text-muted-foreground max-w-[120px] truncate" title={s.referrer_source}>
+                                  {s.referrer_source === 'Direct' ? (
+                                    <span className="text-muted-foreground/60">Direct</span>
+                                  ) : (
+                                    (() => {
+                                      try {
+                                        return new URL(s.referrer_source).hostname.replace('www.', '')
+                                      } catch {
+                                        return s.referrer_source
+                                      }
+                                    })()
+                                  )}
+                                </td>
+                                {/* Pages viewed */}
+                                <td className="py-2.5 px-4 text-center">
+                                  <span className={cn(
+                                    "inline-block min-w-5 text-center rounded px-1.5 font-mono font-semibold text-[10px]",
+                                    s.pages_viewed_count > 3 ? "bg-green-500/10 text-green-600" : "text-muted-foreground"
+                                  )}>
+                                    {s.pages_viewed_count}
+                                  </span>
+                                </td>
+                                {/* Cart events */}
+                                <td className="py-2.5 px-4 text-center">
+                                  {s.cart_events_count > 0 ? (
+                                    <span className="inline-block min-w-5 text-center rounded px-1.5 font-mono font-semibold text-[10px] bg-amber-500/10 text-amber-600">
+                                      {s.cart_events_count}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground/40 text-[10px]">—</span>
+                                  )}
+                                </td>
+                                {/* Last page */}
+                                <td className="py-2.5 px-4 max-w-[140px]">
+                                  {s.last_page ? (
+                                    <span className="text-[10px] text-muted-foreground truncate block" title={s.last_page}>
+                                      {(() => {
+                                        try {
+                                          return new URL(s.last_page).pathname
+                                        } catch {
+                                          return s.last_page
+                                        }
+                                      })()}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground/40 text-[10px]">—</span>
+                                  )}
+                                </td>
+                                {/* Linked CRM contact */}
+                                <td className="py-2.5 px-4">
+                                  {s.contact_name ? (
+                                    <Badge className="bg-green-500/10 text-green-700 border-none text-[9px] py-0 px-1.5 font-medium">
+                                      {s.contact_name}
+                                    </Badge>
+                                  ) : (
+                                    <span className="text-muted-foreground/40 text-[10px]">—</span>
+                                  )}
+                                </td>
+                                {/* Timestamp */}
+                                <td className="py-2.5 px-4 text-right text-[10px] text-muted-foreground whitespace-nowrap">
+                                  {new Date(s.session_start).toLocaleString('en-IN', {
+                                    day: '2-digit', month: 'short',
+                                    hour: '2-digit', minute: '2-digit', hour12: true
+                                  })}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        {filtered.length === 0 && (
+                          <div className="text-center py-8 text-xs text-muted-foreground">No sessions match your search.</div>
+                        )}
+                      </div>
+                    )
+                  })()}
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Tab 3: Templates (WhatsApp Template Roster) */}
           {activeTab === 'templates' && (
             <div className="grid gap-6 lg:grid-cols-5 items-start">
               {/* Left side: List of Meta Templates (3/5 width) */}

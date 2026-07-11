@@ -201,8 +201,18 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       break
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      if (!isRecipientNotAllowedError(msg)) throw err
-      lastError = err
+      // #131030 = "recipient not in allowed list" (Meta sandbox restriction).
+      // ALL format variants of the same number will fail identically — stop
+      // retrying immediately and surface the error once, not 4 times.
+      if (isRecipientNotAllowedError(msg)) {
+        console.warn(
+          `[meta-send] #131030 sandbox restriction — phone ${v} is not in Meta's test recipient list. ` +
+          `Add it at: https://developers.facebook.com/apps → WhatsApp → API Setup → Test numbers.`
+        )
+        lastError = err
+        break // bail — other variants will fail identically
+      }
+      throw err // any other error (bad token, template error, etc.) bubbles up immediately
     }
   }
   if (lastError) throw lastError

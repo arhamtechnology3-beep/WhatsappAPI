@@ -28,14 +28,33 @@ export async function POST() {
         phone = phone.trim()
       }
 
-      // Skip customers without a phone number/mobile number
-      if (!phone) {
-        continue
+      const email = sc.email ? sc.email.trim() : null
+
+      // Build a real name from Shopify data
+      const firstName = (sc.first_name || '').trim()
+      const lastName  = (sc.last_name  || '').trim()
+      let name = [firstName, lastName].filter(Boolean).join(' ')
+
+      // Fallback: use email prefix as name (e.g. "john.doe@..." → "John Doe")
+      if (!name && email) {
+        const prefix = email.split('@')[0]
+        name = prefix
+          .replace(/[._-]+/g, ' ')
+          .replace(/\b\w/g, (c: string) => c.toUpperCase())
+          .trim()
       }
 
-      const email = sc.email ? sc.email.trim() : null
-      const name = `${sc.first_name || ''} ${sc.last_name || ''}`.trim() || 'Shopify Customer'
+      // Final fallback: use Shopify customer ID as identifier
+      if (!name) {
+        name = `Customer #${sc.id}`
+      }
+
       const company = sc.default_address ? sc.default_address.company || null : null
+
+      // Skip truly empty records (no phone, no email, no usable name from Shopify)
+      if (!phone && !email) {
+        continue
+      }
 
       // Check if contact already exists in database
       let existingId: string | null = null
@@ -50,7 +69,7 @@ export async function POST() {
 
       if (byId) {
         existingId = byId.id
-      } else {
+      } else if (phone) {
         // Fallback: search by phone
         const { data: byPhone } = await ctx.supabase
           .from('contacts')
@@ -58,31 +77,32 @@ export async function POST() {
           .eq('account_id', ctx.accountId)
           .eq('phone', phone)
           .maybeSingle()
-
         if (byPhone) {
           existingId = byPhone.id
-        } else if (email) {
-          // Fallback: search by email
-          const { data: byEmail } = await ctx.supabase
-            .from('contacts')
-            .select('id')
-            .eq('account_id', ctx.accountId)
-            .eq('email', email)
-            .maybeSingle()
-          if (byEmail) {
-            existingId = byEmail.id
-          }
+        }
+      }
+
+      if (!existingId && email) {
+        // Fallback: search by email
+        const { data: byEmail } = await ctx.supabase
+          .from('contacts')
+          .select('id')
+          .eq('account_id', ctx.accountId)
+          .eq('email', email)
+          .maybeSingle()
+        if (byEmail) {
+          existingId = byEmail.id
         }
       }
 
       if (existingId) {
-        // Update contact record
+        // Update contact — always overwrite with the real Shopify name
         await ctx.supabase
           .from('contacts')
           .update({
             name,
             email: email || undefined,
-            phone,
+            phone: phone || undefined,
             company: company || undefined,
             shopify_customer_id: String(sc.id),
             updated_at: new Date().toISOString()
@@ -97,7 +117,7 @@ export async function POST() {
             user_id: ctx.userId,
             name,
             email: email || undefined,
-            phone,
+            phone: phone || undefined,
             company: company || undefined,
             shopify_customer_id: String(sc.id),
             created_at: new Date().toISOString(),

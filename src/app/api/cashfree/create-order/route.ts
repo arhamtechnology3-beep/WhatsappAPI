@@ -265,7 +265,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(
       { success: false, error: errorMsg },
-      { status: 500, headers: response.headers }
+      { status: 200, headers: response.headers }
     )
   }
 }

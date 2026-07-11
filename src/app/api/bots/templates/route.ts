@@ -44,7 +44,7 @@ export async function GET() {
       .from("flows")
       .select("id, name, status, template_key, trigger_config, trigger_type")
       .eq("account_id", accountId)
-      .is("template_key", null === false); // template_key is not null
+      .not("template_key", "is", null);
 
     // For each template, count the runs in the last 7 days to show active stats
     const results = await Promise.all(

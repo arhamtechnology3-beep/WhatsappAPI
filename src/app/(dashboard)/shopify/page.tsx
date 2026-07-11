@@ -1251,6 +1251,71 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
                 </Card>
               </div>
 
+              {/* Source-wise breakdown of mobile visitors */}
+              <Card className="bg-card/40 border border-border/80 shadow-sm">
+                <CardHeader className="py-3.5 flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                      Identified Mobile Visitors by Traffic Source
+                    </CardTitle>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      Breakdown of visitor traffic channels that provided a mobile phone number
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] text-muted-foreground border-border bg-muted/40 font-medium">
+                    Total: {visitorSessions.filter(s => !!s.associated_phone).length} Mobile Visitors
+                  </Badge>
+                </CardHeader>
+                <CardContent className="pb-4">
+                  {(() => {
+                    const mobileSessions = visitorSessions.filter(s => !!s.associated_phone);
+                    const breakdown = mobileSessions.reduce((acc, s) => {
+                      const rawSource = s.referrer_source || 'Direct';
+                      let source = rawSource;
+                      try {
+                        if (rawSource.startsWith('http')) {
+                          const url = new URL(rawSource);
+                          source = url.hostname.replace('www.', '');
+                        }
+                      } catch {
+                        // fallback
+                      }
+                      acc[source] = (acc[source] || 0) + 1;
+                      return acc;
+                    }, {} as Record<string, number>);
+
+                    const entries = Object.entries(breakdown).sort((a, b) => b[1] - a[1]);
+
+                    if (entries.length === 0) {
+                      return (
+                        <p className="text-xs text-muted-foreground py-2">
+                          No visitor sessions with associated mobile numbers found.
+                        </p>
+                      );
+                    }
+
+                    return (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+                        {entries.map(([source, count]) => (
+                          <div
+                            key={source}
+                            className="bg-card/65 border border-border/85 p-3 rounded-lg flex flex-col justify-between hover:bg-card hover:border-border transition duration-200 shadow-xs"
+                          >
+                            <span className="text-[11px] font-semibold text-muted-foreground truncate" title={source}>
+                              {source}
+                            </span>
+                            <span className="text-lg font-bold text-foreground mt-1 flex items-baseline gap-1">
+                              {count}
+                              <span className="text-[10px] font-normal text-muted-foreground">visitors</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
+
               {/* Session Table */}
               <Card>
                 <CardHeader className="pb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

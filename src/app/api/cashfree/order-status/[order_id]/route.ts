@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { getCashfreeClient } from '@/lib/cashfree/cashfree-client'
 import { completeOrderConversion } from '@/lib/cashfree/conversion'
+import { fetchShopify } from '@/lib/shopify/shopify-client'
 
 // Allow CORS preflight and actual requests from the Shopify storefront domain
 function setCorsHeaders(response: NextResponse, origin: string | null) {
@@ -71,13 +72,26 @@ export async function GET(
       )
     }
 
-    // 2) Check database status
+async function fetchOrderStatusUrl(shopifyOrderId: string | null) {
+  if (!shopifyOrderId) return null
+  try {
+    const orderRes = await fetchShopify(`/orders/${shopifyOrderId}.json`)
+    return orderRes?.order?.order_status_url || null
+  } catch (err) {
+    console.warn(`[cashfree-order-status] Failed to fetch orderStatusUrl for order ${shopifyOrderId}:`, err)
+    return null
+  }
+}
+
+// 2) Check database status
     if (orderRecord.status === 'COMPLETED') {
+      const orderStatusUrl = await fetchOrderStatusUrl(orderRecord.shopify_order_id)
       return NextResponse.json({
         success: true,
         order_status: 'PAID',
         shopify_order_id: orderRecord.shopify_order_id,
         shopify_order_number: orderRecord.shopify_order_number,
+        order_status_url: orderStatusUrl,
         customer: orderRecord.customer_details,
         shipping_address: orderRecord.shipping_address
       }, { headers: response.headers })
@@ -98,6 +112,41 @@ export async function GET(
     }
 
     if (orderRecord.status === 'PROCESSING') {
+      // Self-healing check: Did the Shopify Draft Order actually complete?
+      if (orderRecord.shopify_draft_order_id) {
+        try {
+          const draftRes = await fetchShopify(`/draft_orders/${orderRecord.shopify_draft_order_id}.json`)
+          if (draftRes && draftRes.draft_order && draftRes.draft_order.status === 'completed') {
+            const realOrderId = draftRes.draft_order.order_id
+            const realOrderNumber = draftRes.draft_order.name || draftRes.draft_order.id
+            console.log(`[cashfree-order-status] Self-healing order ${order_id} to COMPLETED: Completed draft order found.`)
+            
+            // Repair the database record state
+            await supabase
+              .from('cashfree_orders')
+              .update({
+                status: 'COMPLETED',
+                shopify_order_id: String(realOrderId),
+                shopify_order_number: String(realOrderNumber),
+                converted_shopify_order_id: String(realOrderId),
+                updated_at: new Date().toISOString()
+              })
+              .eq('order_id', order_id)
+
+            return NextResponse.json({
+              success: true,
+              order_status: 'PAID',
+              shopify_order_id: String(realOrderId),
+              shopify_order_number: String(realOrderNumber),
+              customer: orderRecord.customer_details,
+              shipping_address: orderRecord.shipping_address
+            }, { headers: response.headers })
+          }
+        } catch (shopifyErr) {
+          console.error(`[cashfree-order-status] Self-healing check failed for ${order_id}:`, shopifyErr)
+        }
+      }
+
       return NextResponse.json({
         success: true,
         order_status: 'PROCESSING'
@@ -136,11 +185,13 @@ export async function GET(
         const conversionResult = await completeOrderConversion(order_id, supabase)
         
         if (conversionResult.success) {
+          const orderStatusUrl = await fetchOrderStatusUrl(conversionResult.shopify_order_id)
           return NextResponse.json({
             success: true,
             order_status: 'PAID',
             shopify_order_id: conversionResult.shopify_order_id,
             shopify_order_number: conversionResult.shopify_order_number,
+            order_status_url: orderStatusUrl,
             customer: orderRecord.customer_details,
             shipping_address: orderRecord.shipping_address
           }, { headers: response.headers })
@@ -160,11 +211,13 @@ export async function GET(
 
         if (reQueryOrder) {
           if (reQueryOrder.status === 'COMPLETED') {
+            const orderStatusUrl = await fetchOrderStatusUrl(reQueryOrder.shopify_order_id)
             return NextResponse.json({
               success: true,
               order_status: 'PAID',
               shopify_order_id: reQueryOrder.shopify_order_id,
               shopify_order_number: reQueryOrder.shopify_order_number,
+              order_status_url: orderStatusUrl,
               customer: reQueryOrder.customer_details,
               shipping_address: reQueryOrder.shipping_address
             }, { headers: response.headers })

@@ -231,6 +231,16 @@ export async function POST(request: Request) {
     const proto = request.headers.get('x-forwarded-proto') || 'https'
     const appBaseUrl = `${proto}://${host}`
 
+    const origin = request.headers.get('origin')
+    const allowedOrigins = [
+      'https://divyaprabhafoods.com',
+      'https://divyaprabhafoods.myshopify.com',
+      'http://127.0.0.1:9292',
+      'http://localhost:3000'
+    ]
+    const storefrontUrl = (origin && allowedOrigins.includes(origin)) ? origin : 'https://divyaprabhafoods.com'
+    const returnUrl = `${storefrontUrl}/cart?cashfree_order_id={order_id}`
+
     const stableCustomerId = crypto.createHash('sha256').update(cleanPhone || email || internalOrderId).digest('hex').substring(0, 32)
     const cashfreeRequest = {
       order_amount: parseFloat(draftOrder.total_price),
@@ -243,7 +253,7 @@ export async function POST(request: Request) {
         customer_phone: cleanPhone
       },
       order_meta: {
-        return_url: `${appBaseUrl}/checkout/return?order_id={order_id}`,
+        return_url: returnUrl,
         notify_url: `${appBaseUrl}/api/cashfree/webhook`
       },
       order_note: 'CartRescue custom checkout order'

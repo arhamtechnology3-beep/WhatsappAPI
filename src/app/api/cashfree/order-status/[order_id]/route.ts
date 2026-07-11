@@ -77,7 +77,9 @@ export async function GET(
         success: true,
         order_status: 'PAID',
         shopify_order_id: orderRecord.shopify_order_id,
-        shopify_order_number: orderRecord.shopify_order_number
+        shopify_order_number: orderRecord.shopify_order_number,
+        customer: orderRecord.customer_details,
+        shipping_address: orderRecord.shipping_address
       }, { headers: response.headers })
     }
 
@@ -138,7 +140,9 @@ export async function GET(
             success: true,
             order_status: 'PAID',
             shopify_order_id: conversionResult.shopify_order_id,
-            shopify_order_number: conversionResult.shopify_order_number
+            shopify_order_number: conversionResult.shopify_order_number,
+            customer: orderRecord.customer_details,
+            shipping_address: orderRecord.shipping_address
           }, { headers: response.headers })
         } else {
           return NextResponse.json({
@@ -160,7 +164,9 @@ export async function GET(
               success: true,
               order_status: 'PAID',
               shopify_order_id: reQueryOrder.shopify_order_id,
-              shopify_order_number: reQueryOrder.shopify_order_number
+              shopify_order_number: reQueryOrder.shopify_order_number,
+              customer: reQueryOrder.customer_details,
+              shipping_address: reQueryOrder.shipping_address
             }, { headers: response.headers })
           } else if (reQueryOrder.status === 'PAID_NOT_CONVERTED') {
             return NextResponse.json({

@@ -217,6 +217,10 @@ export async function POST(request: Request) {
     }
 
     // 8) Request order creation from Cashfree
+    const host = request.headers.get('host') || 'whatsapp.arhamtechnology.com'
+    const proto = request.headers.get('x-forwarded-proto') || 'https'
+    const appBaseUrl = `${proto}://${host}`
+
     const stableCustomerId = crypto.createHash('sha256').update(phone || email || internalOrderId).digest('hex').substring(0, 32)
     const cashfreeRequest = {
       order_amount: parseFloat(draftOrder.total_price),
@@ -229,8 +233,8 @@ export async function POST(request: Request) {
         customer_phone: phone
       },
       order_meta: {
-        return_url: `${process.env.APP_BASE_URL}/checkout/return?order_id={order_id}`,
-        notify_url: `${process.env.APP_BASE_URL}/api/cashfree/webhook`
+        return_url: `${appBaseUrl}/checkout/return?order_id={order_id}`,
+        notify_url: `${appBaseUrl}/api/cashfree/webhook`
       },
       order_note: 'CartRescue custom checkout order'
     }

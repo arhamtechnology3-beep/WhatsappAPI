@@ -70,7 +70,6 @@ export async function completeOrderConversion(orderId: string, supabase: Supabas
       .update({
         status: 'COMPLETED',
         shopify_order_id: String(shopifyOrderId),
-        shopify_order_number: String(shopifyOrderNumber),
         converted_shopify_order_id: String(shopifyOrderId),
         updated_at: new Date().toISOString()
       })

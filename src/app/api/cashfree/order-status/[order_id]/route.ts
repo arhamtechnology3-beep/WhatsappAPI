@@ -72,26 +72,29 @@ export async function GET(
       )
     }
 
-async function fetchOrderStatusUrl(shopifyOrderId: string | null) {
-  if (!shopifyOrderId) return null
+async function fetchShopifyOrderDetails(shopifyOrderId: string | null) {
+  if (!shopifyOrderId) return { orderStatusUrl: null, orderNumber: null }
   try {
     const orderRes = await fetchShopify(`/orders/${shopifyOrderId}.json`)
-    return orderRes?.order?.order_status_url || null
+    return {
+      orderStatusUrl: orderRes?.order?.order_status_url || null,
+      orderNumber: orderRes?.order?.order_number || null
+    }
   } catch (err) {
-    console.warn(`[cashfree-order-status] Failed to fetch orderStatusUrl for order ${shopifyOrderId}:`, err)
-    return null
+    console.warn(`[cashfree-order-status] Failed to fetch details for order ${shopifyOrderId}:`, err)
+    return { orderStatusUrl: null, orderNumber: null }
   }
 }
 
 // 2) Check database status
     if (orderRecord.status === 'COMPLETED') {
-      const orderStatusUrl = await fetchOrderStatusUrl(orderRecord.shopify_order_id)
+      const details = await fetchShopifyOrderDetails(orderRecord.shopify_order_id)
       return NextResponse.json({
         success: true,
         order_status: 'PAID',
         shopify_order_id: orderRecord.shopify_order_id,
-        shopify_order_number: orderRecord.shopify_order_number,
-        order_status_url: orderStatusUrl,
+        shopify_order_number: details.orderNumber,
+        order_status_url: details.orderStatusUrl,
         customer: orderRecord.customer_details,
         shipping_address: orderRecord.shipping_address
       }, { headers: response.headers })
@@ -127,17 +130,18 @@ async function fetchOrderStatusUrl(shopifyOrderId: string | null) {
               .update({
                 status: 'COMPLETED',
                 shopify_order_id: String(realOrderId),
-                shopify_order_number: String(realOrderNumber),
                 converted_shopify_order_id: String(realOrderId),
                 updated_at: new Date().toISOString()
               })
               .eq('order_id', order_id)
 
+            const details = await fetchShopifyOrderDetails(String(realOrderId))
             return NextResponse.json({
               success: true,
               order_status: 'PAID',
               shopify_order_id: String(realOrderId),
-              shopify_order_number: String(realOrderNumber),
+              shopify_order_number: details.orderNumber,
+              order_status_url: details.orderStatusUrl,
               customer: orderRecord.customer_details,
               shipping_address: orderRecord.shipping_address
             }, { headers: response.headers })
@@ -185,13 +189,13 @@ async function fetchOrderStatusUrl(shopifyOrderId: string | null) {
         const conversionResult = await completeOrderConversion(order_id, supabase)
         
         if (conversionResult.success) {
-          const orderStatusUrl = await fetchOrderStatusUrl(conversionResult.shopify_order_id)
+          const details = await fetchShopifyOrderDetails(conversionResult.shopify_order_id)
           return NextResponse.json({
             success: true,
             order_status: 'PAID',
             shopify_order_id: conversionResult.shopify_order_id,
-            shopify_order_number: conversionResult.shopify_order_number,
-            order_status_url: orderStatusUrl,
+            shopify_order_number: details.orderNumber,
+            order_status_url: details.orderStatusUrl,
             customer: orderRecord.customer_details,
             shipping_address: orderRecord.shipping_address
           }, { headers: response.headers })
@@ -211,13 +215,13 @@ async function fetchOrderStatusUrl(shopifyOrderId: string | null) {
 
         if (reQueryOrder) {
           if (reQueryOrder.status === 'COMPLETED') {
-            const orderStatusUrl = await fetchOrderStatusUrl(reQueryOrder.shopify_order_id)
+            const details = await fetchShopifyOrderDetails(reQueryOrder.shopify_order_id)
             return NextResponse.json({
               success: true,
               order_status: 'PAID',
               shopify_order_id: reQueryOrder.shopify_order_id,
-              shopify_order_number: reQueryOrder.shopify_order_number,
-              order_status_url: orderStatusUrl,
+              shopify_order_number: details.orderNumber,
+              order_status_url: details.orderStatusUrl,
               customer: reQueryOrder.customer_details,
               shipping_address: reQueryOrder.shipping_address
             }, { headers: response.headers })

@@ -21,6 +21,9 @@ export interface MetaPhoneInfo {
   display_phone_number: string
   verified_name?: string
   quality_rating?: string
+  messaging_limit_tier?: string
+  whatsapp_business_manager_messaging_limit?: string
+  business_verification_status?: string
 }
 
 interface MetaErrorResponse {
@@ -55,18 +58,36 @@ export interface VerifyPhoneNumberArgs {
 
 /**
  * Verify a Meta phone number ID by fetching its public metadata
- * (display_phone_number, verified_name, quality_rating).
+ * (display_phone_number, verified_name, quality_rating, messaging limit info).
  */
 export async function verifyPhoneNumber(
   args: VerifyPhoneNumberArgs
 ): Promise<MetaPhoneInfo> {
   const { phoneNumberId, accessToken } = args
-  const url = `${META_API_BASE}/${phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating`
+  const url = `${META_API_BASE}/${phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating,messaging_limit_tier,whatsapp_business_manager_messaging_limit`
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
   if (!response.ok) {
     await throwMetaError(response, `Meta API error: ${response.status}`)
+  }
+  return response.json()
+}
+
+/**
+ * Fetch WhatsApp Business Account (WABA) details (including business verification status)
+ */
+export async function getWabaInfo(args: {
+  wabaId: string
+  accessToken: string
+}): Promise<{ business_verification_status?: string }> {
+  const { wabaId, accessToken } = args
+  const url = `${META_API_BASE}/${wabaId}?fields=business_verification_status`
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!response.ok) {
+    return {}
   }
   return response.json()
 }

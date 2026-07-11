@@ -5,6 +5,7 @@ import {
   registerPhoneNumber,
   subscribeWabaToApp,
   verifyPhoneNumber,
+  getWabaInfo,
 } from '@/lib/whatsapp/meta-api'
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
 
@@ -87,7 +88,7 @@ export async function GET() {
 
     const { data: config, error: configError } = await supabase
       .from('whatsapp_config')
-      .select('phone_number_id, access_token, status')
+      .select('phone_number_id, access_token, status, waba_id')
       .eq('account_id', accountId)
       .maybeSingle()
 
@@ -135,7 +136,26 @@ export async function GET() {
         phoneNumberId: config.phone_number_id,
         accessToken,
       })
-      return NextResponse.json({ connected: true, phone_info: phoneInfo })
+
+      let wabaInfo = {}
+      if (config.waba_id) {
+        try {
+          wabaInfo = await getWabaInfo({
+            wabaId: config.waba_id,
+            accessToken,
+          })
+        } catch (wabaErr) {
+          console.error('[whatsapp/config GET] Meta WABA fetch failed:', wabaErr)
+        }
+      }
+
+      return NextResponse.json({
+        connected: true,
+        phone_info: {
+          ...phoneInfo,
+          ...wabaInfo,
+        },
+      })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown Meta API error'
       console.error('[whatsapp/config GET] Meta API verification failed:', message)

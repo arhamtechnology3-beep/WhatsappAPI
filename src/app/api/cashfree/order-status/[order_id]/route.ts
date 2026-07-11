@@ -189,7 +189,7 @@ async function fetchShopifyOrderDetails(shopifyOrderId: string | null) {
         const conversionResult = await completeOrderConversion(order_id, supabase)
         
         if (conversionResult.success) {
-          const details = await fetchShopifyOrderDetails(conversionResult.shopify_order_id)
+          const details = await fetchShopifyOrderDetails(conversionResult.shopify_order_id ?? null)
           return NextResponse.json({
             success: true,
             order_status: 'PAID',

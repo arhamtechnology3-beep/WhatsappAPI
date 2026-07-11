@@ -23,6 +23,7 @@ import {
   X,
   Zap,
   ShoppingBag,
+  BarChart3,
 } from "lucide-react";
 import type { AccountRole } from "@/lib/auth/roles";
 
@@ -92,6 +93,7 @@ const navItems: NavItem[] = [
   { href: "/shopify", label: "Shopify App", icon: ShoppingBag },
   { href: "/inbox", label: "Inbox", icon: MessageSquare },
   { href: "/contacts", label: "Contacts", icon: Users },
+  { href: "/ctwa-insights", label: "CTWA Insights", icon: BarChart3 },
   { href: "/pipelines", label: "Pipelines", icon: GitBranch },
   { href: "/broadcasts", label: "Broadcasts", icon: Radio },
   { href: "/automations", label: "Automations", icon: Zap },

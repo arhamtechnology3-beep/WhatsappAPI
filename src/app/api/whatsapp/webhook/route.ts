@@ -13,6 +13,7 @@ import {
 } from '@/lib/whatsapp/template-webhook'
 import { fetchShopify } from '@/lib/shopify/shopify-client'
 import { moveDealToStageName } from '@/lib/shopify/shopify-helper'
+import { classifyReferral } from '@/lib/whatsapp/referral-parser'
 
 // The `after()` callback in POST runs within this route's max duration.
 // Inbound processing can fan out to per-media Meta verification calls, so
@@ -46,6 +47,14 @@ interface WhatsAppMessage {
   sticker?: { id: string; mime_type: string }
   location?: { latitude: number; longitude: number; name?: string; address?: string }
   reaction?: { message_id: string; emoji: string }
+  referral?: {
+    source_url?: string
+    source_id?: string
+    source_type?: string
+    headline?: string
+    body?: string
+    ctwa_clid?: string
+  }
   /**
    * Set when the customer taps a button or list row on an interactive
    * message we sent. `button_reply.id` / `list_reply.id` is whatever id
@@ -621,6 +630,43 @@ async function processMessage(
     .eq('conversation_id', conversation.id)
     .eq('sender_type', 'customer')
   const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0
+
+  if (isFirstInboundMessage) {
+    try {
+      const { data: existingSource } = await supabaseAdmin()
+        .from('conversation_sources')
+        .select('id')
+        .eq('contact_id', contactRecord.id)
+        .maybeSingle()
+
+      if (!existingSource) {
+        const referral = message.referral
+        const channel = classifyReferral(referral)
+
+        const { error: insErr } = await supabaseAdmin()
+          .from('conversation_sources')
+          .insert({
+            account_id: accountId,
+            conversation_id: conversation.id,
+            contact_id: contactRecord.id,
+            source_channel: channel,
+            source_id: referral?.source_id || null,
+            source_url: referral?.source_url || null,
+            headline: referral?.headline || null,
+            body: referral?.body || null,
+            ctwa_clid: referral?.ctwa_clid || null,
+          })
+
+        if (insErr) {
+          if (!isUniqueViolation(insErr)) {
+            console.error('[webhook] failed to save conversation source:', insErr)
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[webhook] error processing conversation source:', err)
+    }
+  }
 
   const { error: msgError } = await supabaseAdmin().from('messages').insert({
     conversation_id: conversation.id,

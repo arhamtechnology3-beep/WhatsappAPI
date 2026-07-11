@@ -48,7 +48,6 @@ export async function DELETE(
       return NextResponse.json({ error: "Failed to disconnect integration" }, { status: 500 });
     }
 
-    // Special cleanups for specific integrations
     if (key === "generic_webhook") {
       // Set all generic webhooks to inactive (or delete them)
       const { error: webhooksErr } = await supabase
@@ -58,6 +57,16 @@ export async function DELETE(
 
       if (webhooksErr) {
         console.error("Error clearing webhook endpoints:", webhooksErr);
+      }
+    } else if (key === "cashfree") {
+      // Delete from cashfree_config
+      const { error: cfErr } = await supabase
+        .from("cashfree_config")
+        .delete()
+        .eq("account_id", accountId);
+
+      if (cfErr) {
+        console.error("Error clearing cashfree config:", cfErr);
       }
     }
 

@@ -89,6 +89,14 @@ const WebhookIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
+const CashfreeIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 32 32" fill="none" className={className} xmlns="http://www.w3.org/2000/svg">
+    <rect width="32" height="32" rx="6" fill="#1C3879" />
+    <path d="M7 9h18v3H7V9zm0 5h14v3H7v-3zm0 5h18v3H7v-3z" fill="#FFF" />
+    <circle cx="23" cy="15.5" r="2.5" fill="#00D2C4" />
+  </svg>
+);
+
 export default function IntegrationsPage() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,6 +112,10 @@ export default function IntegrationsPage() {
 
   const [webhookTrigger, setWebhookTrigger] = useState('payment.captured');
   const [webhookTarget, setWebhookTarget] = useState('');
+
+  const [cashfreeClientId, setCashfreeClientId] = useState('');
+  const [cashfreeClientSecret, setCashfreeClientSecret] = useState('');
+  const [cashfreeEnvironment, setCashfreeEnvironment] = useState('SANDBOX');
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -147,6 +159,10 @@ export default function IntegrationsPage() {
     } else if (integration.key === 'generic_webhook') {
       setWebhookTrigger('payment.captured');
       setWebhookTarget('');
+    } else if (integration.key === 'cashfree') {
+      setCashfreeClientId(integration.config.clientId || '');
+      setCashfreeClientSecret('');
+      setCashfreeEnvironment(integration.config.environment || 'SANDBOX');
     }
   };
 
@@ -163,6 +179,8 @@ export default function IntegrationsPage() {
         body = { email: shiprocketEmail, password: shiprocketPassword };
       } else if (selectedIntegration.key === 'generic_webhook') {
         body = { trigger_event: webhookTrigger, target_url: webhookTarget };
+      } else if (selectedIntegration.key === 'cashfree') {
+        body = { clientId: cashfreeClientId, clientSecret: cashfreeClientSecret, environment: cashfreeEnvironment };
       }
 
       const res = await fetch(`/api/integrations/${selectedIntegration.key}/connect`, {
@@ -236,6 +254,8 @@ export default function IntegrationsPage() {
         return <ShiprocketIcon className={sizeClass} />;
       case 'generic_webhook':
         return <WebhookIcon className={`${sizeClass} text-indigo-500`} />;
+      case 'cashfree':
+        return <CashfreeIcon className={sizeClass} />;
       default:
         return <Plug className={`${sizeClass} text-muted-foreground`} />;
     }
@@ -548,6 +568,54 @@ export default function IntegrationsPage() {
                       className="w-full bg-primary hover:bg-primary/95 text-primary-foreground font-semibold text-xs py-2 shadow-xs"
                     >
                       {submitting ? 'Authenticating...' : selectedIntegration.status === 'connected' ? 'Update Credentials' : 'Connect Shiprocket'}
+                    </Button>
+                  </form>
+                )}
+
+                {selectedIntegration.key === 'cashfree' && (
+                  <form onSubmit={handleConnect} className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground font-semibold">Client ID</Label>
+                      <Input
+                        value={cashfreeClientId}
+                        onChange={(e) => setCashfreeClientId(e.target.value)}
+                        placeholder="Enter Client ID"
+                        required
+                        className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-9 text-xs"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground font-semibold">Client Secret</Label>
+                      <Input
+                        type="password"
+                        value={cashfreeClientSecret}
+                        onChange={(e) => setCashfreeClientSecret(e.target.value)}
+                        placeholder={selectedIntegration.status === 'connected' ? '••••••••••••••••' : 'Enter Client Secret'}
+                        required={selectedIntegration.status !== 'connected'}
+                        className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-9 text-xs"
+                      />
+                      {selectedIntegration.status === 'connected' && (
+                        <p className="text-[10px] text-muted-foreground">Leave blank to keep existing client secret unchanged.</p>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground font-semibold">Environment</Label>
+                      <select
+                        value={cashfreeEnvironment}
+                        onChange={(e) => setCashfreeEnvironment(e.target.value)}
+                        className="w-full h-9 rounded-md border border-border bg-muted/40 text-foreground px-3 py-1 text-xs focus:outline-none"
+                      >
+                        <option value="SANDBOX">Sandbox</option>
+                        <option value="PRODUCTION">Production</option>
+                      </select>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      disabled={submitting}
+                      className="w-full bg-primary hover:bg-primary/95 text-primary-foreground font-semibold text-xs py-2 shadow-xs"
+                    >
+                      {submitting ? 'Verifying keys...' : selectedIntegration.status === 'connected' ? 'Update Credentials' : 'Connect Cashfree'}
                     </Button>
                   </form>
                 )}

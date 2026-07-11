@@ -78,7 +78,8 @@ INSERT INTO integrations (key, name, description, category, is_active_by_default
   ('generic_webhook', 'Generic Webhook', 'Trigger WhatsApp messages from an external system using webhook.', 'developer', false),
   ('shopify', 'Shopify', 'Send Order notifications to your customers and also boost cart recoveries.', 'ecommerce', true),
   ('razorpay', 'Razorpay', 'Send Payment notifications and subscription alerts to your customers.', 'payments', false),
-  ('shiprocket', 'Shiprocket', 'Send Order updates to your customer on WhatsApp for better experience.', 'logistics', false)
+  ('shiprocket', 'Shiprocket', 'Send Order updates to your customer on WhatsApp for better experience.', 'logistics', false),
+  ('cashfree', 'Cashfree', 'Send Payment links, capture refunds, and update order statuses automatically via Cashfree.', 'payments', false)
 ON CONFLICT (key) DO UPDATE SET
   name = EXCLUDED.name,
   description = EXCLUDED.description,

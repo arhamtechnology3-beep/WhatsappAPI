@@ -69,6 +69,7 @@ export async function GET() {
       delete cleanConfig.encrypted_secret;
       delete cleanConfig.keySecret;
       delete cleanConfig.password;
+      delete cleanConfig.clientSecret;
 
       return {
         ...integration,

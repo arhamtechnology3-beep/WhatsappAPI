@@ -97,6 +97,56 @@ export async function POST(
         email: email.trim(),
         encrypted_password: encrypt(password.trim()),
       };
+    } else if (key === "cashfree") {
+      const { clientId, clientSecret, environment } = body;
+      if (!clientId?.trim() || !clientSecret?.trim()) {
+        return NextResponse.json({ error: "Client ID and Client Secret are required" }, { status: 400 });
+      }
+
+      const env = (environment || "SANDBOX").toUpperCase();
+      if (env !== "SANDBOX" && env !== "PRODUCTION") {
+        return NextResponse.json({ error: "Environment must be SANDBOX or PRODUCTION" }, { status: 400 });
+      }
+
+      // Validate credentials against Cashfree API
+      const envUrl = env === "PRODUCTION" ? "https://api.cashfree.com/pg" : "https://sandbox.cashfree.com/pg";
+      const res = await fetch(`${envUrl}/orders?limit=1`, {
+        headers: {
+          "x-client-id": clientId.trim(),
+          "x-client-secret": clientSecret.trim(),
+          "x-api-version": "2023-08-01",
+        },
+      });
+
+      if (res.status === 401) {
+        return NextResponse.json({ error: "Invalid Cashfree Client ID or Client Secret" }, { status: 400 });
+      }
+
+      // Write/upsert to cashfree_config
+      const encryptedSecret = encrypt(clientSecret.trim());
+      const { error: cfConfigErr } = await supabase
+        .from("cashfree_config")
+        .upsert({
+          account_id: accountId,
+          client_id: clientId.trim(),
+          client_secret: encryptedSecret,
+          environment: env,
+          api_version: "2023-08-01",
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: "account_id",
+        });
+
+      if (cfConfigErr) {
+        console.error("Error saving Cashfree config:", cfConfigErr);
+        return NextResponse.json({ error: "Failed to save Cashfree credentials in database" }, { status: 500 });
+      }
+
+      connectionLabel = `Cashfree (${env})`;
+      configData = {
+        clientId: clientId.trim(),
+        environment: env,
+      };
     } else if (key === "generic_webhook") {
       const { trigger_event, target_url } = body;
       if (!trigger_event?.trim()) {

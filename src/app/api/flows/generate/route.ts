@@ -220,9 +220,16 @@ export async function POST(request: Request) {
 
             if (!response.ok) {
               const rawErr = await response.text();
-              // If model name is not found (404), try next model in the array
-              if (response.status === 404 || rawErr.includes("NOT_FOUND")) {
-                console.warn(`[AI Bot Generator] Model ${modelName} returned 404, falling back...`);
+              // If model name is not found (404) or quota is 0 / exhausted (429), try next model
+              if (
+                response.status === 404 ||
+                response.status === 429 ||
+                rawErr.includes("NOT_FOUND") ||
+                rawErr.includes("RESOURCE_EXHAUSTED") ||
+                rawErr.includes("Quota exceeded")
+              ) {
+                console.warn(`[AI Bot Generator] Model ${modelName} returned status ${response.status}, falling back...`);
+                lastError = `Model ${modelName}: ${rawErr}`;
                 continue;
               }
               throw new Error(`Gemini API request failed: ${response.status} - ${rawErr}`);

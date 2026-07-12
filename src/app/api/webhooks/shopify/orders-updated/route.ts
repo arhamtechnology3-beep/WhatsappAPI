@@ -80,15 +80,82 @@ export async function POST(request: Request) {
         .eq('id', dealId)
     }
 
-    // Handle order_delivered trigger when fulfillment status transitions to fulfilled
-    const hasBecomeFulfilled = fulfillmentStatus === 'fulfilled' && existingOrder?.fulfillment_status !== 'fulfilled'
-    let notifyRes: { status: 'enqueued' | 'skipped_not_activated' | 'error'; message?: string } = {
-      status: 'skipped_not_activated',
-      message: undefined,
+    const customerFirstName = payload.customer?.first_name || contact.name || 'Customer'
+    let lastStatus: 'success' | 'skipped_not_activated' | 'failed' = 'skipped_not_activated'
+    let lastMessage = ''
+
+    // 1) Trigger Order Cancelled
+    const hasBecomeCancelled = isCancelled && existingOrder?.financial_status !== 'voided'
+    if (hasBecomeCancelled) {
+      const res = await enqueueShopifyNotification(
+        supabase,
+        accountId,
+        contact.id,
+        phone || '',
+        'order_cancelled',
+        {
+          customer_name: customerFirstName,
+          order_number: orderNumber,
+        }
+      )
+      if (res.status === 'enqueued') lastStatus = 'success'
+      if (res.status === 'error') {
+        lastStatus = 'failed'
+        lastMessage += `Cancel: ${res.message || 'error'}. `
+      }
     }
 
+    // 2) Trigger Refunded
+    const isRefunded = financialStatus === 'refunded' || financialStatus === 'partially_refunded'
+    const wasRefunded = existingOrder?.financial_status === 'refunded' || existingOrder?.financial_status === 'partially_refunded'
+    const hasBecomeRefunded = isRefunded && !wasRefunded
+    if (hasBecomeRefunded) {
+      const res = await enqueueShopifyNotification(
+        supabase,
+        accountId,
+        contact.id,
+        phone || '',
+        'payment_refunded',
+        {
+          customer_name: customerFirstName,
+          order_number: orderNumber,
+          total_price: totalPrice.toFixed(2),
+        }
+      )
+      if (res.status === 'enqueued') lastStatus = 'success'
+      if (res.status === 'error') {
+        lastStatus = 'failed'
+        lastMessage += `Refund: ${res.message || 'error'}. `
+      }
+    }
+
+    // 3) Trigger Payment Received (Paid)
+    const isPaid = financialStatus === 'paid'
+    const wasPaid = existingOrder?.financial_status === 'paid'
+    const hasBecomePaid = isPaid && !wasPaid
+    if (hasBecomePaid) {
+      const res = await enqueueShopifyNotification(
+        supabase,
+        accountId,
+        contact.id,
+        phone || '',
+        'payment_received',
+        {
+          customer_name: customerFirstName,
+          order_number: orderNumber,
+          total_price: totalPrice.toFixed(2),
+        }
+      )
+      if (res.status === 'enqueued') lastStatus = 'success'
+      if (res.status === 'error') {
+        lastStatus = 'failed'
+        lastMessage += `Paid: ${res.message || 'error'}. `
+      }
+    }
+
+    // 4) Handle order_delivered trigger when fulfillment status transitions to fulfilled
+    const hasBecomeFulfilled = fulfillmentStatus === 'fulfilled' && existingOrder?.fulfillment_status !== 'fulfilled'
     if (hasBecomeFulfilled) {
-      const customerFirstName = payload.customer?.first_name || contact.name || 'Customer'
       const res = await enqueueShopifyNotification(
         supabase,
         accountId,
@@ -100,7 +167,11 @@ export async function POST(request: Request) {
           order_number: orderNumber,
         }
       )
-      notifyRes = { status: res.status, message: res.message }
+      if (res.status === 'enqueued') lastStatus = 'success'
+      if (res.status === 'error') {
+        lastStatus = 'failed'
+        lastMessage += `Delivered: ${res.message || 'error'}. `
+      }
     }
 
     // Log success or skipped
@@ -108,8 +179,8 @@ export async function POST(request: Request) {
       account_id: accountId,
       topic,
       payload,
-      status: notifyRes.status === 'error' ? 'failed' : (notifyRes.status === 'skipped_not_activated' ? 'skipped_not_activated' : 'success'),
-      error_message: notifyRes.status === 'skipped_not_activated' ? 'skipped_not_activated' : (notifyRes.message || null),
+      status: lastStatus === 'failed' ? 'failed' : (lastStatus === 'skipped_not_activated' ? 'skipped_not_activated' : 'success'),
+      error_message: lastMessage || (lastStatus === 'skipped_not_activated' ? 'skipped_not_activated' : null),
     })
 
     return NextResponse.json({ success: true })

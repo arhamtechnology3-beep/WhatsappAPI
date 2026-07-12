@@ -1,6 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { findExistingContact } from '@/lib/contacts/dedupe'
 import { normalizePhone } from '@/lib/whatsapp/phone-utils'
+import { SHOPIFY_TEMPLATE_LIBRARY } from './whatsapp-template-library'
+
 
 export interface ShopifyCustomerPayload {
   id?: number | string
@@ -324,6 +326,32 @@ export async function markDealAsWon(
     .eq('id', dealId)
 }
 
+const TRIGGER_EVENT_MAP: Record<string, string[]> = {
+  cart_abandoned: ['cart_abandoned_1h', 'cart_abandoned_24h', 'cart_abandoned_72h'],
+  order_created: ['order_created'],
+  order_fulfilled: ['fulfillment_shipped'],
+  order_delivered: ['delivered'],
+  order_cancelled: ['order_cancelled'],
+  payment_refunded: ['payment_refunded'],
+  payment_received: ['payment_received'],
+};
+
+function getVariablesForTemplate(templateName: string, key: string): string[] {
+  const recipe = SHOPIFY_TEMPLATE_LIBRARY.find((r) => r.template_name === templateName);
+  if (recipe) return [...recipe.variables];
+
+  // Fallbacks for categories not in initial library
+  if (key === 'order_cancelled') return ['customer_name', 'order_number'];
+  if (key === 'refund_processed') return ['customer_name', 'order_number', 'total_price'];
+  if (key === 'payment_received') return ['customer_name', 'order_number'];
+  if (key === 'out_for_delivery') return ['customer_name', 'order_number'];
+  if (key === 'delivery_delayed') return ['customer_name', 'order_number'];
+  if (key === 'return_initiated') return ['customer_name', 'order_number'];
+  if (key === 'return_picked_up') return ['customer_name', 'order_number'];
+
+  return ['customer_name', 'order_number', 'total_price'];
+}
+
 /**
  * Enqueues a WhatsApp notification by matching the trigger rule and mapping variables.
  */
@@ -332,7 +360,7 @@ export async function enqueueShopifyNotification(
   accountId: string,
   contactId: string,
   phone: string,
-  triggerType: 'cart_abandoned' | 'order_created' | 'order_fulfilled' | 'order_delivered',
+  triggerType: 'cart_abandoned' | 'order_created' | 'order_fulfilled' | 'order_delivered' | 'order_cancelled' | 'payment_refunded' | 'payment_received',
   data: {
     customer_name?: string
     product_name?: string
@@ -344,54 +372,124 @@ export async function enqueueShopifyNotification(
     is_cod?: boolean
   }
 ): Promise<{ status: 'enqueued' | 'skipped_not_activated' | 'error'; message?: string }> {
-  // 1) Load the rule for this trigger
-  const { data: rule, error: ruleError } = await supabase
-    .from('shopify_automation_rules')
-    .select('*')
-    .eq('account_id', accountId)
-    .eq('trigger_type', triggerType)
-    .maybeSingle()
+  try {
+    const events = TRIGGER_EVENT_MAP[triggerType] || [];
+    if (events.length === 0) {
+      return { status: 'skipped_not_activated' };
+    }
 
-  if (ruleError || !rule) {
-    return { status: 'error', message: 'Automation rule not found: ' + (ruleError?.message || '') }
+    // 1) Load active merchant workflows matching the mapped trigger events
+    const { data: workflows, error: wfErr } = await supabase
+      .from('merchant_workflows')
+      .select(`
+        id,
+        message_template,
+        config,
+        workflow_templates (
+          id,
+          key,
+          name,
+          trigger_event,
+          delay_minutes,
+          meta_template_name
+        )
+      `)
+      .eq('merchant_id', accountId)
+      .eq('status', 'active');
+
+    if (wfErr) {
+      return { status: 'error', message: 'Failed to load merchant workflows: ' + wfErr.message };
+    }
+
+    const matchedWorkflows = (workflows || []).filter((w: any) =>
+      w.workflow_templates && events.includes(w.workflow_templates.trigger_event)
+    );
+
+    if (matchedWorkflows.length === 0) {
+      return { status: 'skipped_not_activated' };
+    }
+
+    let enqueuedCount = 0;
+
+    for (const mw of matchedWorkflows) {
+      const template = mw.workflow_templates as any;
+      if (!template) continue;
+
+      // Conditional routing logic:
+      // - COD confirmation ONLY runs if order is COD.
+      // - Order confirmation ONLY runs if order is NOT COD.
+      if (template.key === 'cod_confirmation' && !data.is_cod) {
+        continue;
+      }
+      if (template.key === 'order_confirmation' && data.is_cod) {
+        continue;
+      }
+
+      const templateName = template.meta_template_name;
+      const variables = getVariablesForTemplate(templateName, template.key);
+
+      // Resolve template variables
+      const templateParams = variables.map((variableName) => {
+        return data[variableName as keyof typeof data] || '';
+      });
+
+      // 2) Insert pending log into workflow_logs
+      const { data: logRow, error: logErr } = await supabase
+        .from('workflow_logs')
+        .insert({
+          account_id: accountId,
+          workflow_template_id: template.id,
+          workflow_name: template.name,
+          contact_id: contactId,
+          contact_name: data.customer_name || 'Customer',
+          contact_phone: phone,
+          status: 'pending',
+        })
+        .select('id')
+        .single();
+
+      if (logErr) {
+        console.error('[shopify-helper] error logging workflow:', logErr);
+      }
+
+      // 3) Enqueue send job
+      const delay = template.delay_minutes ?? 0;
+      const runAt = new Date(Date.now() + delay * 60000).toISOString();
+
+      const { error: insertError } = await supabase
+        .from('whatsapp_send_jobs')
+        .insert({
+          account_id: accountId,
+          contact_id: contactId,
+          recipient_phone: phone,
+          template_name: templateName,
+          template_params: templateParams,
+          status: 'pending',
+          run_at: runAt,
+          workflow_log_id: logRow?.id || null,
+        });
+
+      if (insertError) {
+        console.error('[shopify-helper] failed to insert send job:', insertError.message);
+        if (logRow?.id) {
+          await supabase
+            .from('workflow_logs')
+            .update({ status: 'failed', error_message: insertError.message })
+            .eq('id', logRow.id);
+        }
+      } else {
+        enqueuedCount++;
+      }
+    }
+
+    if (enqueuedCount > 0) {
+      return { status: 'enqueued' };
+    }
+
+    return { status: 'skipped_not_activated' };
+  } catch (err: any) {
+    return { status: 'error', message: err.message || String(err) };
   }
-
-  // 2) Verify it is active and approved
-  if (!rule.is_active || rule.meta_approval_status !== 'approved') {
-    return { status: 'skipped_not_activated' }
-  }
-
-  // Override template for COD confirmations
-  const templateName = (triggerType === 'order_created' && data.is_cod)
-    ? 'wacrm_cod_confirmation_v1'
-    : rule.template_name
-
-  // 3) Map template variables from mapping array
-  const mapping: string[] = rule.template_variable_mapping || []
-  const templateParams = mapping.map((variableName) => {
-    return data[variableName as keyof typeof data] || ''
-  })
-
-  // 4) Enqueue the message send job
-  const runAt = new Date(Date.now() + rule.delay_minutes * 60000).toISOString()
-
-  const { error: insertError } = await supabase
-    .from('whatsapp_send_jobs')
-    .insert({
-      account_id: accountId,
-      contact_id: contactId,
-      recipient_phone: phone,
-      template_name: templateName,
-      template_params: templateParams,
-      status: 'pending',
-      run_at: runAt,
-    })
-
-  if (insertError) {
-    return { status: 'error', message: 'Failed to enqueue send job: ' + insertError.message }
-  }
-
-  return { status: 'enqueued' }
 }
 
 /**

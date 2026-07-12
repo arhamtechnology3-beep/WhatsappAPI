@@ -165,6 +165,13 @@ export async function GET(request: Request) {
             } as any)
             .eq('id', job.id)
 
+          if (job.workflow_log_id) {
+            await supabase
+              .from('workflow_logs')
+              .update({ status: 'sent' })
+              .eq('id', job.workflow_log_id)
+          }
+
           jobsProcessed++
         } catch (err: any) {
           const errMsg = err.message || String(err)
@@ -183,6 +190,13 @@ export async function GET(request: Request) {
               run_at: nextRunAt,
             } as any)
             .eq('id', job.id)
+
+          if (job.workflow_log_id) {
+            await supabase
+              .from('workflow_logs')
+              .update({ status: 'failed', error_message: errMsg })
+              .eq('id', job.workflow_log_id)
+          }
         }
       }
     }

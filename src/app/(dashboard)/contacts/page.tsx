@@ -91,7 +91,7 @@ export default function ContactsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Contact | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [syncingShopify, setSyncingShopify] = useState(false);
-  const [quickFilter, setQuickFilter] = useState<'all' | 'abandoned' | 'shopify'>('all');
+  const [quickFilter, setQuickFilter] = useState<'all' | 'abandoned' | 'shopify' | 'opted_in' | 'opted_out' | 'not_opted_in'>('all');
 
   const handleSyncShopify = async () => {
     setSyncingShopify(true);
@@ -195,6 +195,12 @@ export default function ContactsPage() {
         query = query.in('shopify_checkouts.status', ['open', 'abandoned_notified'])
       } else if (quickFilter === 'shopify') {
         query = query.not('shopify_customer_id', 'is', null).neq('shopify_customer_id', '')
+      } else if (quickFilter === 'opted_in') {
+        query = query.eq('marketing_opt_in', true).is('marketing_opt_out_at', null)
+      } else if (quickFilter === 'opted_out') {
+        query = query.not('marketing_opt_out_at', 'is', null).eq('marketing_opt_in', false)
+      } else if (quickFilter === 'not_opted_in') {
+        query = query.eq('marketing_opt_in', false).is('marketing_opt_out_at', null)
       }
 
       if (term) {
@@ -593,6 +599,39 @@ export default function ContactsPage() {
           >
             🛍️ Shopify Customers
           </button>
+          <button
+            onClick={() => { setQuickFilter('opted_in'); setPage(0); }}
+            className={cn(
+              "px-3 py-1 rounded-full border text-[11px] font-semibold transition-all flex items-center gap-1",
+              quickFilter === 'opted_in'
+                ? "bg-emerald-500 border-emerald-500 text-white font-bold shadow-sm"
+                : "border-border bg-card text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-600"
+            )}
+          >
+            ✅ Opted In
+          </button>
+          <button
+            onClick={() => { setQuickFilter('opted_out'); setPage(0); }}
+            className={cn(
+              "px-3 py-1 rounded-full border text-[11px] font-semibold transition-all flex items-center gap-1",
+              quickFilter === 'opted_out'
+                ? "bg-red-500 border-red-500 text-white font-bold shadow-sm"
+                : "border-border bg-card text-red-500 hover:bg-red-500/10 hover:text-red-500"
+            )}
+          >
+            ❌ Opted Out
+          </button>
+          <button
+            onClick={() => { setQuickFilter('not_opted_in'); setPage(0); }}
+            className={cn(
+              "px-3 py-1 rounded-full border text-[11px] font-semibold transition-all flex items-center gap-1",
+              quickFilter === 'not_opted_in'
+                ? "bg-slate-500 border-slate-500 text-white font-bold shadow-sm"
+                : "border-border bg-card text-slate-500 hover:bg-slate-500/10 hover:text-slate-500"
+            )}
+          >
+            ⏳ Not Opted In
+          </button>
         </div>
       </div>
 
@@ -646,6 +685,7 @@ export default function ContactsPage() {
               <TableHead className="text-muted-foreground hidden lg:table-cell">Company</TableHead>
               <TableHead className="text-muted-foreground hidden md:table-cell">Tags</TableHead>
               <TableHead className="text-muted-foreground hidden lg:table-cell">Page URL</TableHead>
+              <TableHead className="text-muted-foreground hidden md:table-cell">Opt-in Status</TableHead>
               <TableHead className="text-muted-foreground hidden lg:table-cell">Created</TableHead>
               <TableHead className="text-muted-foreground w-12" />
             </TableRow>
@@ -653,7 +693,7 @@ export default function ContactsPage() {
           <TableBody>
             {loading ? (
               <TableRow className="border-border">
-                <TableCell colSpan={9} className="text-center py-12">
+                <TableCell colSpan={10} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2">
                     <Loader2 className="size-6 animate-spin text-primary" />
                     <p className="text-sm text-muted-foreground">Loading contacts...</p>
@@ -662,7 +702,7 @@ export default function ContactsPage() {
               </TableRow>
             ) : filteredContacts.length === 0 ? (
               <TableRow className="border-border">
-                <TableCell colSpan={9} className="text-center py-12">
+                <TableCell colSpan={10} className="text-center py-12">
                   <div className="flex flex-col items-center gap-2">
                     <Users className="size-8 text-muted-foreground" />
                     <p className="text-sm text-muted-foreground">
@@ -748,6 +788,21 @@ export default function ContactsPage() {
                       </a>
                     ) : (
                       <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    {(contact as any).marketing_opt_in === true && !(contact as any).marketing_opt_out_at ? (
+                      <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/20">
+                        Opted In
+                      </span>
+                    ) : (contact as any).marketing_opt_out_at ? (
+                      <span className="inline-flex items-center rounded-full bg-red-500/10 px-2 py-0.5 text-[10px] font-bold text-red-400 border border-red-500/20">
+                        Opted Out
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold text-muted-foreground border border-border">
+                        Not Opted In
+                      </span>
                     )}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-xs hidden lg:table-cell whitespace-nowrap">

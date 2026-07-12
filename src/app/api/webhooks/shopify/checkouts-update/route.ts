@@ -46,6 +46,12 @@ export async function POST(request: Request) {
     const currency = payload.currency || 'USD'
     const lineItems = payload.line_items || []
     
+    const acceptsMarketing = 
+      payload.customer?.sms_marketing_consent?.state === 'subscribed' ||
+      payload.customer?.sms_marketing_consent?.state === 'opt_in' ||
+      payload.buyer_accepts_marketing === true ||
+      payload.customer?.accepts_marketing === true
+
     // Resolve contact
     const customerPayload = {
       id: payload.customer?.id,
@@ -53,6 +59,7 @@ export async function POST(request: Request) {
       phone,
       first_name: firstName,
       last_name: lastName,
+      marketing_opt_in: acceptsMarketing,
     }
 
     const contact = await matchOrCreateShopifyContact(supabase, accountId, userId, customerPayload)

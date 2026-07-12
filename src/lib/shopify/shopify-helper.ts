@@ -10,6 +10,7 @@ export interface ShopifyCustomerPayload {
   phone?: string | null
   first_name?: string | null
   last_name?: string | null
+  marketing_opt_in?: boolean
 }
 
 /**
@@ -97,6 +98,9 @@ export async function matchOrCreateShopifyContact(
         email: email,
         name: name || email || 'Shopify Customer',
         shopify_customer_id: shopifyCustomerId,
+        marketing_opt_in: !!customer.marketing_opt_in,
+        marketing_opt_in_source: customer.marketing_opt_in ? 'checkout' : null,
+        marketing_opt_in_at: customer.marketing_opt_in ? new Date().toISOString() : null,
       })
       .select()
       .single()
@@ -106,6 +110,16 @@ export async function matchOrCreateShopifyContact(
       throw createError
     }
     contact = newContact
+
+    if (customer.marketing_opt_in) {
+      await supabase.from('opt_in_events').insert({
+        account_id: accountId,
+        contact_id: contact.id,
+        event_type: 'opt_in',
+        source: 'checkout',
+        raw_payload: { customer },
+      })
+    }
   } else {
     // 4) Update contact details if missing or now available
     const updates: any = {}
@@ -122,6 +136,16 @@ export async function matchOrCreateShopifyContact(
     if (name && (contact.name === 'Shopify Customer' || contact.name === contact.phone || !contact.name)) {
       updates.name = name
     }
+
+    let optInLogged = false
+    if (customer.marketing_opt_in && !contact.marketing_opt_in) {
+      updates.marketing_opt_in = true
+      updates.marketing_opt_in_source = 'checkout'
+      updates.marketing_opt_in_at = new Date().toISOString()
+      updates.marketing_opt_out_at = null
+      optInLogged = true
+    }
+
     if (Object.keys(updates).length > 0) {
       const { data: updated } = await supabase
         .from('contacts')
@@ -129,7 +153,18 @@ export async function matchOrCreateShopifyContact(
         .eq('id', contact.id)
         .select()
         .single()
-      if (updated) contact = updated
+      if (updated) {
+        contact = updated
+        if (optInLogged) {
+          await supabase.from('opt_in_events').insert({
+            account_id: accountId,
+            contact_id: contact.id,
+            event_type: 'opt_in',
+            source: 'checkout',
+            raw_payload: { customer },
+          })
+        }
+      }
     }
   }
 

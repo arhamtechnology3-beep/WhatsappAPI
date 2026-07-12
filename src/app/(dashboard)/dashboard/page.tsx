@@ -10,6 +10,7 @@ import {
   DollarSign,
   Send,
   ShoppingBag,
+  UserCheck,
 } from 'lucide-react'
 
 import {
@@ -41,6 +42,8 @@ export default function DashboardPage() {
   const { defaultCurrency } = useAuth()
   const [metrics, setMetrics] = useState<MetricsBundle | null>(null)
   const [metricsLoading, setMetricsLoading] = useState(true)
+  const [optInStats, setOptInStats] = useState<{ total: number; optedIn: number; optedOut: number; pct: number } | null>(null)
+  const [optInLoading, setOptInLoading] = useState(true)
 
   const [range, setRange] = useState<RangeDays>(30)
   // Keep a cache per range so switching tabs doesn't re-fetch what we
@@ -95,6 +98,27 @@ export default function DashboardPage() {
       .then((a) => setActivity(a))
       .catch((err) => console.error('[dashboard] activity failed:', err))
       .finally(() => setActivityLoading(false))
+
+    // Fetch opt-in metrics
+    const fetchOptInStats = async () => {
+      try {
+        const { data } = await db
+          .from('contacts')
+          .select('marketing_opt_in, marketing_opt_out_at');
+        if (data) {
+          const total = data.length;
+          const optedIn = data.filter((c: any) => c.marketing_opt_in === true && !c.marketing_opt_out_at).length;
+          const optedOut = data.filter((c: any) => c.marketing_opt_out_at).length;
+          const pct = total > 0 ? Math.round((optedIn / total) * 100) : 0;
+          setOptInStats({ total, optedIn, optedOut, pct });
+        }
+      } catch (err) {
+        console.error('[dashboard] opt-in metrics failed:', err);
+      } finally {
+        setOptInLoading(false);
+      }
+    };
+    void fetchOptInStats();
   }, [])
 
   useEffect(() => {
@@ -130,9 +154,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Metric cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {metricsLoading || !metrics ? (
-          Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        {metricsLoading || optInLoading || !metrics ? (
+          Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
         ) : (
           <>
             <MetricCard
@@ -181,6 +205,12 @@ export default function DashboardPage() {
               value={metrics.cartsRecoveredThisWeek.toLocaleString()}
               icon={ShoppingBag}
               subtitle={`${metrics.cartRecoveryRate}% recovery rate this week`}
+            />
+            <MetricCard
+              title="Marketing Opt-in Rate"
+              value={optInStats ? `${optInStats.pct}%` : '0%'}
+              icon={UserCheck}
+              subtitle={optInStats ? `${optInStats.optedIn} Opted In / ${optInStats.optedOut} Opted Out` : '0 Opted In / 0 Opted Out'}
             />
           </>
         )}

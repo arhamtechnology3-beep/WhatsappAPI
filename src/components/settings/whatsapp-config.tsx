@@ -19,7 +19,10 @@ import {
   Globe,
   UploadCloud,
   FileImage,
-  ExternalLinkIcon
+  ExternalLinkIcon,
+  UserCheck,
+  Plus,
+  X
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
@@ -115,6 +118,129 @@ export function WhatsAppConfig() {
 
   // Profile specific states
   const [activeTab, setActiveTab] = useState('profile');
+  const [optInPromptText, setOptInPromptText] = useState('');
+  const [optInKeywords, setOptInKeywords] = useState<string[]>([]);
+  const [optOutKeywords, setOptOutKeywords] = useState<string[]>([]);
+  const [newOptInKeyword, setNewOptInKeyword] = useState('');
+  const [newOptOutKeyword, setNewOptOutKeyword] = useState('');
+  const [settingsSaving, setSettingsSaving] = useState(false);
+
+  const [backfillStats, setBackfillStats] = useState<{ optedIn: number; optedOut: number; noResponse: number; totalSent: number; eligible: number } | null>(null);
+  const [backfillLoading, setBackfillLoading] = useState(false);
+  const [backfillRunning, setBackfillRunning] = useState(false);
+  const [optInTemplateName, setOptInTemplateName] = useState('wacrm_opt_in_v1');
+
+  const fetchOptInConfig = useCallback(async () => {
+    try {
+      const res = await fetch('/api/whatsapp/opt-in/config');
+      if (res.ok) {
+        const data = await res.json();
+        setOptInPromptText(data.opt_in_prompt_text);
+        setOptInKeywords(data.opt_in_keywords || []);
+        setOptOutKeywords(data.opt_out_keywords || []);
+      }
+    } catch (err) {
+      console.error('Failed to load opt-in config:', err);
+    }
+  }, []);
+
+  const fetchBackfillStats = useCallback(async () => {
+    try {
+      setBackfillLoading(true);
+      const res = await fetch('/api/whatsapp/opt-in/backfill');
+      if (res.ok) {
+        const data = await res.json();
+        setBackfillStats(data.stats);
+      }
+    } catch (err) {
+      console.error('Failed to load backfill stats:', err);
+    } finally {
+      setBackfillLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'opt-in') {
+      fetchOptInConfig();
+      fetchBackfillStats();
+    }
+  }, [activeTab, fetchOptInConfig, fetchBackfillStats]);
+
+  const addOptInKeyword = () => {
+    if (!newOptInKeyword.trim()) return;
+    const clean = newOptInKeyword.trim().toUpperCase();
+    if (!optInKeywords.includes(clean)) {
+      setOptInKeywords([...optInKeywords, clean]);
+    }
+    setNewOptInKeyword('');
+  };
+
+  const removeOptInKeyword = (kw: string) => {
+    setOptInKeywords(optInKeywords.filter(k => k !== kw));
+  };
+
+  const addOptOutKeyword = () => {
+    if (!newOptOutKeyword.trim()) return;
+    const clean = newOptOutKeyword.trim().toUpperCase();
+    if (!optOutKeywords.includes(clean)) {
+      setOptOutKeywords([...optOutKeywords, clean]);
+    }
+    setNewOptOutKeyword('');
+  };
+
+  const removeOptOutKeyword = (kw: string) => {
+    setOptOutKeywords(optOutKeywords.filter(k => k !== kw));
+  };
+
+  const handleSaveOptInSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSettingsSaving(true);
+    try {
+      const res = await fetch('/api/whatsapp/opt-in/config', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          opt_in_prompt_text: optInPromptText,
+          opt_in_keywords: optInKeywords,
+          opt_out_keywords: optOutKeywords,
+        }),
+      });
+      if (res.ok) {
+        toast.success('Opt-in settings updated successfully');
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to save settings');
+      }
+    } catch (err) {
+      toast.error('Network error saving settings');
+    } finally {
+      setSettingsSaving(false);
+    }
+  };
+
+  const handleRunBackfill = async () => {
+    if (backfillRunning) return;
+    setBackfillRunning(true);
+    toast.info('Initiating backfill opt-in campaign...');
+    try {
+      const res = await fetch('/api/whatsapp/opt-in/backfill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template_name: optInTemplateName }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(`Successfully queued opt-in campaigns for ${data.count} contacts!`);
+        fetchBackfillStats();
+      } else {
+        toast.error(data.error || 'Failed to initiate campaign');
+      }
+    } catch (err) {
+      toast.error('Network error starting backfill campaign');
+    } finally {
+      setBackfillRunning(false);
+    }
+  };
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileAddress, setProfileAddress] = useState('');
@@ -681,10 +807,10 @@ export function WhatsAppConfig() {
                 Profile
               </TabsTrigger>
               <TabsTrigger
-                value="automation"
+                value="opt-in"
                 className="group-data-[variant=line]/tabs-list:data-active:border-primary text-xs pb-2 rounded-none px-4"
               >
-                Automation
+                Opt-in & Campaigns
               </TabsTrigger>
             </TabsList>
 
@@ -832,16 +958,226 @@ export function WhatsAppConfig() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="automation" className="pt-4 animate-in fade-in duration-200">
-              <Card className="bg-card/30 border-border p-4 max-w-xl">
-                <h3 className="font-semibold text-foreground text-sm">Automation Settings</h3>
-                <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                  Configure trigger rules, automated replies, and business hour alerts here.
-                </p>
-                <div className="mt-4 p-4 border border-dashed border-border rounded-lg text-center text-xs text-muted-foreground bg-muted/10">
-                  Automation actions will be available in the next release.
-                </div>
-              </Card>
+            <TabsContent value="opt-in" className="pt-4 animate-in fade-in duration-200">
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 max-w-5xl">
+                {/* 1. Opt-in Configuration Form */}
+                <Card className="bg-card/25 border-border p-4 h-fit">
+                  <h3 className="font-semibold text-foreground text-sm">Opt-in & Opt-out Settings</h3>
+                  <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                    Meta requires explicit subscriber consent for marketing templates. Customize your welcome prompt and keywords.
+                  </p>
+
+                  <form onSubmit={handleSaveOptInSettings} className="mt-4 space-y-4">
+                    {/* Welcome Opt-in prompt */}
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground font-semibold text-xs uppercase tracking-wider">
+                        First Contact Opt-in Prompt Text
+                      </Label>
+                      <textarea
+                        value={optInPromptText}
+                        onChange={(e) => setOptInPromptText(e.target.value)}
+                        rows={3}
+                        className="w-full rounded-md border border-border bg-muted/40 text-foreground px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-primary leading-relaxed"
+                        placeholder="Want order updates & offers on WhatsApp? Reply YES to opt in, or STOP anytime to opt out."
+                      />
+                      <p className="text-[10px] text-muted-foreground leading-relaxed">
+                        Sent automatically when a contact initiates their very first chat session.
+                      </p>
+                    </div>
+
+                    {/* Opt-in Keywords */}
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground font-semibold text-xs uppercase tracking-wider">
+                        Opt-in Trigger Keywords
+                      </Label>
+                      <div className="flex flex-wrap gap-1.5 p-2 rounded-md border border-border bg-muted/20 min-h-[44px]">
+                        {optInKeywords.map((kw) => (
+                          <span
+                            key={kw}
+                            className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-2 py-0.5 text-xs font-semibold text-emerald-400 border border-emerald-500/20"
+                          >
+                            {kw}
+                            <button
+                              type="button"
+                              onClick={() => removeOptInKeyword(kw)}
+                              className="text-emerald-400 hover:text-emerald-300 focus:outline-none"
+                            >
+                              <X className="size-3" />
+                            </button>
+                          </span>
+                        ))}
+                        {optInKeywords.length === 0 && (
+                          <span className="text-xs text-muted-foreground italic">No keywords added</span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="e.g. YES, OPTIN"
+                          value={newOptInKeyword}
+                          onChange={(e) => setNewOptInKeyword(e.target.value)}
+                          className="flex-1 h-8 rounded-md border border-border bg-muted/40 text-foreground px-3 py-1 text-xs focus:outline-none"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              addOptInKeyword();
+                            }
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          onClick={addOptInKeyword}
+                          className="bg-muted hover:bg-muted/80 text-foreground border border-border text-xs h-8 px-3 font-semibold"
+                        >
+                          Add
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Opt-out Keywords */}
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground font-semibold text-xs uppercase tracking-wider">
+                        Opt-out Trigger Keywords
+                      </Label>
+                      <div className="flex flex-wrap gap-1.5 p-2 rounded-md border border-border bg-muted/20 min-h-[44px]">
+                        {optOutKeywords.map((kw) => (
+                          <span
+                            key={kw}
+                            className="inline-flex items-center gap-1 rounded bg-red-500/10 px-2 py-0.5 text-xs font-semibold text-red-400 border border-red-500/20"
+                          >
+                            {kw}
+                            <button
+                              type="button"
+                              onClick={() => removeOptOutKeyword(kw)}
+                              className="text-red-400 hover:text-red-300 focus:outline-none"
+                            >
+                              <X className="size-3" />
+                            </button>
+                          </span>
+                        ))}
+                        {optOutKeywords.length === 0 && (
+                          <span className="text-xs text-muted-foreground italic">No keywords added</span>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="e.g. STOP, UNSUBSCRIBE"
+                          value={newOptOutKeyword}
+                          onChange={(e) => setNewOptOutKeyword(e.target.value)}
+                          className="flex-1 h-8 rounded-md border border-border bg-muted/40 text-foreground px-3 py-1 text-xs focus:outline-none"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              addOptOutKeyword();
+                            }
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          onClick={addOptOutKeyword}
+                          className="bg-muted hover:bg-muted/80 text-foreground border border-border text-xs h-8 px-3 font-semibold"
+                        >
+                          Add
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <Button
+                        type="submit"
+                        disabled={settingsSaving}
+                        className="bg-primary hover:bg-primary/95 text-primary-foreground text-xs h-8 px-4 font-semibold"
+                      >
+                        {settingsSaving ? (
+                          <>
+                            <Loader2 className="size-3.5 animate-spin mr-1" />
+                            Saving Settings...
+                          </>
+                        ) : (
+                          'Save Settings'
+                        )}
+                      </Button>
+                    </div>
+                  </form>
+                </Card>
+
+                {/* 2. Campaign & Backfill Dashboard */}
+                <Card className="bg-card/25 border-border p-4 h-fit space-y-4">
+                  <div>
+                    <h3 className="font-semibold text-foreground text-sm">Backfill Campaign Stats</h3>
+                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                      Invite existing clients to confirm WhatsApp updates. Active users who click confirm will be marked opted-in.
+                    </p>
+                  </div>
+
+                  {backfillLoading ? (
+                    <div className="flex flex-col items-center justify-center py-8 gap-2">
+                      <Loader2 className="size-5 animate-spin text-primary" />
+                      <span className="text-xs text-muted-foreground">Calculating campaign stats...</span>
+                    </div>
+                  ) : (
+                    backfillStats && (
+                      <div className="grid grid-cols-2 gap-3 pt-2">
+                        <div className="bg-muted/10 border border-border/60 p-3 rounded-lg text-center">
+                          <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Total Prompted</div>
+                          <div className="text-xl font-bold text-foreground mt-1">{backfillStats.totalSent}</div>
+                        </div>
+                        <div className="bg-emerald-500/5 border border-emerald-500/10 p-3 rounded-lg text-center">
+                          <div className="text-[10px] text-emerald-400 uppercase tracking-wider font-semibold">Total Opted In</div>
+                          <div className="text-xl font-bold text-emerald-400 mt-1">{backfillStats.optedIn}</div>
+                        </div>
+                        <div className="bg-slate-500/5 border border-slate-500/10 p-3 rounded-lg text-center">
+                          <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">No Response</div>
+                          <div className="text-xl font-bold text-muted-foreground mt-1">{backfillStats.noResponse}</div>
+                        </div>
+                        <div className="bg-red-500/5 border border-red-500/10 p-3 rounded-lg text-center">
+                          <div className="text-[10px] text-red-400 uppercase tracking-wider font-semibold">Total Opted Out</div>
+                          <div className="text-xl font-bold text-red-400 mt-1">{backfillStats.optedOut}</div>
+                        </div>
+                      </div>
+                    )
+                  )}
+
+                  <div className="border-t border-border/40 pt-4 space-y-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground font-semibold text-xs uppercase tracking-wider">
+                        Opt-in Template Name
+                      </Label>
+                      <input
+                        type="text"
+                        value={optInTemplateName}
+                        onChange={(e) => setOptInTemplateName(e.target.value)}
+                        className="w-full h-9 rounded-md border border-border bg-muted/40 text-foreground px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary"
+                        placeholder="wacrm_opt_in_v1"
+                      />
+                      <p className="text-[10px] text-muted-foreground leading-relaxed italic">
+                        * Submit this template on Meta Business Suite with button payload 'wacrm_opt_in_confirm' before launching.
+                      </p>
+                    </div>
+
+                    <div className="bg-amber-500/5 border border-amber-500/10 p-3.5 rounded-lg text-xs text-amber-500 leading-relaxed">
+                      <strong>Target Eligible Contacts:</strong> {backfillStats?.eligible ?? 0} contacts are currently targetable (opt-in is false, not yet prompted).
+                    </div>
+
+                    <Button
+                      type="button"
+                      onClick={handleRunBackfill}
+                      disabled={backfillRunning || (backfillStats?.eligible ?? 0) === 0}
+                      className="w-full bg-primary hover:bg-primary/95 text-primary-foreground font-semibold text-xs h-9"
+                    >
+                      {backfillRunning ? (
+                        <>
+                          <Loader2 className="size-3.5 animate-spin mr-1.5" />
+                          Sending Campaign...
+                        </>
+                      ) : (
+                        'Send Opt-in Campaign to Existing Contacts'
+                      )}
+                    </Button>
+                  </div>
+                </Card>
+              </div>
             </TabsContent>
           </Tabs>
         </div>

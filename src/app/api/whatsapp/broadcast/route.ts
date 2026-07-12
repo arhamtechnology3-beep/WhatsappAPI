@@ -179,6 +179,8 @@ export async function POST(request: Request) {
     let sentCount = 0
     let failedCount = 0
 
+    const isMarketing = templateRow?.category === 'MARKETING'
+
     for (const recipient of recipients) {
       const sanitized = sanitizePhoneForMeta(recipient.phone)
 
@@ -190,6 +192,27 @@ export async function POST(request: Request) {
         })
         failedCount++
         continue
+      }
+
+      if (isMarketing) {
+        // Query contact by phone
+        const { data: contact } = await supabase
+          .from('contacts')
+          .select('marketing_opt_in, marketing_opt_out_at')
+          .eq('account_id', accountId)
+          .eq('phone', sanitized)
+          .maybeSingle()
+
+        const allowed = contact ? (contact.marketing_opt_in === true && contact.marketing_opt_out_at === null) : false
+        if (!allowed) {
+          results.push({
+            phone: recipient.phone,
+            status: 'failed',
+            error: 'skipped_no_consent',
+          })
+          failedCount++
+          continue
+        }
       }
 
       // Retry with phone variants on "not in allowed list" so numbers

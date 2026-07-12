@@ -364,7 +364,45 @@ async function handleStatusUpdate(status: {
   status: string
   timestamp: string
   recipient_id: string
+  errors?: Array<{ code: number; title: string; message: string }>
 }) {
+  // Check for native user block/opt-out error codes
+  if (status.status === 'failed' && Array.isArray(status.errors)) {
+    const isBlockOrOptOut = status.errors.some((e: any) => e.code === 131052 || e.code === 131053)
+    if (isBlockOrOptOut) {
+      try {
+        const { data: contact } = await supabaseAdmin()
+          .from('contacts')
+          .select('id, marketing_opt_in, account_id')
+          .eq('phone', status.recipient_id)
+          .maybeSingle()
+
+        if (contact) {
+          await supabaseAdmin()
+            .from('contacts')
+            .update({
+              marketing_opt_in: false,
+              marketing_opt_out_at: new Date().toISOString()
+            })
+            .eq('id', contact.id)
+
+          if (contact.marketing_opt_in) {
+            await supabaseAdmin()
+              .from('opt_in_events')
+              .insert({
+                account_id: contact.account_id,
+                contact_id: contact.id,
+                event_type: 'opt_out',
+                source: 'meta_platform_block',
+                raw_payload: { status }
+              })
+          }
+        }
+      } catch (err) {
+        console.error('[webhook] failed to process native platform opt-out:', err)
+      }
+    }
+  }
   // 1) Mirror onto messages (legacy behavior) — Meta's status values
   //    already match the CHECK constraint on messages.status.
   const { error: msgErr } = await supabaseAdmin()
@@ -690,6 +728,52 @@ async function processMessage(
   }
 
   // COD Auto-confirmation handler when interactive quick-reply buttons are clicked
+  if (interactiveReplyId === 'wacrm_opt_in_confirm') {
+    try {
+      await supabaseAdmin()
+        .from('contacts')
+        .update({
+          marketing_opt_in: true,
+          marketing_opt_in_source: 'backfill_campaign',
+          marketing_opt_in_at: new Date().toISOString(),
+          marketing_opt_out_at: null
+        })
+        .eq('id', contactRecord.id)
+
+      await supabaseAdmin()
+        .from('opt_in_events')
+        .insert({
+          account_id: accountId,
+          contact_id: contactRecord.id,
+          event_type: 'opt_in',
+          source: 'backfill_campaign',
+          raw_payload: { button_reply: 'wacrm_opt_in_confirm', message }
+        })
+
+      const thankYouMsg = "Thank you for confirming! You've successfully subscribed to updates and offers."
+      await sendTextMessage({
+        phoneNumberId,
+        accessToken,
+        to: senderPhone,
+        text: thankYouMsg,
+        contextMessageId: message.id
+      })
+
+      await supabaseAdmin()
+        .from('messages')
+        .insert({
+          conversation_id: conversation.id,
+          sender_type: 'agent',
+          content_type: 'text',
+          content_text: thankYouMsg,
+          status: 'sent',
+          created_at: new Date().toISOString(),
+        })
+    } catch (err: any) {
+      console.error('[webhook] failed to handle backfill opt-in button click:', err.message || err)
+    }
+  }
+
   if (interactiveReplyId === 'confirm_cod' || interactiveReplyId === 'cancel_cod') {
     try {
       // Find the latest COD pending order for this contact
@@ -839,18 +923,177 @@ async function processMessage(
   // webhook's 200 OK response to Meta.
   const inboundText = contentText ?? message.text?.body ?? ''
 
-  // STOP keyword opt-out handler
-  if (inboundText.trim().toUpperCase() === 'STOP') {
+  // Load configuration from database for opt-in/opt-out keywords and text
+  let optInPromptText = 'Want order updates & offers on WhatsApp? Reply YES to opt in, or STOP anytime to opt out.'
+  let optInKeywords = ['YES', 'Y', 'OPT IN', 'START', 'SUBSCRIBE', 'हाँ', 'હા']
+  let optOutKeywords = ['STOP', 'UNSUBSCRIBE', 'CANCEL', 'STOPIT', 'HALT', 'REMOVE', 'बन्द', 'बंद करें', 'बंद', 'રોકો', 'બંધ કરો', 'બંધ']
+
+  try {
+    const { data: configRow } = await supabaseAdmin()
+      .from('whatsapp_config')
+      .select('opt_in_prompt_text, opt_in_keywords, opt_out_keywords')
+      .eq('account_id', accountId)
+      .maybeSingle()
+
+    if (configRow) {
+      if (configRow.opt_in_prompt_text) optInPromptText = configRow.opt_in_prompt_text
+      if (configRow.opt_in_keywords) optInKeywords = configRow.opt_in_keywords
+      if (configRow.opt_out_keywords) optOutKeywords = configRow.opt_out_keywords
+    }
+  } catch (err) {
+    console.error('[webhook] failed to load whatsapp opt-in settings:', err)
+  }
+
+  const cleanedText = inboundText.trim().toUpperCase()
+
+  // 1. Opt-out keyword handler
+  const isOptOut = optOutKeywords.some(kw => cleanedText === kw.trim().toUpperCase() || cleanedText.includes(kw.trim().toUpperCase()))
+  if (isOptOut) {
+    // Check if they were opted in before
+    const { data: contactBefore } = await supabaseAdmin()
+      .from('contacts')
+      .select('marketing_opt_in')
+      .eq('id', contactRecord.id)
+      .maybeSingle()
+
+    // Update contact
     await supabaseAdmin()
       .from('contacts')
-      .update({ whatsapp_marketing_opt_in: false })
+      .update({
+        marketing_opt_in: false,
+        marketing_opt_out_at: new Date().toISOString()
+      })
       .eq('id', contactRecord.id)
 
+    // Stop active abandoned cart checkouts
     await supabaseAdmin()
       .from('shopify_recovery_tracking')
       .update({ status: 'stopped', updated_at: new Date().toISOString() })
       .eq('contact_id', contactRecord.id)
       .eq('status', 'in_progress')
+
+    // Audit log if it transitioned from opted-in or just was true
+    if (contactBefore?.marketing_opt_in || (contactRecord as any).marketing_opt_in) {
+      await supabaseAdmin()
+        .from('opt_in_events')
+        .insert({
+          account_id: accountId,
+          contact_id: contactRecord.id,
+          event_type: 'opt_out',
+          source: 'inbound_message',
+          raw_payload: { message_text: inboundText }
+        })
+    }
+
+    const unsubMsg = "You've been unsubscribed from marketing messages. You'll still receive order updates."
+    try {
+      await sendTextMessage({
+        phoneNumberId,
+        accessToken,
+        to: senderPhone,
+        text: unsubMsg,
+        contextMessageId: message.id
+      })
+
+      // Log the outgoing message locally
+      await supabaseAdmin()
+        .from('messages')
+        .insert({
+          conversation_id: conversation.id,
+          sender_type: 'agent',
+          content_type: 'text',
+          content_text: unsubMsg,
+          status: 'sent',
+          created_at: new Date().toISOString(),
+        })
+    } catch (sendErr) {
+      console.error('[webhook] failed to send unsubscribe confirmation:', sendErr)
+    }
+  }
+  // 2. Opt-in keyword matcher
+  else if (contactRecord.opt_in_prompt_sent_at && !contactRecord.marketing_opt_in) {
+    const isOptIn = optInKeywords.some(kw => cleanedText === kw.trim().toUpperCase())
+    if (isOptIn) {
+      // Update contact
+      await supabaseAdmin()
+        .from('contacts')
+        .update({
+          marketing_opt_in: true,
+          marketing_opt_in_source: 'first_contact_prompt',
+          marketing_opt_in_at: new Date().toISOString(),
+          marketing_opt_out_at: null
+        })
+        .eq('id', contactRecord.id)
+
+      // Audit log
+      await supabaseAdmin()
+        .from('opt_in_events')
+        .insert({
+          account_id: accountId,
+          contact_id: contactRecord.id,
+          event_type: 'opt_in',
+          source: 'first_contact_prompt',
+          raw_payload: { message_text: inboundText }
+        })
+
+      const subMsg = "Thank you! You've successfully opted in to receive updates and offers on WhatsApp."
+      try {
+        await sendTextMessage({
+          phoneNumberId,
+          accessToken,
+          to: senderPhone,
+          text: subMsg,
+          contextMessageId: message.id
+        })
+
+        // Log the outgoing message locally
+        await supabaseAdmin()
+          .from('messages')
+          .insert({
+            conversation_id: conversation.id,
+            sender_type: 'agent',
+            content_type: 'text',
+            content_text: subMsg,
+            status: 'sent',
+            created_at: new Date().toISOString(),
+          })
+      } catch (sendErr) {
+        console.error('[webhook] failed to send subscribe confirmation:', sendErr)
+      }
+    }
+  }
+
+  // 3. First contact opt-in prompt dispatcher
+  if (isFirstInboundMessage && !contactRecord.opt_in_prompt_sent_at) {
+    try {
+      await sendTextMessage({
+        phoneNumberId,
+        accessToken,
+        to: senderPhone,
+        text: optInPromptText,
+        contextMessageId: message.id
+      })
+
+      // Update contact opt_in_prompt_sent_at
+      await supabaseAdmin()
+        .from('contacts')
+        .update({ opt_in_prompt_sent_at: new Date().toISOString() })
+        .eq('id', contactRecord.id)
+
+      // Save opt-in prompt message locally
+      await supabaseAdmin()
+        .from('messages')
+        .insert({
+          conversation_id: conversation.id,
+          sender_type: 'agent',
+          content_type: 'text',
+          content_text: optInPromptText,
+          status: 'sent',
+          created_at: new Date().toISOString(),
+        })
+    } catch (promptErr) {
+      console.error('[webhook] failed to send first contact opt-in prompt:', promptErr)
+    }
   }
 
   const automationTriggers: (

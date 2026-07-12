@@ -117,6 +117,14 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         .eq('language', input.language || 'en')
         .maybeSingle()
 
+      if (templateRow?.category === 'MARKETING') {
+        const { canSendMarketing } = await import('@/lib/whatsapp/opt-in-helper')
+        const allowed = await canSendMarketing(input.contactId)
+        if (!allowed) {
+          throw new Error('skipped_no_consent')
+        }
+      }
+
       const messageParams: any = {
         body: input.params,
       }

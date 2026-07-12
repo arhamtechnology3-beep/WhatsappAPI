@@ -173,11 +173,14 @@ export async function POST(request: Request) {
         }
       ];
 
-      const geminiModels = [
-        "gemini-2.5-flash",
-        "gemini-2.0-flash",
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-latest"
+      const geminiConfigs = [
+        { version: "v1", model: "gemini-2.5-flash" },
+        { version: "v1", model: "gemini-2.0-flash" },
+        { version: "v1", model: "gemini-1.5-flash" },
+        { version: "v1beta", model: "gemini-2.5-flash" },
+        { version: "v1beta", model: "gemini-2.0-flash" },
+        { version: "v1beta", model: "gemini-1.5-flash" },
+        { version: "v1beta", model: "gemini-1.5-flash-latest" }
       ];
 
       let success = false;
@@ -198,11 +201,11 @@ export async function POST(request: Request) {
         }
 
         // Try models sequentially
-        for (const modelName of geminiModels) {
+        for (const config of geminiConfigs) {
           try {
-            console.log(`[AI Bot Generator] Querying Gemini model: ${modelName}`);
+            console.log(`[AI Bot Generator] Querying Gemini API ${config.version} with model ${config.model}`);
             const response = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`,
+              `https://generativelanguage.googleapis.com/${config.version}/models/${config.model}:generateContent?key=${GEMINI_API_KEY}`,
               {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -228,8 +231,8 @@ export async function POST(request: Request) {
                 rawErr.includes("RESOURCE_EXHAUSTED") ||
                 rawErr.includes("Quota exceeded")
               ) {
-                console.warn(`[AI Bot Generator] Model ${modelName} returned status ${response.status}, falling back...`);
-                lastError = `Model ${modelName}: ${rawErr}`;
+                console.warn(`[AI Bot Generator] Model ${config.model} (${config.version}) returned status ${response.status}, falling back...`);
+                lastError = `Model ${config.model} (${config.version}): ${rawErr}`;
                 continue;
               }
               throw new Error(`Gemini API request failed: ${response.status} - ${rawErr}`);
@@ -250,10 +253,10 @@ export async function POST(request: Request) {
             success = true;
             break; // Success! Exit model loop
           } catch (err: any) {
-            console.warn(`[AI Bot Generator] Error with model ${modelName} on attempt #${attempts}:`, err.message);
+            console.warn(`[AI Bot Generator] Error with model ${config.model} (${config.version}) on attempt #${attempts}:`, err.message);
             lastError = err.message || "Failed to generate or validate flow structure";
-            // If it is not a 404, we break early to let the outer loop handle retries/corrections
-            if (!err.message.includes("404") && !err.message.includes("NOT_FOUND")) {
+            // If it is not a 404/429, we break early to let the outer loop handle retries/corrections
+            if (!err.message.includes("404") && !err.message.includes("429") && !err.message.includes("NOT_FOUND") && !err.message.includes("RESOURCE_EXHAUSTED")) {
               break;
             }
           }

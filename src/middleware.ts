@@ -85,8 +85,8 @@ export async function middleware(request: NextRequest) {
     )
   }
 
-  // Active Workspace Resolution
-  if (user) {
+  // Active Workspace Resolution (Only for API routes to prevent Next.js streaming page glitches)
+  if (user && request.nextUrl.pathname.startsWith('/api/')) {
     let activeWorkspaceId = request.cookies.get('wacrm_active_workspace_id')?.value
     const queryWorkspaceId = request.nextUrl.searchParams.get('workspace_id')
     if (queryWorkspaceId) {

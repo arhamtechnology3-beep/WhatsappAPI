@@ -90,6 +90,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const currentActive = list.find((w: any) => w.id === cookieActiveId) || list[0] || null;
         if (currentActive) {
           setActiveWorkspaceId(currentActive.id);
+          if (!cookieActiveId) {
+            document.cookie = `wacrm_active_workspace_id=${currentActive.id}; path=/; max-age=31536000; SameSite=Lax`;
+          }
         }
       }
     } catch (err) {

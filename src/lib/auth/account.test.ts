@@ -1,17 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// getCurrentAccount resolves the caller's account context. The
-// regression this file guards (issue #294): account loading must NOT
-// depend on a PostgREST embedded FK join (`accounts!inner`), because a
-// stale schema cache makes that embed fail hard and blanks the whole
-// context. It must instead read the profile and then the account with
-// two plain point queries.
-
-// ------------------------------------------------------------
-// Chainable Supabase query-builder mock. Each `.from(table)` hands back
-// a thenable builder pre-loaded with the result queued for that table,
-// so we can assert which tables were queried and with what filters.
-// ------------------------------------------------------------
+// Workspace query mock builder
 interface BuilderCall {
   table: string;
   columns?: string;
@@ -75,15 +64,15 @@ afterEach(() => {
 });
 
 describe("getCurrentAccount", () => {
-  it("resolves context via a plain accounts lookup, not an embedded join", async () => {
+  it("resolves context via a plain workspaces lookup, not an embedded join", async () => {
     const { client, calls } = makeClient({
       user: { id: "user-1" },
       byTable: {
-        profiles: {
-          data: { account_id: "acct-1", account_role: "owner" },
+        workspace_members: {
+          data: { workspace_id: "ws-1", role: "owner" },
           error: null,
         },
-        accounts: { data: { id: "acct-1", name: "Acme" }, error: null },
+        workspaces: { data: { id: "ws-1", name: "Acme" }, error: null },
       },
     });
     createClient.mockReturnValue(client);
@@ -92,18 +81,16 @@ describe("getCurrentAccount", () => {
 
     expect(ctx).toMatchObject({
       userId: "user-1",
-      accountId: "acct-1",
+      accountId: "ws-1",
       role: "owner",
-      account: { id: "acct-1", name: "Acme" },
+      account: { id: "ws-1", name: "Acme" },
     });
 
-    // Two queries: profiles by user_id, then accounts by id. Neither
-    // selects an embedded relationship — the regression guard.
-    expect(calls.map((c) => c.table)).toEqual(["profiles", "accounts"]);
-    expect(calls[0].columns).not.toMatch(/accounts!/);
+    expect(calls.map((c) => c.table)).toEqual(["workspace_members", "workspaces"]);
+    expect(calls[0].columns).not.toMatch(/workspaces!/);
     expect(calls[0].eqArgs).toEqual([["user_id", "user-1"]]);
-    expect(calls[1].columns).not.toMatch(/accounts!/);
-    expect(calls[1].eqArgs).toEqual([["id", "acct-1"]]);
+    expect(calls[1].columns).not.toMatch(/workspaces!/);
+    expect(calls[1].eqArgs).toEqual([["id", "ws-1"]]);
   });
 
   it("throws UnauthorizedError when there is no session", async () => {
@@ -112,65 +99,46 @@ describe("getCurrentAccount", () => {
     await expect(getCurrentAccount()).rejects.toBeInstanceOf(UnauthorizedError);
   });
 
-  it("maps a profiles query error to 'Could not load account context'", async () => {
+  it("maps a workspace_members query error to ForbiddenError", async () => {
     const { client } = makeClient({
       user: { id: "user-1" },
       byTable: {
-        profiles: { data: null, error: { code: "PGRST200" } },
+        workspace_members: { data: null, error: { code: "PGRST200", message: "fail" } },
       },
     });
     createClient.mockReturnValue(client);
     await expect(getCurrentAccount()).rejects.toThrow(
-      "Could not load account context",
+      "Profile is not linked to any workspace",
     );
   });
 
-  it("maps an accounts query error to 'Could not load account context'", async () => {
-    // The exact #294 shape if the embed were still in play, but now on
-    // the decoupled accounts lookup: profile resolves, account read errors.
+  it("maps a workspaces query error to 'Could not load workspace context'", async () => {
     const { client } = makeClient({
       user: { id: "user-1" },
       byTable: {
-        profiles: {
-          data: { account_id: "acct-1", account_role: "admin" },
+        workspace_members: {
+          data: { workspace_id: "ws-1", role: "admin" },
           error: null,
         },
-        accounts: { data: null, error: { code: "PGRST200" } },
+        workspaces: { data: null, error: { code: "PGRST200", message: "fail" } },
       },
     });
     createClient.mockReturnValue(client);
     const err = await getCurrentAccount().catch((e) => e);
     expect(err).toBeInstanceOf(ForbiddenError);
-    expect(err.message).toBe("Could not load account context");
+    expect(err.message).toBe("Could not load workspace context");
   });
 
-  it("rejects a profile not linked to an account", async () => {
+  it("rejects a user not linked to any workspace", async () => {
     const { client } = makeClient({
       user: { id: "user-1" },
       byTable: {
-        profiles: { data: { account_id: null, account_role: null }, error: null },
+        workspace_members: { data: null, error: null },
       },
     });
     createClient.mockReturnValue(client);
     await expect(getCurrentAccount()).rejects.toThrow(
-      "Profile is not linked to an account",
-    );
-  });
-
-  it("rejects an account_id that resolves to no readable account", async () => {
-    const { client } = makeClient({
-      user: { id: "user-1" },
-      byTable: {
-        profiles: {
-          data: { account_id: "acct-1", account_role: "viewer" },
-          error: null,
-        },
-        accounts: { data: null, error: null },
-      },
-    });
-    createClient.mockReturnValue(client);
-    await expect(getCurrentAccount()).rejects.toThrow(
-      "Profile is not linked to an account",
+      "Profile is not linked to any workspace",
     );
   });
 });

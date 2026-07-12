@@ -223,10 +223,12 @@ export async function POST(request: Request) {
 
             if (!response.ok) {
               const rawErr = await response.text();
-              // If model name is not found (404) or quota is 0 / exhausted (429), try next model
+              // If model/version is not compatible (400), not found (404), or quota is exhausted (429), try next config
               if (
+                response.status === 400 ||
                 response.status === 404 ||
                 response.status === 429 ||
+                rawErr.includes("INVALID_ARGUMENT") ||
                 rawErr.includes("NOT_FOUND") ||
                 rawErr.includes("RESOURCE_EXHAUSTED") ||
                 rawErr.includes("Quota exceeded")
@@ -255,8 +257,15 @@ export async function POST(request: Request) {
           } catch (err: any) {
             console.warn(`[AI Bot Generator] Error with model ${config.model} (${config.version}) on attempt #${attempts}:`, err.message);
             lastError = err.message || "Failed to generate or validate flow structure";
-            // If it is not a 404/429, we break early to let the outer loop handle retries/corrections
-            if (!err.message.includes("404") && !err.message.includes("429") && !err.message.includes("NOT_FOUND") && !err.message.includes("RESOURCE_EXHAUSTED")) {
+            // If it is not a 400/404/429, we break early to let the outer loop handle retries/corrections
+            if (
+              !err.message.includes("400") &&
+              !err.message.includes("404") &&
+              !err.message.includes("429") &&
+              !err.message.includes("INVALID_ARGUMENT") &&
+              !err.message.includes("NOT_FOUND") &&
+              !err.message.includes("RESOURCE_EXHAUSTED")
+            ) {
               break;
             }
           }

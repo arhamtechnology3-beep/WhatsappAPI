@@ -85,6 +85,31 @@ export async function middleware(request: NextRequest) {
     )
   }
 
+  // Active Workspace Resolution
+  if (user) {
+    let activeWorkspaceId = request.cookies.get('wacrm_active_workspace_id')?.value
+    const queryWorkspaceId = request.nextUrl.searchParams.get('workspace_id')
+    if (queryWorkspaceId) {
+      activeWorkspaceId = queryWorkspaceId
+    }
+
+    if (!activeWorkspaceId) {
+      // Query user's first workspace membership
+      const { data: firstMember } = await supabase
+        .from('workspace_members')
+        .select('workspace_id')
+        .eq('user_id', user.id)
+        .limit(1)
+        .maybeSingle()
+
+      if (firstMember) {
+        activeWorkspaceId = firstMember.workspace_id
+        // Inject cookie into request/response
+        supabaseResponse.cookies.set('wacrm_active_workspace_id', firstMember.workspace_id, { path: '/' })
+      }
+    }
+  }
+
   return supabaseResponse
 }
 

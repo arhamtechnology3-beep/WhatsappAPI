@@ -154,6 +154,26 @@ export default function RootPage() {
           </Link>
         </div>
 
+        {/* Shopify Install Form */}
+        <div className="mt-8 max-w-sm mx-auto p-4 rounded-xl border border-slate-900 bg-slate-900/30 backdrop-blur-sm space-y-3">
+          <p className="text-xs font-semibold text-indigo-400">Install App on Shopify Store</p>
+          <form action="/api/shopify/install" method="GET" className="flex gap-2">
+            <input
+              type="text"
+              name="shop"
+              placeholder="store-name.myshopify.com"
+              required
+              className="flex-1 h-9 px-3 py-1 text-xs rounded-lg border border-slate-800 bg-slate-950 text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+            <button
+              type="submit"
+              className="h-9 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-xs font-semibold text-white transition-all duration-100"
+            >
+              Install
+            </button>
+          </form>
+        </div>
+
         {/* Hero Interactive App Preview */}
         <div className="mt-16 rounded-2xl border border-slate-900 bg-slate-950 p-2 shadow-2xl shadow-indigo-500/5 max-w-5xl mx-auto overflow-hidden">
           <div className="rounded-xl border border-slate-850 overflow-hidden bg-slate-900/50 h-[280px] sm:h-auto sm:aspect-video relative flex flex-col items-center justify-center text-slate-400">

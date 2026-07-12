@@ -78,6 +78,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
+import { WorkspaceSwitcher } from "@/components/dashboard/workspace-switcher";
+
 interface NavItem {
   href: string;
   label: string;
@@ -282,35 +284,9 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               match, so we hide it to avoid duplicating the user name
               below; for renamed or shared accounts it tells the user
               which account they're acting in. */}
-          {showAccountStrip && account?.name ? (
-            <div className="mb-2 flex items-center gap-2 px-3 text-xs text-muted-foreground">
-              <UsersRound className="size-3.5 shrink-0" />
-              {/* `title=` exposes the full name on hover when it
-                  gets truncated (long account names + narrow
-                  sidebars). Cheap a11y win. */}
-              <span className="truncate" title={account.name}>
-                {account.name}
-              </span>
-              {accountRole ? (
-                // Always render the chip — owners used to be
-                // invisible here, which made them indistinguishable
-                // from admins at a glance. Now everyone sees their
-                // role (with a colour cue) regardless of tier.
-                (() => {
-                  const meta = ROLE_CHIP[accountRole];
-                  const Icon = meta.icon;
-                  return (
-                    <span
-                      className={`ml-auto inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider ${meta.className}`}
-                    >
-                      <Icon className="size-3" />
-                      {meta.label}
-                    </span>
-                  );
-                })()
-              ) : null}
-            </div>
-          ) : null}
+          <div className="mb-4 px-3">
+            <WorkspaceSwitcher />
+          </div>
           <DropdownMenu>
             <DropdownMenuTrigger className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted/60 focus:bg-muted/60 focus:outline-none data-popup-open:bg-muted/60">
               <Avatar className="size-8 shrink-0">

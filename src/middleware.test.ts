@@ -32,6 +32,15 @@ vi.mock("@supabase/ssr", () => ({
         return { data: { user: mockUser } };
       },
     },
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          limit: () => ({
+            maybeSingle: async () => ({ data: null })
+          })
+        })
+      })
+    }),
   }),
 }));
 

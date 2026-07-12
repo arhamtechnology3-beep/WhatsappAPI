@@ -14,7 +14,7 @@ export async function GET() {
     // Get all workspaces the user is member of
     const { data: memberships, error } = await supabase
       .from('workspace_members')
-      .select('role, workspaces(id, name, slug, plan, status)')
+      .select('role, workspaces(id, name, slug, plan, status, default_currency)')
       .eq('user_id', user.id)
 
     if (error) {
@@ -27,6 +27,7 @@ export async function GET() {
       slug: m.workspaces.slug,
       plan: m.workspaces.plan,
       status: m.workspaces.status,
+      default_currency: m.workspaces.default_currency,
       role: m.role,
     }))
 

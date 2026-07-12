@@ -299,7 +299,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signOut,
         refreshProfile,
         account,
-        defaultCurrency: DEFAULT_CURRENCY,
+        defaultCurrency: activeWorkspace?.default_currency || DEFAULT_CURRENCY,
         workspaces,
         activeWorkspace,
         switchWorkspace,

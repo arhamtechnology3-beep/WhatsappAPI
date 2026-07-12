@@ -1,16 +1,14 @@
 -- ============================================================
 -- 036_bot_templates.sql
 --
--- Migration to support AI Bot Generator and Template Bot Library:
---   1. Adds AI metadata columns and template references to the `flows` table.
+-- Migration to support Template Bot Library:
+--   1. Adds template reference column to the `flows` table.
 --   2. Creates `bot_templates` table to store pre-built e-commerce chatbot presets.
---   3. Seeds the `bot_templates` table with 5 high-fidelity flow JSONs.
+--   3. Seeds the `bot_templates` table with 6 high-fidelity flow JSONs.
 -- ============================================================
 
 -- 1) Add new columns to `flows` table
 ALTER TABLE flows
-  ADD COLUMN IF NOT EXISTS is_ai_generated BOOLEAN DEFAULT FALSE,
-  ADD COLUMN IF NOT EXISTS ai_requirement TEXT,
   ADD COLUMN IF NOT EXISTS template_key TEXT;
 
 -- 2) Create bot_templates table
@@ -34,6 +32,113 @@ CREATE POLICY bot_templates_select ON bot_templates
 
 -- 4) Seed bot_templates data
 INSERT INTO bot_templates (key, name, description, category, flow_json) VALUES
+  (
+    'store_assistant_journey',
+    'Store Assistant & Order Journey',
+    'Welcome new clients, automatically recover incomplete checkouts for known users, and triage order tracking or delivery status.',
+    'ecommerce',
+    '{
+      "trigger_type": "first_inbound_message",
+      "trigger_config": {},
+      "entry_node_id": "start",
+      "nodes": [
+        {
+          "node_key": "start",
+          "node_type": "start",
+          "config": { "next_node_key": "check_returning_user" }
+        },
+        {
+          "node_key": "check_returning_user",
+          "node_type": "condition",
+          "config": {
+            "subject": "tag",
+            "subject_key": "has_abandoned_cart",
+            "operator": "present",
+            "true_next": "returning_user_menu",
+            "false_next": "new_user_welcome"
+          }
+        },
+        {
+          "node_key": "returning_user_menu",
+          "node_type": "send_buttons",
+          "config": {
+            "text": "Welcome back! We noticed you have items pending in your cart. Would you like to complete checkout or track an order?",
+            "buttons": [
+              { "reply_id": "checkout_now", "title": "Complete Payment", "next_node_key": "send_checkout_link" },
+              { "reply_id": "track_now", "title": "Track Order", "next_node_key": "ask_order_no" },
+              { "reply_id": "agent_now", "title": "Talk to Agent", "next_node_key": "agent_handoff" }
+            ]
+          }
+        },
+        {
+          "node_key": "send_checkout_link",
+          "node_type": "send_message",
+          "config": {
+            "text": "Great! Here is your secure checkout link to finish your order: https://divyaprabhafoods.com/checkout. Let us know if you have any questions!",
+            "next_node_key": "end_nodes"
+          }
+        },
+        {
+          "node_key": "ask_order_no",
+          "node_type": "collect_input",
+          "config": {
+            "prompt_text": "Please enter your 6-digit Order ID so we can retrieve your delivery status.",
+            "var_key": "order_no",
+            "validation": "any",
+            "next_node_key": "check_status_msg"
+          }
+        },
+        {
+          "node_key": "check_status_msg",
+          "node_type": "send_message",
+          "config": {
+            "text": "Thank you! Checking status for order #{{vars.order_no}}. An agent will connect to assist with your tracking information shortly.",
+            "next_node_key": "agent_handoff"
+          }
+        },
+        {
+          "node_key": "new_user_welcome",
+          "node_type": "send_buttons",
+          "config": {
+            "text": "Welcome to our store! How can we help you today?",
+            "buttons": [
+              { "reply_id": "browse", "title": "Browse Products", "next_node_key": "show_products" },
+              { "reply_id": "faq", "title": "Shipping & FAQs", "next_node_key": "faq_menu" },
+              { "reply_id": "agent", "title": "Talk to Agent", "next_node_key": "agent_handoff" }
+            ]
+          }
+        },
+        {
+          "node_key": "show_products",
+          "node_type": "send_message",
+          "config": {
+            "text": "Check out our latest collections of traditional snacks and organic sweets here: https://divyaprabhafoods.com/collections/all",
+            "next_node_key": "end_nodes"
+          }
+        },
+        {
+          "node_key": "faq_menu",
+          "node_type": "send_message",
+          "config": {
+            "text": "We deliver within 3-5 business days. Returns are accepted within 7 days of delivery. For other queries, feel free to write here.",
+            "next_node_key": "end_nodes"
+          }
+        },
+        {
+          "node_key": "agent_handoff",
+          "node_type": "handoff",
+          "config": {
+            "note": "Customer needs live assistance regarding cart recovery, order status, or custom store queries."
+          }
+        },
+        {
+          "node_key": "end_nodes",
+          "node_type": "end",
+          "config": {}
+        }
+      ]
+    }'::jsonb
+  ),
   (
     'order_tracking',
     'Order Status Tracking',

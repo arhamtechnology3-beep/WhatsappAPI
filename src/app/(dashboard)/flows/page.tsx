@@ -13,12 +13,7 @@ import {
   PlayCircle,
   PauseCircle,
   Archive,
-  Sparkles,
-  Layers,
   ArrowRight,
-  BookOpen,
-  Info,
-  RefreshCw,
 } from "lucide-react";
 
 import { useCan } from "@/hooks/use-can";
@@ -48,8 +43,6 @@ interface FlowRow {
   last_executed_at: string | null;
   created_at: string;
   updated_at: string;
-  is_ai_generated?: boolean;
-  ai_requirement?: string | null;
   template_key?: string | null;
 }
 
@@ -99,11 +92,6 @@ export default function FlowsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
-
-  // AI Generator Dialog
-  const [aiOpen, setAiOpen] = useState(false);
-  const [aiRequirement, setAiRequirement] = useState("");
-  const [generating, setGenerating] = useState(false);
 
   const fetchFlows = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -167,32 +155,6 @@ export default function FlowsPage() {
     }
   };
 
-  const handleGenerateAI = async () => {
-    if (!aiRequirement.trim()) return;
-    setGenerating(true);
-    try {
-      const res = await fetch("/api/flows/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requirement: aiRequirement.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        toast.error(data.error || "AI generation failed. Please try again.");
-      } else {
-        toast.success("AI Bot Flow generated successfully!");
-        setAiOpen(false);
-        setAiRequirement("");
-        router.push(`/flows/${data.bot_id}`);
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error("AI flow builder experienced a network error.");
-    } finally {
-      setGenerating(false);
-    }
-  };
-
   const handleToggleTemplate = async (template: BotTemplate) => {
     const action = template.is_active ? "deactivate" : "activate";
     setTemplatesLoading(true);
@@ -232,7 +194,6 @@ export default function FlowsPage() {
       const res = await fetch(`/api/flows/${flow.id}`, { method: "DELETE" });
       if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
       setFlows((prev) => prev.filter((f) => f.id !== flow.id));
-      // Re-fetch templates to update active statuses
       fetchTemplates(true);
       toast.success("Flow deleted.");
     } catch (err) {
@@ -240,25 +201,6 @@ export default function FlowsPage() {
       toast.error("Couldn't delete flow.");
     }
   };
-
-  const examplePrompts = [
-    {
-      chip: "Check order status by ID",
-      prompt: "A bot that welcomes the customer, collects a 6-digit order ID using Ask Text, and routes them to a human handoff step."
-    },
-    {
-      chip: "Recommend products by category",
-      prompt: "A product recommender bot. Present quick replies for Healthy Snacks or Traditional Sweets, and print collections URLs based on response."
-    },
-    {
-      chip: "COD Confirmation Check",
-      prompt: "COD verification bot. Ask to Confirm or Cancel delivery using buttons, then tag the contact tag_cod_confirmed or tag_cod_cancelled."
-    },
-    {
-      chip: "FAQ support menu",
-      prompt: "An FAQ bot that lets customer select Shipping Info, Returns policy, or Speak to Agent from a sectioned list menu."
-    }
-  ];
 
   return (
     <div className="space-y-6 p-6 animate-in fade-in duration-200">
@@ -278,16 +220,6 @@ export default function FlowsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <GatedButton
-            canAct={canCreate}
-            gateReason="create flows"
-            variant="outline"
-            onClick={() => setAiOpen(true)}
-            className="border-border hover:bg-muted font-semibold text-xs flex items-center gap-1.5 h-9"
-          >
-            <Sparkles className="h-3.5 w-3.5 text-primary" />
-            Create with AI
-          </GatedButton>
           <GatedButton
             canAct={canCreate}
             gateReason="create flows"
@@ -335,7 +267,6 @@ export default function FlowsPage() {
         flows.length === 0 ? (
           <EmptyState
             onCreate={() => setCreateOpen(true)}
-            onAI={() => setAiOpen(true)}
             canCreate={canCreate}
           />
         ) : (
@@ -473,89 +404,15 @@ export default function FlowsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      {/* AI Bot Flow Generator Dialog */}
-      <Dialog open={aiOpen} onOpenChange={setAiOpen}>
-        <DialogContent className="sm:max-w-lg bg-popover text-popover-foreground border-border">
-          <DialogHeader>
-            <DialogTitle className="font-bold text-base flex items-center gap-1.5">
-              <Sparkles className="size-4.5 text-primary" /> Create Bot with AI
-            </DialogTitle>
-            <DialogDescription className="text-muted-foreground text-xs">
-              Describe the WhatsApp conversation tree you want in natural language. Gemini or Claude will parse the logic and construct a complete draft graph.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-muted-foreground font-semibold text-xs">Bot Prompt / Requirement</Label>
-              <textarea
-                value={aiRequirement}
-                onChange={(e) => setAiRequirement(e.target.value)}
-                placeholder="e.g. Create a bot that asks for language preference, presents menu, collects email, and connects to support."
-                rows={4}
-                className="w-full rounded-md border border-border bg-muted text-foreground p-3 text-xs focus:outline-none focus:ring-1 focus:ring-primary leading-relaxed resize-none"
-              />
-            </div>
-
-            {/* Prompt Chips */}
-            <div className="space-y-2">
-              <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Examples</span>
-              <div className="flex flex-wrap gap-2">
-                {examplePrompts.map((p) => (
-                  <button
-                    key={p.chip}
-                    type="button"
-                    onClick={() => setAiRequirement(p.prompt)}
-                    className="text-[11px] bg-muted/65 border border-border hover:border-primary/45 hover:bg-muted text-foreground/90 font-medium px-2.5 py-1 rounded-full transition-colors text-left"
-                  >
-                    💡 {p.chip}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter className="gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setAiOpen(false)}
-              disabled={generating}
-              className="hover:bg-muted text-xs font-semibold"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleGenerateAI}
-              disabled={!aiRequirement.trim() || generating}
-              size="sm"
-              className="bg-primary text-primary-foreground font-semibold text-xs"
-            >
-              {generating ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> Generating Flow...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-3.5 w-3.5 mr-1" /> Generate Flow
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
 
 function EmptyState({
   onCreate,
-  onAI,
   canCreate,
 }: {
   onCreate: () => void;
-  onAI: () => void;
   canCreate: boolean;
 }) {
   return (
@@ -567,18 +424,9 @@ function EmptyState({
         No active bot flows yet
       </h2>
       <p className="mt-1 max-w-sm text-xs text-muted-foreground leading-relaxed">
-        Configure conversation menus, FAQs, or customer routing flows. Let AI draft the design or start from a preset template!
+        Configure conversation menus, FAQs, or customer routing flows. Get started with a preset templates from our library!
       </p>
-      <div className="mt-5 flex items-center gap-3">
-        <GatedButton
-          canAct={canCreate}
-          gateReason="create flows"
-          variant="outline"
-          onClick={onAI}
-          className="border-border hover:bg-muted text-xs font-semibold flex items-center gap-1"
-        >
-          <Sparkles className="size-3.5 text-primary" /> Create with AI
-        </GatedButton>
+      <div className="mt-5">
         <GatedButton
           canAct={canCreate}
           gateReason="create flows"
@@ -619,11 +467,6 @@ function FlowCard({
               <h3 className="truncate text-sm font-bold text-foreground leading-none">
                 {flow.name}
               </h3>
-              {flow.is_ai_generated && (
-                <Badge className="bg-primary/5 text-primary border-none font-bold text-[9px] py-0 px-1.5 flex items-center gap-0.5 rounded">
-                  <Sparkles className="size-2.5" /> AI
-                </Badge>
-              )}
             </div>
             {flow.template_key && (
               <span className="text-[10px] text-muted-foreground font-semibold block leading-none">
@@ -647,12 +490,6 @@ function FlowCard({
       <p className="mt-3 line-clamp-2 text-xs text-muted-foreground leading-relaxed flex-1">
         {flow.description || triggerSummary}
       </p>
-
-      {flow.is_ai_generated && flow.ai_requirement && (
-        <div className="mt-2.5 p-2 rounded bg-muted/40 border border-border/30 text-[10px] text-muted-foreground leading-relaxed italic">
-          &ldquo;{flow.ai_requirement}&rdquo;
-        </div>
-      )}
 
       <div className="mt-4 flex items-center gap-3 text-[10px] font-semibold text-muted-foreground border-b border-border/40 pb-3">
         <span className="inline-flex items-center gap-1">

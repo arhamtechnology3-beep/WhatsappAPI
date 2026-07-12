@@ -127,7 +127,6 @@ export async function POST(request: Request) {
     const jobs = contacts.map((c) => ({
       account_id: accountId,
       contact_id: c.id,
-      recipient_phone: c.phone,
       template_name: templateName,
       template_params: [c.name || "Customer"],
       status: "pending",

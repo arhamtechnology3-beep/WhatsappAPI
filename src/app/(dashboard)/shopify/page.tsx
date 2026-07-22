@@ -221,7 +221,10 @@ export default function ShopifyDashboardPage() {
   const storeDomain = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN || "divyaprabhafoods.myshopify.com"
 
   const loadData = useCallback(async () => {
-    if (!accountId) return
+    if (!accountId) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
       // 1. Fetch checkouts
@@ -2975,5 +2978,5 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
         </div>
       )}
     </div>
-  )
+  );
 }

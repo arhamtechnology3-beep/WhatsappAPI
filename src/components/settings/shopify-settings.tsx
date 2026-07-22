@@ -71,7 +71,7 @@ interface AutomationSequence {
 
 export function ShopifySettings() {
   const supabase = createClient()
-  const { accountId } = useAuth()
+  const { accountId, profileLoading } = useAuth()
 
   const [checking, setChecking] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking')
@@ -116,7 +116,10 @@ export function ShopifySettings() {
   }
 
   async function loadWebhookLogs() {
-    if (!accountId) return
+    if (!accountId) {
+      setLogsLoading(false)
+      return
+    }
     setLogsLoading(true)
     try {
       const { data, error } = await supabase
@@ -136,29 +139,84 @@ export function ShopifySettings() {
   }
 
   async function loadRulesAndSequences() {
-    if (!accountId) return
+    if (!accountId) {
+      setRulesLoading(false)
+      setSequencesLoading(false)
+      return
+    }
     setRulesLoading(true)
     setSequencesLoading(true)
     try {
       // Load flat transactional rules
-      const { data: rulesData, error: rulesErr } = await supabase
+      let { data: rulesData, error: rulesErr } = await supabase
         .from('shopify_automation_rules')
         .select('*')
         .eq('account_id', accountId)
         .neq('trigger_type', 'cart_abandoned')
         .order('trigger_type', { ascending: true })
 
-      if (rulesErr) throw rulesErr
+      if (rulesErr) console.error('Error fetching rules:', rulesErr.message)
+
+      // Auto-seed default rules if empty
+      if (!rulesData || rulesData.length === 0) {
+        const defaultRules = [
+          { account_id: accountId, trigger_type: 'order_created', template_name: 'wacrm_order_confirmed_v1', template_variable_mapping: ['customer_name', 'order_number', 'total_price'], delay_minutes: 0, meta_approval_status: 'approved', is_active: true },
+          { account_id: accountId, trigger_type: 'order_fulfilled', template_name: 'wacrm_order_shipped_v1', template_variable_mapping: ['customer_name', 'order_number', 'tracking_url'], delay_minutes: 0, meta_approval_status: 'approved', is_active: true },
+          { account_id: accountId, trigger_type: 'order_delivered', template_name: 'wacrm_order_delivered_v1', template_variable_mapping: ['customer_name', 'order_number'], delay_minutes: 0, meta_approval_status: 'approved', is_active: true },
+        ]
+        const { data: seededRules } = await supabase
+          .from('shopify_automation_rules')
+          .insert(defaultRules)
+          .select()
+        rulesData = seededRules || defaultRules as any
+      }
+
       setRules(rulesData || [])
 
       // Load sequences
-      const { data: seqsData, error: seqsErr } = await supabase
+      let { data: seqsData, error: seqsErr } = await supabase
         .from('shopify_automation_sequences')
         .select('*')
         .eq('account_id', accountId)
         .order('trigger_type', { ascending: true })
 
-      if (seqsErr) throw seqsErr
+      if (seqsErr) console.error('Error fetching sequences:', seqsErr.message)
+
+      // Auto-seed default sequences if empty
+      if (!seqsData || seqsData.length === 0) {
+        const { data: cartSeq } = await supabase
+          .from('shopify_automation_sequences')
+          .insert({ account_id: accountId, trigger_type: 'cart_abandoned', sequence_name: 'Cart Abandonment Recovery', is_active: true })
+          .select()
+          .single()
+
+        if (cartSeq) {
+          await supabase.from('shopify_automation_sequence_steps').insert([
+            { sequence_id: cartSeq.id, step_order: 1, delay_minutes_from_previous_step: 30, template_name: 'wacrm_cart_abandoned_v1', template_variable_mapping: ['customer_name', 'product_name', 'store_name', 'checkout_url'], meta_approval_status: 'approved', is_active: true },
+            { sequence_id: cartSeq.id, step_order: 2, delay_minutes_from_previous_step: 1440, template_name: 'wacrm_cart_reminder_step2_v1', template_variable_mapping: ['customer_name', 'product_name', 'total_price'], meta_approval_status: 'approved', is_active: true },
+            { sequence_id: cartSeq.id, step_order: 3, delay_minutes_from_previous_step: 1440, template_name: 'wacrm_cart_reminder_step3_v1', template_variable_mapping: ['customer_name', 'product_name', 'checkout_url', 'discount_code'], meta_approval_status: 'approved', is_active: true },
+          ])
+        }
+
+        const { data: browseSeq } = await supabase
+          .from('shopify_automation_sequences')
+          .insert({ account_id: accountId, trigger_type: 'browse_abandoned', sequence_name: 'Browse Abandonment Recovery', is_active: true })
+          .select()
+          .single()
+
+        if (browseSeq) {
+          await supabase.from('shopify_automation_sequence_steps').insert([
+            { sequence_id: browseSeq.id, step_order: 1, delay_minutes_from_previous_step: 30, template_name: 'wacrm_browse_abandoned_v1', template_variable_mapping: ['customer_name', 'product_name', 'total_price', 'product_url'], meta_approval_status: 'approved', is_active: true }
+          ])
+        }
+
+        const { data: refetchedSeqs } = await supabase
+          .from('shopify_automation_sequences')
+          .select('*')
+          .eq('account_id', accountId)
+          .order('trigger_type', { ascending: true })
+        seqsData = refetchedSeqs || []
+      }
 
       const seqIds = (seqsData || []).map((s) => s.id)
       if (seqIds.length > 0) {
@@ -168,7 +226,7 @@ export function ShopifySettings() {
           .in('sequence_id', seqIds)
           .order('step_order', { ascending: true })
 
-        if (stepsErr) throw stepsErr
+        if (stepsErr) console.error('Error fetching sequence steps:', stepsErr.message)
 
         const grouped: AutomationSequence[] = (seqsData || []).map((s) => ({
           ...s,
@@ -238,9 +296,19 @@ export function ShopifySettings() {
 
   useEffect(() => {
     checkConnection(true)
+
+    if (profileLoading) return
+
+    if (!accountId) {
+      setLogsLoading(false)
+      setRulesLoading(false)
+      setSequencesLoading(false)
+      return
+    }
+
     loadWebhookLogs()
     loadRulesAndSequences()
-    
+
     const logsChannel = supabase
       .channel('shopify-webhook-logs-changes')
       .on(
@@ -260,7 +328,7 @@ export function ShopifySettings() {
     return () => {
       void supabase.removeChannel(logsChannel)
     }
-  }, [accountId])
+  }, [accountId, profileLoading])
 
   const getTriggerLabel = (type: string) => {
     switch (type) {

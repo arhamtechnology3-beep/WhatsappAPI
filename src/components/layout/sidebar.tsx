@@ -15,6 +15,7 @@ import {
   Radio,
   Settings,
   Shield,
+  ShoppingBag,
   User,
   UserCog,
   Users,

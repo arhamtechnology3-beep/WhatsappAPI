@@ -26,6 +26,8 @@ interface Profile {
   email: string;
   avatar_url: string | null;
   role: string | null;
+  account_id: string | null;
+  account_role: AccountRole | null;
   beta_features: string[];
 }
 
@@ -106,7 +108,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, full_name, email, avatar_url, role, beta_features")
+        .select("id, full_name, email, avatar_url, role, account_id, account_role, beta_features")
         .eq("user_id", userId)
         .maybeSingle();
 
@@ -116,12 +118,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (data) {
+        const role = isAccountRole(data.account_role)
+          ? (data.account_role as AccountRole)
+          : null;
+
         setProfile({
           id: data.id,
           full_name: data.full_name,
           email: data.email,
           avatar_url: data.avatar_url,
           role: data.role,
+          account_id: data.account_id ?? null,
+          account_role: role,
           beta_features: data.beta_features ?? [],
         });
       }
@@ -136,22 +144,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return workspaces.find((w) => w.id === activeWorkspaceId) || null;
   }, [workspaces, activeWorkspaceId]);
 
-  const accountId = activeWorkspace?.id || null;
+  const accountId = activeWorkspace?.id || profile?.account_id || null;
   const accountRole = useMemo(() => {
-    if (!activeWorkspace) return null;
-    // Map 'member' role to 'agent' to satisfy existing operational checks
-    if (activeWorkspace.role === "member") return "agent" as AccountRole;
-    return activeWorkspace.role as AccountRole;
-  }, [activeWorkspace]);
+    if (activeWorkspace) {
+      if (activeWorkspace.role === "member") return "agent" as AccountRole;
+      return activeWorkspace.role as AccountRole;
+    }
+    return profile?.account_role ?? null;
+  }, [activeWorkspace, profile?.account_role]);
 
   const account = useMemo(() => {
-    if (!activeWorkspace) return null;
+    const id = accountId;
+    if (!id) return null;
     return {
-      id: activeWorkspace.id,
-      name: activeWorkspace.name,
+      id,
+      name: activeWorkspace?.name || profile?.full_name || "My Account",
       default_currency: DEFAULT_CURRENCY,
     };
-  }, [activeWorkspace]);
+  }, [accountId, activeWorkspace?.name, profile?.full_name]);
 
   const switchWorkspace = useCallback(async (workspaceId: string) => {
     try {

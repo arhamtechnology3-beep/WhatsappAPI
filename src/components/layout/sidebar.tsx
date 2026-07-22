@@ -23,7 +23,6 @@ import {
   Workflow,
   X,
   Zap,
-  ShoppingBag,
   BarChart3,
   Plug,
 } from "lucide-react";

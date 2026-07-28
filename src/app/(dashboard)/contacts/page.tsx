@@ -66,16 +66,20 @@ interface ContactWithTags extends Contact {
   checkout_url?: string;
 }
 
+import { getCachedData, setCachedData } from '@/lib/cache/page-cache';
+
 export default function ContactsPage() {
   const supabase = createClient();
   const canEdit = useCan('send-messages');
   const canEditSettings = useCan('edit-settings');
 
-  const [contacts, setContacts] = useState<ContactWithTags[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedContactsObj = getCachedData<{ contacts: ContactWithTags[]; count: number }>('contacts_p0_s_t_qall');
+
+  const [contacts, setContacts] = useState<ContactWithTags[]>(cachedContactsObj?.contacts || []);
+  const [loading, setLoading] = useState(!cachedContactsObj || cachedContactsObj.contacts.length === 0);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
+  const [totalCount, setTotalCount] = useState(cachedContactsObj?.count || 0);
   // Tag filter — contacts shown must have ANY of these tags (OR).
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 
@@ -263,6 +267,10 @@ export default function ContactsPage() {
     }));
 
     setContacts(enriched);
+    setCachedData(`contacts_p${page}_s${term}_t${selectedTagIds.join(',')}_q${quickFilter}`, {
+      contacts: enriched,
+      count,
+    });
     setLoading(false);
   }, [supabase, page, search, selectedTagIds, tagsMap, quickFilter]);
 

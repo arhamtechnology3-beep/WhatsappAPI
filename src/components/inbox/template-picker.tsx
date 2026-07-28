@@ -88,24 +88,142 @@ export function TemplatePicker({
   const [params, setParams] = useState<string[]>([]);
   const [headerText, setHeaderText] = useState<string>("");
   const [buttonParams, setButtonParams] = useState<Record<number, string>>({});
-  const [recentProductName, setRecentProductName] = useState<string>("");
+  const [storeContext, setStoreContext] = useState<{
+    customerFirstName: string;
+    productName: string;
+    totalPrice: string;
+    checkoutUrl: string;
+    storeName: string;
+    dynamicOffer: string;
+    discountCode: string;
+    orderNumber: string;
+    trackingUrl: string;
+  }>({
+    customerFirstName: "",
+    productName: "",
+    totalPrice: "",
+    checkoutUrl: "",
+    storeName: "DivyaPrabha Foods",
+    dynamicOffer: "🎁 10% DISCOUNT & FREE SHIPPING!",
+    discountCode: "WELCOME10",
+    orderNumber: "#1001",
+    trackingUrl: "",
+  });
 
   useEffect(() => {
-    if (!open || !contactId) return;
+    if (!open) return;
+
+    let isMounted = true;
     const supabase = createClient();
-    supabase
-      .from("shopify_checkouts")
-      .select("line_items")
-      .eq("contact_id", contactId)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data?.line_items && Array.isArray(data.line_items) && data.line_items.length > 0) {
-          setRecentProductName(data.line_items[0]?.title || "");
+    const customerName = contactName ? (contactName.split(" ")[0] || contactName) : "";
+
+    async function fetchStoreContext() {
+      let fetchedFirstName = customerName;
+      let fetchedProduct = "";
+      let fetchedTotalPrice = 0;
+      let fetchedCheckoutUrl = "";
+      let fetchedDiscountCode = "";
+      let fetchedOrderNumber = "";
+      let fetchedTrackingUrl = "";
+
+      // 1. Fetch Contact info if missing first name
+      if (contactId && !fetchedFirstName) {
+        const { data: contactRow } = await supabase
+          .from("contacts")
+          .select("name")
+          .eq("id", contactId)
+          .maybeSingle();
+        if (contactRow?.name) {
+          fetchedFirstName = contactRow.name.split(" ")[0] || contactRow.name;
         }
-      });
-  }, [open, contactId]);
+      }
+
+      // 2. Fetch latest Checkout
+      if (contactId) {
+        const { data: checkout } = await supabase
+          .from("shopify_checkouts")
+          .select("line_items, total_price, abandoned_checkout_url, discount_code")
+          .eq("contact_id", contactId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (checkout) {
+          if (Array.isArray(checkout.line_items) && checkout.line_items.length > 0) {
+            fetchedProduct = checkout.line_items[0]?.title || "";
+          }
+          if (checkout.total_price) {
+            fetchedTotalPrice = Number(checkout.total_price);
+          }
+          if (checkout.abandoned_checkout_url) {
+            fetchedCheckoutUrl = checkout.abandoned_checkout_url.replace(
+              "divyaprabhafoods.myshopify.com",
+              "divyaprabhafoods.com"
+            );
+          }
+          if (checkout.discount_code) {
+            fetchedDiscountCode = checkout.discount_code;
+          }
+        }
+      }
+
+      // 3. Fetch latest Order if product or details still empty
+      if (contactId && (!fetchedProduct || !fetchedTotalPrice)) {
+        const { data: order } = await supabase
+          .from("shopify_orders")
+          .select("line_items, total_price, order_number, name, tracking_url")
+          .eq("contact_id", contactId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (order) {
+          if (!fetchedProduct && Array.isArray(order.line_items) && order.line_items.length > 0) {
+            fetchedProduct = order.line_items[0]?.title || "";
+          }
+          if (!fetchedTotalPrice && order.total_price) {
+            fetchedTotalPrice = Number(order.total_price);
+          }
+          if (order.name || order.order_number) {
+            fetchedOrderNumber = order.name || `#${order.order_number}`;
+          }
+          if (order.tracking_url) {
+            fetchedTrackingUrl = order.tracking_url;
+          }
+        }
+      }
+
+      // 4. Calculate dynamic offer based on cart price
+      let dynamicOffer = "🎁 10% DISCOUNT & FREE SHIPPING!";
+      if (fetchedTotalPrice >= 749) {
+        dynamicOffer = "🎉 10% Discount & FREE Shipping auto-applied at checkout!";
+      } else if (fetchedTotalPrice >= 599) {
+        dynamicOffer = `🚚 FREE Shipping auto-applied at checkout! (Add items worth ₹${749 - fetchedTotalPrice} for 10% OFF)`;
+      } else if (fetchedTotalPrice > 0) {
+        dynamicOffer = `✨ Add items worth ₹${599 - fetchedTotalPrice} to get FREE Shipping & ₹${749 - fetchedTotalPrice} for 10% OFF!`;
+      }
+
+      if (isMounted) {
+        setStoreContext({
+          customerFirstName: fetchedFirstName || "Customer",
+          productName: fetchedProduct || "your cart items",
+          totalPrice: fetchedTotalPrice > 0 ? `₹${fetchedTotalPrice}` : "₹500",
+          checkoutUrl: fetchedCheckoutUrl || "https://divyaprabhafoods.com/",
+          storeName: "DivyaPrabha Foods",
+          dynamicOffer,
+          discountCode: fetchedDiscountCode || "WELCOME10",
+          orderNumber: fetchedOrderNumber || "#1001",
+          trackingUrl: fetchedTrackingUrl || fetchedCheckoutUrl || "https://divyaprabhafoods.com/",
+        });
+      }
+    }
+
+    fetchStoreContext();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [open, contactId, contactName]);
 
   useEffect(() => {
     if (!open) return;
@@ -126,10 +244,6 @@ export function TemplatePicker({
         return;
       }
 
-      // Scope by RLS (message_templates_select → is_account_member), NOT by
-      // user_id. Templates are account-owned, so filtering on the caller's
-      // user_id hid templates that a teammate created — leaving them unable
-      // to send approved templates in a shared account.
       const { data, error } = await supabase
         .from("message_templates")
         .select("*")
@@ -166,15 +280,112 @@ export function TemplatePicker({
   function pickTemplate(template: MessageTemplate) {
     const slots = collectVariableSlots(template);
     const initialParams = new Array(slots.bodyVars.length).fill("");
-    
-    // Auto-fill Body {{1}} with customer first name
-    if (slots.bodyVars.length >= 1 && contactName) {
-      initialParams[0] = contactName.split(" ")[0] || contactName;
+    const tn = template.name || "";
+
+    // 1. Explicit Preset Template Mappings
+    if (tn === "wacrm_cart_abandoned_v3") {
+      if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
+      if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.productName;
+      if (slots.bodyVars.length >= 3) initialParams[2] = storeContext.dynamicOffer;
+    } else if (tn === "wacrm_cart_abandoned_v2") {
+      if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
+      if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.productName;
+    } else if (tn === "wacrm_cart_abandoned_v1" || tn.includes("cart_abandoned")) {
+      if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
+      if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.productName;
+      if (slots.bodyVars.length >= 3) initialParams[2] = storeContext.storeName;
+      if (slots.bodyVars.length >= 4) initialParams[3] = storeContext.checkoutUrl;
+    } else if (tn.includes("cart_reminder_step2")) {
+      if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
+      if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.productName;
+      if (slots.bodyVars.length >= 3) initialParams[2] = storeContext.totalPrice;
+    } else if (tn.includes("cart_reminder_step3")) {
+      if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
+      if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.productName;
+      if (slots.bodyVars.length >= 3) initialParams[2] = storeContext.checkoutUrl;
+      if (slots.bodyVars.length >= 4) initialParams[3] = storeContext.discountCode;
+    } else if (tn.includes("browse_abandoned")) {
+      if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
+      if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.productName;
+      if (slots.bodyVars.length >= 3) initialParams[2] = storeContext.totalPrice;
+      if (slots.bodyVars.length >= 4) initialParams[3] = storeContext.checkoutUrl;
+    } else if (tn.includes("order_confirmed")) {
+      if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
+      if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.orderNumber;
+      if (slots.bodyVars.length >= 3) initialParams[2] = storeContext.totalPrice;
+    } else if (tn.includes("order_shipped")) {
+      if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
+      if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.orderNumber;
+      if (slots.bodyVars.length >= 3) initialParams[2] = storeContext.trackingUrl;
+    } else if (tn.includes("order_delivered")) {
+      if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
+      if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.orderNumber;
+    } else if (tn.includes("cod_confirmation")) {
+      if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
+      if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.productName;
+      if (slots.bodyVars.length >= 3) initialParams[2] = storeContext.totalPrice;
+    } else {
+      // 2. Intelligent Context-Aware Resolver for any template
+      const text = template.body_text || "";
+      slots.bodyVars.forEach((varIndex, idx) => {
+        const placeholder = `{{${varIndex}}}`;
+        const pIdx = text.indexOf(placeholder);
+        const snippet = pIdx !== -1
+          ? text.slice(Math.max(0, pIdx - 40), Math.min(text.length, pIdx + 40))
+          : "";
+
+        if (/name|hey|hi|hello|dear|customer/i.test(snippet)) {
+          initialParams[idx] = storeContext.customerFirstName;
+        } else if (/product|item|cart|checking out|buying|bought|order/i.test(snippet)) {
+          initialParams[idx] = storeContext.productName;
+        } else if (/offer|discount|deal|shipping|special|gift|free/i.test(snippet)) {
+          initialParams[idx] = storeContext.dynamicOffer;
+        } else if (/price|total|amount|cost|rs|₹|\$/i.test(snippet)) {
+          initialParams[idx] = storeContext.totalPrice;
+        } else if (/checkout|link|url|website|visit/i.test(snippet)) {
+          initialParams[idx] = storeContext.checkoutUrl;
+        } else if (/code|coupon|voucher/i.test(snippet)) {
+          initialParams[idx] = storeContext.discountCode;
+        } else if (/store|shop|brand|company/i.test(snippet)) {
+          initialParams[idx] = storeContext.storeName;
+        } else if (/track|shipment|courier/i.test(snippet)) {
+          initialParams[idx] = storeContext.trackingUrl;
+        } else {
+          // Fallback sequence by index
+          if (idx === 0) initialParams[idx] = storeContext.customerFirstName;
+          else if (idx === 1) initialParams[idx] = storeContext.productName;
+          else if (idx === 2) initialParams[idx] = storeContext.dynamicOffer;
+          else if (idx === 3) initialParams[idx] = storeContext.checkoutUrl;
+          else if (idx === 4) initialParams[idx] = storeContext.storeName;
+          else initialParams[idx] = "";
+        }
+      });
     }
-    // Auto-fill Body {{2}} with recent cart item product title
-    if (slots.bodyVars.length >= 2 && recentProductName) {
-      initialParams[1] = recentProductName;
+
+    // Header variable auto-fill
+    let initialHeader = "";
+    if (slots.headerVarCount > 0 && template.header_content) {
+      const hContent = template.header_content;
+      if (/name|customer|hey|hi/i.test(hContent)) {
+        initialHeader = storeContext.customerFirstName;
+      } else if (/product|item|cart/i.test(hContent)) {
+        initialHeader = storeContext.productName;
+      } else {
+        initialHeader = storeContext.storeName;
+      }
     }
+
+    // Button URL variables auto-fill
+    const initialButtonParams: Record<number, string> = {};
+    slots.urlButtonSlots.forEach((s) => {
+      if (/checkout|cart/i.test(s.url)) {
+        initialButtonParams[s.index] = storeContext.checkoutUrl;
+      } else if (/discount|code|coupon/i.test(s.url)) {
+        initialButtonParams[s.index] = storeContext.discountCode;
+      } else {
+        initialButtonParams[s.index] = storeContext.discountCode;
+      }
+    });
 
     const noInputsNeeded =
       slots.bodyVars.length === 0 &&
@@ -187,8 +398,8 @@ export function TemplatePicker({
     }
     setSelected(template);
     setParams(initialParams);
-    setHeaderText("");
-    setButtonParams({});
+    setHeaderText(initialHeader);
+    setButtonParams(initialButtonParams);
   }
 
   function confirm() {

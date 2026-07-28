@@ -44,17 +44,22 @@ const SPEC_DEFAULT_STAGES = [
   { name: "Won", color: "#22c55e", position: 4 }, // green
 ];
 
+import { getCachedData, setCachedData } from "@/lib/cache/page-cache";
+
 export default function PipelinesPage() {
   const supabase = createClient();
   const canEditSettings = useCan("edit-settings");
   const canCreateDeals = useCan("send-messages");
   const { accountId } = useAuth();
 
-  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [selectedPipelineId, setSelectedPipelineId] = useState<string>("");
+  const cachedPipelines = getCachedData<Pipeline[]>("pipelines_list");
+  const [pipelines, setPipelines] = useState<Pipeline[]>(cachedPipelines || []);
+  const [selectedPipelineId, setSelectedPipelineId] = useState<string>(
+    cachedPipelines && cachedPipelines.length > 0 ? cachedPipelines[0].id : ""
+  );
   const [stages, setStages] = useState<PipelineStage[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedPipelines || cachedPipelines.length === 0);
 
   // Dialog / sheet state
   const [newPipelineOpen, setNewPipelineOpen] = useState(false);
@@ -80,29 +85,39 @@ export default function PipelinesPage() {
       console.error("Failed to load pipelines:", error.message);
       return [];
     }
-    return data ?? [];
+    const list = data ?? [];
+    setCachedData("pipelines_list", list);
+    return list;
   }, [supabase]);
 
   const loadStages = useCallback(
     async (pipelineId: string) => {
+      const cached = getCachedData<PipelineStage[]>(`pipeline_stages_${pipelineId}`);
+      if (cached) setStages(cached);
       const { data } = await supabase
         .from("pipeline_stages")
         .select("*")
         .eq("pipeline_id", pipelineId)
         .order("position");
-      return data ?? [];
+      const list = data ?? [];
+      setCachedData(`pipeline_stages_${pipelineId}`, list);
+      return list;
     },
     [supabase],
   );
 
   const loadDeals = useCallback(
     async (pipelineId: string) => {
+      const cached = getCachedData<Deal[]>(`pipeline_deals_${pipelineId}`);
+      if (cached) setDeals(cached);
       const { data } = await supabase
         .from("deals")
         .select("*, contact:contacts(*), assignee:profiles!deals_assigned_to_fkey(*)")
         .eq("pipeline_id", pipelineId)
         .order("created_at", { ascending: false });
-      return (data ?? []) as Deal[];
+      const list = (data ?? []) as Deal[];
+      setCachedData(`pipeline_deals_${pipelineId}`, list);
+      return list;
     },
     [supabase],
   );
@@ -113,7 +128,6 @@ export default function PipelinesPage() {
     } = await supabase.auth.getSession();
     const user = session?.user;
     if (!user) return null;
-    // pipelines.account_id is NOT NULL post-017 with no DB default.
     if (!accountId) return null;
 
     const { data: pipeline, error } = await supabase
@@ -142,7 +156,9 @@ export default function PipelinesPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      setLoading(true);
+      if (!cachedPipelines || cachedPipelines.length === 0) {
+        setLoading(true);
+      }
       let list = await loadPipelines();
 
       if (list.length === 0 && !seedAttempted.current) {

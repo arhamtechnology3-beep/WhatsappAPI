@@ -150,6 +150,8 @@ function getPresetDates(preset: Preset): { start: Date; end: Date } {
   return { start, end };
 }
 
+import { getCachedData, setCachedData } from "@/lib/cache/page-cache";
+
 export default function CTWAInsightsPage() {
   const [activeTab, setActiveTab] = useState<"overview" | "data">("overview");
   const [preset, setPreset] = useState<Preset>("7days");
@@ -159,9 +161,12 @@ export default function CTWAInsightsPage() {
     getPresetDates("7days")
   );
 
-  const [loading, setLoading] = useState(true);
-  const [summaryData, setSummaryData] = useState<SummaryItem[]>([]);
-  const [trendData, setTrendData] = useState<TrendPoint[]>([]);
+  const cachedSummary = getCachedData<SummaryItem[]>("ctwa_summary_7days");
+  const cachedTrend = getCachedData<TrendPoint[]>("ctwa_trend_7days");
+
+  const [loading, setLoading] = useState(!cachedSummary || cachedSummary.length === 0);
+  const [summaryData, setSummaryData] = useState<SummaryItem[]>(cachedSummary || []);
+  const [trendData, setTrendData] = useState<TrendPoint[]>(cachedTrend || []);
   const [error, setError] = useState<string | null>(null);
 
   // Recharts Legend visibility toggle state
@@ -211,12 +216,17 @@ export default function CTWAInsightsPage() {
   };
 
   const fetchData = async () => {
-    setLoading(true);
+    const startIso = dateRange.start.toISOString();
+    const endIso = dateRange.end.toISOString();
+    const cacheKeySummary = `ctwa_summary_${preset}_${startIso}`;
+    const cacheKeyTrend = `ctwa_trend_${preset}_${startIso}`;
+
+    const existingSum = getCachedData<SummaryItem[]>(cacheKeySummary);
+    if (!existingSum) {
+      setLoading(true);
+    }
     setError(null);
     try {
-      const startIso = dateRange.start.toISOString();
-      const endIso = dateRange.end.toISOString();
-
       const [summaryRes, trendRes] = await Promise.all([
         fetch(`/api/insights/ctwa/summary?start=${startIso}&end=${endIso}`),
         fetch(`/api/insights/ctwa/trend?start=${startIso}&end=${endIso}`),
@@ -229,8 +239,13 @@ export default function CTWAInsightsPage() {
       const summaryJson = await summaryRes.json();
       const trendJson = await trendRes.json();
 
-      setSummaryData(summaryJson.summary || []);
-      setTrendData(trendJson.trend || []);
+      const sumList = summaryJson.summary || [];
+      const trendList = trendJson.trend || [];
+
+      setSummaryData(sumList);
+      setTrendData(trendList);
+      setCachedData(cacheKeySummary, sumList);
+      setCachedData(cacheKeyTrend, trendList);
     } catch (err: any) {
       console.error("Error fetching CTWA insights:", err);
       setError(err.message || "An unexpected error occurred");

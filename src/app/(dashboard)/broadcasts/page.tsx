@@ -56,11 +56,14 @@ function RateCell({
   );
 }
 
+import { getCachedData, setCachedData } from '@/lib/cache/page-cache';
+
 export default function BroadcastsPage() {
   const router = useRouter();
   const canCreate = useCan('send-messages');
-  const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedBroadcasts = getCachedData<Broadcast[]>('broadcasts_list');
+  const [broadcasts, setBroadcasts] = useState<Broadcast[]>(cachedBroadcasts || []);
+  const [loading, setLoading] = useState(!cachedBroadcasts || cachedBroadcasts.length === 0);
   const [error, setError] = useState<string | null>(null);
 
   // Used to kick off polling only while something is actively sending.
@@ -75,7 +78,9 @@ export default function BroadcastsPage() {
         .order('created_at', { ascending: false });
 
       if (fetchError) throw fetchError;
-      setBroadcasts(data ?? []);
+      const list = data ?? [];
+      setBroadcasts(list);
+      setCachedData('broadcasts_list', list);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load broadcasts');
     } finally {

@@ -20,6 +20,8 @@ import {
   type AccountRole,
 } from "@/lib/auth/roles";
 
+import { getCachedData, setCachedData } from "@/lib/cache/page-cache";
+
 interface Profile {
   id: string;
   full_name: string | null;
@@ -65,21 +67,26 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(() => getCachedData<Profile>("user_profile"));
   const [loading, setLoading] = useState(true);
-  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(!profile);
 
   // Workspaces state
-  const [workspaces, setWorkspaces] = useState<any[]>([]);
+  const [workspaces, setWorkspaces] = useState<any[]>(() => getCachedData<any[]>("user_workspaces") || []);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
 
   const fetchWorkspaces = useCallback(async () => {
     try {
+      const cached = getCachedData<any[]>("user_workspaces");
+      if (cached && cached.length > 0 && workspaces.length === 0) {
+        setWorkspaces(cached);
+      }
       const res = await fetch("/api/workspaces");
       if (res.ok) {
         const data = await res.json();
         const list = data.workspaces || [];
         setWorkspaces(list);
+        setCachedData("user_workspaces", list);
 
         // Get cookie helper
         const cookiesMap = document.cookie.split("; ").reduce((acc: any, row) => {
@@ -100,11 +107,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error("[AuthProvider] Error fetching workspaces:", err);
     }
-  }, []);
+  }, [workspaces.length]);
 
   const fetchProfile = useCallback(async (userId: string) => {
+    const cached = getCachedData<Profile>("user_profile");
+    if (cached) {
+      setProfile(cached);
+      setProfileLoading(false);
+    } else {
+      setProfileLoading(true);
+    }
     const supabase = createClient();
-    setProfileLoading(true);
     try {
       const { data, error } = await supabase
         .from("profiles")
@@ -122,7 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           ? (data.account_role as AccountRole)
           : null;
 
-        setProfile({
+        const profData: Profile = {
           id: data.id,
           full_name: data.full_name,
           email: data.email,
@@ -131,7 +144,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           account_id: data.account_id ?? null,
           account_role: role,
           beta_features: data.beta_features ?? [],
-        });
+        };
+        setProfile(profData);
+        setCachedData("user_profile", profData);
       }
     } catch (err) {
       console.error("[AuthProvider] fetchProfile threw:", err);

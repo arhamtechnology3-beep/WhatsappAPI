@@ -16,17 +16,15 @@ import { cn } from "@/lib/utils";
 // across reloads and sessions (device-scoped, like the theme prefs).
 const CONTACT_PANEL_STORAGE_KEY = "wacrm:inbox:contact-panel-open";
 
+import { getCachedData, setCachedData } from "@/lib/cache/page-cache";
+
 export default function InboxPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  /**
-   * `?c=<id>` deep-link support. Used when landing here from the
-   * dashboard's recent-conversations list so the right thread opens
-   * automatically instead of showing the empty center panel.
-   */
   const deepLinkConvId = searchParams.get("c");
 
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const cachedConvs = getCachedData<Conversation[]>("inbox_conversations");
+  const [conversations, setConversations] = useState<Conversation[]>(cachedConvs || []);
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);

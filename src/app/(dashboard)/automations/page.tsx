@@ -57,10 +57,13 @@ const TEMPLATE_ICON: Record<TemplateSlug, typeof Zap> = {
   follow_up_reminder: PhoneCall,
 }
 
+import { getCachedData, setCachedData } from "@/lib/cache/page-cache"
+
 export default function AutomationsPage() {
   const router = useRouter()
   const canCreate = useCan("send-messages")
-  const [automations, setAutomations] = useState<Automation[] | null>(null)
+  const cachedAutomations = getCachedData<Automation[]>("automations_list")
+  const [automations, setAutomations] = useState<Automation[] | null>(cachedAutomations)
   const [error, setError] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<Automation | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -73,7 +76,9 @@ export default function AutomationsPage() {
         .select("*")
         .order("created_at", { ascending: false })
       if (fetchErr) throw fetchErr
-      setAutomations((data ?? []) as Automation[])
+      const list = (data ?? []) as Automation[]
+      setAutomations(list)
+      setCachedData("automations_list", list)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load automations")
     }

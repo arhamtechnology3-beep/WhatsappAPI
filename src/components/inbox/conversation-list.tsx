@@ -46,6 +46,8 @@ const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = [
   { label: "Closed", value: "closed" },
 ];
 
+import { setCachedData } from "@/lib/cache/page-cache";
+
 export function ConversationList({
   activeConversationId,
   onSelect,
@@ -55,20 +57,8 @@ export function ConversationList({
 }: ConversationListProps) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(conversations.length === 0);
 
-  // Keep the latest callback in a ref so the fetch effect below can
-  // have a stable, empty-dep identity. Previously the fetch useCallback
-  // depended on `onConversationsLoaded`, which depends on the parent's
-  // `deepLinkConvId` — so every URL change (including one the parent
-  // triggered via router.replace after a click) caused a fresh
-  // conversations fetch. That extra refetch was the trigger for the
-  // deep-link auto-select running a second time and wiping the active
-  // thread's messages.
-  // Mutation lives in an effect (not render) per React 19's refs rule;
-  // the fetch runs once on mount so it's fine to read the slightly
-  // older value — the very next render updates the ref for any
-  // subsequent async completion.
   const onConversationsLoadedRef = useRef(onConversationsLoaded);
   useEffect(() => {
     onConversationsLoadedRef.current = onConversationsLoaded;
@@ -87,7 +77,6 @@ export function ConversationList({
       if (cancelled) return;
 
       if (error) {
-        // Supabase errors have non-enumerable properties — log fields explicitly
         console.error("Failed to fetch conversations:", {
           message: error.message,
           details: error.details,
@@ -98,7 +87,9 @@ export function ConversationList({
         return;
       }
 
-      onConversationsLoadedRef.current(data ?? []);
+      const list = data ?? [];
+      setCachedData("inbox_conversations", list);
+      onConversationsLoadedRef.current(list);
       setLoading(false);
     })();
 

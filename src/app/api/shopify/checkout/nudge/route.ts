@@ -57,29 +57,20 @@ export async function POST(request: Request) {
       .eq('step_order', 1)
       .maybeSingle()
 
-    let targetTemplateName = step?.template_name || 'wacrm_cart_abandoned_v2'
+    let targetTemplateName = 'wacrm_cart_abandoned_v3'
 
-    // Check if wacrm_cart_abandoned_v2 is approved in DB, otherwise use step template
-    const { data: v2Row } = await supabase
+    // Check if wacrm_cart_abandoned_v3 or v2 is approved in DB
+    const { data: v3Row } = await supabase
       .from('message_templates')
       .select('status')
       .eq('account_id', accountId)
-      .eq('name', 'wacrm_cart_abandoned_v2')
+      .eq('name', 'wacrm_cart_abandoned_v3')
       .maybeSingle()
 
-    if (v2Row && (v2Row.status === 'APPROVED' || v2Row.status === 'PENDING')) {
-      targetTemplateName = 'wacrm_cart_abandoned_v2'
+    if (v3Row && (v3Row.status === 'APPROVED' || v3Row.status === 'PENDING')) {
+      targetTemplateName = 'wacrm_cart_abandoned_v3'
     } else {
-      const { data: templateRow } = await supabase
-        .from('message_templates')
-        .select('status')
-        .eq('account_id', accountId)
-        .eq('name', targetTemplateName)
-        .maybeSingle()
-
-      if (!templateRow || templateRow.status !== 'APPROVED') {
-        return NextResponse.json({ error: `Template "${targetTemplateName}" must be APPROVED by Meta before sending. Current status: ${templateRow?.status || 'NOT_SUBMITTED'}` }, { status: 400 })
-      }
+      targetTemplateName = step?.template_name || 'wacrm_cart_abandoned_v2'
     }
 
     // 3. Find or create conversation for the contact
@@ -116,9 +107,24 @@ export async function POST(request: Request) {
     const cleanCheckoutUrl = rawCheckoutUrl.replace('divyaprabhafoods.myshopify.com', 'divyaprabhafoods.com')
     const storeName = 'DivyaPrabha Foods'
 
-    const params = targetTemplateName === 'wacrm_cart_abandoned_v2'
-      ? [customerFirstName, productName]
-      : [customerFirstName, productName, storeName, cleanCheckoutUrl]
+    const totalPrice = Number(checkout.total_price || 0)
+    let dynamicOffer = '🎁 Get 10% OFF on orders above ₹749 + Free Shipping on ₹599+!'
+    if (totalPrice >= 749) {
+      dynamicOffer = '🎉 10% Discount & FREE Shipping auto-applied at checkout!'
+    } else if (totalPrice >= 599) {
+      dynamicOffer = '🚚 FREE Shipping auto-applied at checkout! (Add items worth ₹' + (749 - totalPrice) + ' for 10% OFF)'
+    } else if (totalPrice > 0) {
+      dynamicOffer = '✨ Add items worth ₹' + (599 - totalPrice) + ' to get FREE Shipping & ₹' + (749 - totalPrice) + ' for 10% OFF!'
+    }
+
+    let params: string[] = []
+    if (targetTemplateName === 'wacrm_cart_abandoned_v3') {
+      params = [customerFirstName, productName, dynamicOffer]
+    } else if (targetTemplateName === 'wacrm_cart_abandoned_v2') {
+      params = [customerFirstName, productName]
+    } else {
+      params = [customerFirstName, productName, storeName, cleanCheckoutUrl]
+    }
 
     // 5. Send the template message immediately
     try {

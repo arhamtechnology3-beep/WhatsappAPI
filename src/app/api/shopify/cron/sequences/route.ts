@@ -179,7 +179,19 @@ export async function GET(request: Request) {
         // auto-fill params based on template name to prevent #132000 from Meta.
         if (templateParams.length === 0) {
           const tn = step.template_name || ''
-          if (tn.includes('cart_abandoned') || tn.includes('cart_reminder_step2')) {
+          const numPrice = Number(totalPrice || 0)
+          let dynamicOffer = '🎁 Get 10% OFF on orders above ₹749 + Free Shipping on ₹599+!'
+          if (numPrice >= 749) {
+            dynamicOffer = '🎉 10% Discount & FREE Shipping auto-applied at checkout!'
+          } else if (numPrice >= 599) {
+            dynamicOffer = '🚚 FREE Shipping auto-applied at checkout! (Add items worth ₹' + (749 - numPrice) + ' for 10% OFF)'
+          } else if (numPrice > 0) {
+            dynamicOffer = '✨ Add items worth ₹' + (599 - numPrice) + ' to get FREE Shipping & ₹' + (749 - numPrice) + ' for 10% OFF!'
+          }
+
+          if (tn === 'wacrm_cart_abandoned_v3') {
+            templateParams = [customerName, productName, dynamicOffer]
+          } else if (tn.includes('cart_abandoned') || tn.includes('cart_reminder_step2')) {
             // wacrm_cart_abandoned_v1: {{customer_name}}, {{product_name}}, {{store_name}}, {{checkout_url}}
             templateParams = [customerName, productName, storeName, checkoutUrl]
           } else if (tn.includes('cart_reminder_step3')) {

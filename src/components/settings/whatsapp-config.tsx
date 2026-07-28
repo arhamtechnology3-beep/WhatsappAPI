@@ -756,12 +756,16 @@ export function WhatsAppConfig() {
                   <Badge
                     variant="outline"
                     className={
-                      phoneInfo?.business_verification_status === 'APPROVED'
+                      phoneInfo?.business_verification_status === 'APPROVED' || phoneInfo?.verified_name
                         ? 'bg-emerald-500/10 text-emerald-600 border-none'
                         : 'bg-muted text-muted-foreground border-none'
                     }
                   >
-                    {phoneInfo?.business_verification_status === 'APPROVED' ? 'Verified' : 'Unverified'}
+                    {phoneInfo?.business_verification_status === 'APPROVED'
+                      ? 'Verified'
+                      : phoneInfo?.verified_name
+                      ? 'Approved'
+                      : 'Unverified'}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between">

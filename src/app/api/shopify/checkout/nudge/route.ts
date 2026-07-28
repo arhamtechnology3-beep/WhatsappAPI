@@ -57,21 +57,29 @@ export async function POST(request: Request) {
       .eq('step_order', 1)
       .maybeSingle()
 
-    if (!step || !step.template_name) {
-      return NextResponse.json({ error: 'Step 1 template for abandoned cart recovery not configured.' }, { status: 400 })
-    }
+    let targetTemplateName = step?.template_name || 'wacrm_cart_abandoned_v2'
 
-    // Check if the template is approved or not
-    const { data: templateRow } = await supabase
+    // Check if wacrm_cart_abandoned_v2 is approved in DB, otherwise use step template
+    const { data: v2Row } = await supabase
       .from('message_templates')
       .select('status')
       .eq('account_id', accountId)
-      .eq('name', step.template_name)
-      .eq('language', 'en_US')
+      .eq('name', 'wacrm_cart_abandoned_v2')
       .maybeSingle()
 
-    if (!templateRow || templateRow.status !== 'APPROVED') {
-      return NextResponse.json({ error: `Template "${step.template_name}" must be APPROVED by Meta before sending. Current status: ${templateRow?.status || 'NOT_SUBMITTED'}` }, { status: 400 })
+    if (v2Row && (v2Row.status === 'APPROVED' || v2Row.status === 'PENDING')) {
+      targetTemplateName = 'wacrm_cart_abandoned_v2'
+    } else {
+      const { data: templateRow } = await supabase
+        .from('message_templates')
+        .select('status')
+        .eq('account_id', accountId)
+        .eq('name', targetTemplateName)
+        .maybeSingle()
+
+      if (!templateRow || templateRow.status !== 'APPROVED') {
+        return NextResponse.json({ error: `Template "${targetTemplateName}" must be APPROVED by Meta before sending. Current status: ${templateRow?.status || 'NOT_SUBMITTED'}` }, { status: 400 })
+      }
     }
 
     // 3. Find or create conversation for the contact
@@ -104,11 +112,13 @@ export async function POST(request: Request) {
     const customerFirstName = contact?.name?.split(' ')[0] || 'Customer'
     const lineItems = checkout.line_items || []
     const productName = lineItems[0]?.title || 'your cart items'
-    const checkoutUrl = checkout.abandoned_checkout_url || ''
-    const storeName = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN || 'Our Store'
+    const rawCheckoutUrl = checkout.abandoned_checkout_url || 'https://divyaprabhafoods.com/'
+    const cleanCheckoutUrl = rawCheckoutUrl.replace('divyaprabhafoods.myshopify.com', 'divyaprabhafoods.com')
+    const storeName = 'DivyaPrabha Foods'
 
-    // Variables for wacrm_cart_abandoned_v1 are customer_name, product_name, store_name, checkout_url
-    const params = [customerFirstName, productName, storeName, checkoutUrl]
+    const params = targetTemplateName === 'wacrm_cart_abandoned_v2'
+      ? [customerFirstName, productName]
+      : [customerFirstName, productName, storeName, cleanCheckoutUrl]
 
     // 5. Send the template message immediately
     try {
@@ -117,7 +127,7 @@ export async function POST(request: Request) {
         userId: user.id,
         conversationId: conv.id,
         contactId: checkout.contact_id,
-        templateName: step.template_name,
+        templateName: targetTemplateName,
         params,
       })
     } catch (sendErr: any) {

@@ -129,6 +129,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
           templateRow = fallbackRow
         }
       }
+      ;(input as any)._templateRow = templateRow
 
       if (templateRow?.category === 'MARKETING') {
         const { canSendMarketing } = await import('@/lib/whatsapp/opt-in-helper')
@@ -247,8 +248,18 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   // Meta message id. sender_type='bot' distinguishes automation sends
   // from manual agent sends.
   const content_type = input.kind === 'template' ? 'template' : 'text'
-  const content_text = input.kind === 'text' ? input.text : null
   const template_name = input.kind === 'template' ? input.templateName : null
+
+  let content_text = input.kind === 'text' ? input.text : null
+  if (input.kind === 'template') {
+    // Render interpolated body text so the inbox bubble and list preview display full message content
+    const templateBody = (input as any)._templateRow?.body_text || `Template: ${input.templateName}`
+    const paramsList = input.params || []
+    content_text = templateBody.replace(/\{\{(\d+)\}\}/g, (_: string, raw: string) => {
+      const idx = Number(raw) - 1
+      return paramsList[idx] ?? `{{${raw}}}`
+    })
+  }
 
   const { error: msgErr } = await db.from('messages').insert({
     conversation_id: input.conversationId,
@@ -268,8 +279,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   await db
     .from('conversations')
     .update({
-      last_message_text:
-        input.kind === 'template' ? `[template:${input.templateName}]` : input.text,
+      last_message_text: content_text || (input.kind === 'template' ? `Template: ${input.templateName}` : input.text),
       last_message_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })

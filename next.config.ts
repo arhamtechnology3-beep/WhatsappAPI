@@ -67,34 +67,16 @@ const nextConfig: NextConfig = {
   /**
    * Cache-Control policy.
    *
-   * Why this exists:
-   *   Hostinger's CDN was applying `s-maxage=31536000` (1 year) to
-   *   prerendered HTML pages by default. When a new deploy shipped
-   *   fresh Turbopack chunk hashes, the edge kept serving year-old
-   *   HTML referencing chunk filenames that no longer existed on
-   *   disk — result: HTML 200, every /_next/static/*.js and .css
-   *   came back 404, the page rendered unstyled. Private/incognito
-   *   did nothing because the cache is server-side.
+   * Page routes must use `no-store, must-revalidate` so reverse proxies / CDNs
+   * (e.g. Hostinger, Nginx, Cloudflare) do not cache React Server Component (RSC)
+   * client-side router responses (`RSC: 1` / `Accept: text/x-component`) under page
+   * URLs and mistakenly serve raw RSC JSON text stream strings (`1:"$Sreact.fragment"...`)
+   * to direct browser document requests (`Accept: text/html`).
    *
    * Strategy:
-   *   - /_next/static/* — leave to Next. Turbopack dev chunks can go
-   *     stale if we force immutable caching here; Next already emits
-   *     the correct production headers for hashed assets.
-   *   - /api/*          — no-store. API responses are per-user and
-   *     must never be shared across requests at the edge.
-   *   - Everything else — public, brief s-maxage + generous
-   *     stale-while-revalidate. The edge serves instantly from cache
-   *     for the first 5 min, then returns cached content while
-   *     refreshing in the background for up to 24 h. A deploy's
-   *     chunk-hash drift self-heals within ~5 min with no user-
-   *     visible latency.
-   *
-   *   Note: dynamic dashboard routes (/inbox, /contacts, /pipelines,
-   *   /broadcasts, etc.) are server-rendered per request — Next.js
-   *   and Supabase auth already prevent them from being served
-   *   from a shared cache. The s-maxage here is a ceiling; Next.js
-   *   and auth middleware still set `private` / `no-store` for
-   *   per-user responses.
+   *   - /_next/static/* — Next.js handles immutable caching of hashed static build chunks.
+   *   - /api/*          — no-store, must-revalidate.
+   *   - Everything else — no-store, must-revalidate.
    *
    * Security headers are appended via a separate catch-all rule
    * below — Next.js merges headers from every matching rule, so
@@ -105,15 +87,14 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/api/:path*",
-        headers: [{ key: "Cache-Control", value: "no-store" }],
+        headers: [{ key: "Cache-Control", value: "no-store, must-revalidate" }],
       },
       {
         source: "/:path((?!_next/static|_next/image|api).*)",
         headers: [
           {
             key: "Cache-Control",
-            value:
-              "public, max-age=0, s-maxage=300, stale-while-revalidate=86400",
+            value: "no-store, must-revalidate",
           },
         ],
       },

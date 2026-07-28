@@ -109,13 +109,26 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
 
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'template') {
-      const { data: templateRow } = await db
+      const requestedLang = input.language || 'en_US'
+      let { data: templateRow } = await db
         .from('message_templates')
         .select('*')
         .eq('account_id', input.accountId)
         .eq('name', input.templateName)
-        .eq('language', input.language || 'en')
+        .eq('language', requestedLang)
         .maybeSingle()
+
+      if (!templateRow) {
+        const { data: fallbackRow } = await db
+          .from('message_templates')
+          .select('*')
+          .eq('account_id', input.accountId)
+          .eq('name', input.templateName)
+          .maybeSingle()
+        if (fallbackRow) {
+          templateRow = fallbackRow
+        }
+      }
 
       if (templateRow?.category === 'MARKETING') {
         const { canSendMarketing } = await import('@/lib/whatsapp/opt-in-helper')
@@ -179,7 +192,8 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         accessToken,
         to: phone,
         templateName: input.templateName,
-        language: input.language,
+        language: templateRow?.language || input.language || 'en_US',
+        params: input.params,
         template: templateRow || undefined,
         messageParams,
       })

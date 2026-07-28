@@ -421,6 +421,7 @@ export async function sendTemplateMessage(
     language: { code: language },
   }
 
+  const bodyParams = params ?? messageParams?.body
   if (template) {
     const components = buildSendComponents(template, {
       // Legacy callers pass body values in `params`; fold them into
@@ -434,12 +435,12 @@ export async function sendTemplateMessage(
     if (components.length > 0) {
       templatePayload.components = components
     }
-  } else if (params && params.length > 0) {
-    // Legacy body-only path — no template row available.
+  } else if (bodyParams && bodyParams.length > 0) {
+    // Fallback body-only path — no template row available in DB.
     templatePayload.components = [
       {
         type: 'body',
-        parameters: params.map((p) => ({ type: 'text', text: String(p) })),
+        parameters: bodyParams.map((p) => ({ type: 'text', text: String(p) })),
       },
     ]
   }

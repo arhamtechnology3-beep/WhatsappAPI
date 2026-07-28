@@ -33,6 +33,8 @@ interface TemplatePickerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelect: (template: MessageTemplate, values: TemplateSendValues) => void;
+  contactName?: string | null;
+  contactId?: string | null;
 }
 
 function renderBodyPreview(body: string, params: string[]): string {
@@ -77,6 +79,8 @@ export function TemplatePicker({
   open,
   onOpenChange,
   onSelect,
+  contactName,
+  contactId,
 }: TemplatePickerProps) {
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,6 +88,24 @@ export function TemplatePicker({
   const [params, setParams] = useState<string[]>([]);
   const [headerText, setHeaderText] = useState<string>("");
   const [buttonParams, setButtonParams] = useState<Record<number, string>>({});
+  const [recentProductName, setRecentProductName] = useState<string>("");
+
+  useEffect(() => {
+    if (!open || !contactId) return;
+    const supabase = createClient();
+    supabase
+      .from("shopify_checkouts")
+      .select("line_items")
+      .eq("contact_id", contactId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.line_items && Array.isArray(data.line_items) && data.line_items.length > 0) {
+          setRecentProductName(data.line_items[0]?.title || "");
+        }
+      });
+  }, [open, contactId]);
 
   useEffect(() => {
     if (!open) return;
@@ -143,17 +165,28 @@ export function TemplatePicker({
 
   function pickTemplate(template: MessageTemplate) {
     const slots = collectVariableSlots(template);
+    const initialParams = new Array(slots.bodyVars.length).fill("");
+    
+    // Auto-fill Body {{1}} with customer first name
+    if (slots.bodyVars.length >= 1 && contactName) {
+      initialParams[0] = contactName.split(" ")[0] || contactName;
+    }
+    // Auto-fill Body {{2}} with recent cart item product title
+    if (slots.bodyVars.length >= 2 && recentProductName) {
+      initialParams[1] = recentProductName;
+    }
+
     const noInputsNeeded =
       slots.bodyVars.length === 0 &&
       slots.headerVarCount === 0 &&
       slots.urlButtonSlots.length === 0;
     if (noInputsNeeded) {
-      onSelect(template, { body: [] });
+      onSelect(template, { body: initialParams });
       handleOpenChange(false);
       return;
     }
     setSelected(template);
-    setParams(new Array(slots.bodyVars.length).fill(""));
+    setParams(initialParams);
     setHeaderText("");
     setButtonParams({});
   }

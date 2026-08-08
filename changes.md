@@ -4,6 +4,23 @@ This file tracks all modifications, updates, bug fixes, and feature additions ma
 
 ---
 
+## [2026-08-09 01:23] Fix (Contacts & Auth) — Instant Account ID Resolution & Contact Query Filtering
+
+### Root Cause
+- `useAuth()` calculated `accountId = activeWorkspace?.id || profile?.account_id || null`. On initial client load, before `/api/workspaces` HTTP fetch populated the `workspaces` array, `activeWorkspace` evaluated to `null`, causing `accountId` to become `null`.
+- Without an explicit `account_id` query filter in `contacts/page.tsx`, the initial request without workspace context returned 0 rows (`No contacts yet.`).
+
+### Objective & Fixes
+- **Instant Workspace Account ID Resolution**: Updated `src/hooks/use-auth.tsx` to include `activeWorkspaceId` (read synchronously from cookie) in the `accountId` fallback: `const accountId = activeWorkspaceId || activeWorkspace?.id || profile?.account_id || null;`.
+- **Explicit Account ID Query Filter**: Updated `src/app/(dashboard)/contacts/page.tsx` to explicitly filter contacts by `account_id = accountId`, ensuring all 152 contacts for Jesal Patel load immediately.
+
+### Files Modified
+- `src/hooks/use-auth.tsx`
+- `src/app/(dashboard)/contacts/page.tsx`
+- `changes.md`
+
+---
+
 ## [2026-08-09 01:15] Fix (Dashboard) — Dashboard Skeleton Loader Unfreezing & Default Metrics Fallback
 
 ### Root Cause

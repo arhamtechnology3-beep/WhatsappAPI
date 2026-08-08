@@ -56,6 +56,7 @@ import { ContactDetailView } from '@/components/contacts/contact-detail-view';
 import { ImportModal } from '@/components/contacts/import-modal';
 import { CustomFieldsManager } from '@/components/contacts/custom-fields-manager';
 import { useCan } from '@/hooks/use-can';
+import { useAuth } from '@/hooks/use-auth';
 import { GatedButton } from '@/components/ui/gated-button';
 import { Checkbox } from '@/components/ui/checkbox';
 
@@ -70,6 +71,7 @@ import { getCachedData, setCachedData } from '@/lib/cache/page-cache';
 
 export default function ContactsPage() {
   const supabase = createClient();
+  const { accountId } = useAuth();
   const canEdit = useCan('send-messages');
   const canEditSettings = useCan('edit-settings');
 
@@ -189,6 +191,10 @@ export default function ContactsPage() {
           .order('created_at', { ascending: false })
           .range(from, to);
 
+        if (accountId) {
+          query = query.eq('account_id', accountId);
+        }
+
         if (quickFilter === 'abandoned') {
           query = query.in('shopify_checkouts.status', ['open', 'abandoned_notified']);
         } else if (quickFilter === 'shopify') {
@@ -272,7 +278,7 @@ export default function ContactsPage() {
         setLoading(false);
       }
     }
-  }, [supabase, page, search, selectedTagIds, tagsMap, quickFilter]);
+  }, [supabase, page, search, selectedTagIds, tagsMap, quickFilter, accountId]);
 
   // Load-once-on-mount-ish data fetches. Each setter inside runs
   // inside an async promise completion (Supabase await), not

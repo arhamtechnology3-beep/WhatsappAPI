@@ -163,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return workspaces.find((w) => w.id === activeWorkspaceId) || null;
   }, [workspaces, activeWorkspaceId]);
 
-  const accountId = activeWorkspace?.id || profile?.account_id || null;
+  const accountId = activeWorkspaceId || activeWorkspace?.id || profile?.account_id || null;
   const accountRole = useMemo(() => {
     if (activeWorkspace) {
       if (activeWorkspace.role === "member") return "agent" as AccountRole;

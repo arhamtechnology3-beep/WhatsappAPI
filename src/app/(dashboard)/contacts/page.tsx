@@ -75,7 +75,8 @@ export default function ContactsPage() {
   const canEdit = useCan('send-messages');
   const canEditSettings = useCan('edit-settings');
 
-  const cachedContactsObj = getCachedData<{ contacts: ContactWithTags[]; count: number }>('contacts_p0_s_t_qall');
+  const cacheKey = accountId ? `contacts_${accountId}_p0_s_t_qall` : null;
+  const cachedContactsObj = getCachedData<{ contacts: ContactWithTags[]; count: number }>(cacheKey);
 
   const [contacts, setContacts] = useState<ContactWithTags[]>(cachedContactsObj?.contacts || []);
   const [loading, setLoading] = useState(!cachedContactsObj || cachedContactsObj.contacts.length === 0);
@@ -267,10 +268,12 @@ export default function ContactsPage() {
       }));
 
       setContacts(enriched);
-      setCachedData(`contacts_p${page}_s${term}_t${selectedTagIds.join(',')}_q${quickFilter}`, {
-        contacts: enriched,
-        count,
-      });
+      if (accountId && enriched.length > 0) {
+        setCachedData(`contacts_${accountId}_p${page}_s${term}_t${selectedTagIds.join(',')}_q${quickFilter}`, {
+          contacts: enriched,
+          count,
+        });
+      }
     } catch (err) {
       console.error('[ContactsPage] fetchContacts error:', err);
     } finally {

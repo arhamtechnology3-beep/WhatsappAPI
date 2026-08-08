@@ -4,6 +4,23 @@ This file tracks all modifications, updates, bug fixes, and feature additions ma
 
 ---
 
+## [2026-08-09 01:27] Fix (Cache & Workspace) — Workspace Account-Scoped Page Caching & Empty Cache Rejection
+
+### Root Cause
+- `setCachedData` in `src/lib/cache/page-cache.ts` previously stored empty data payloads (e.g., `{ contacts: [], count: 0 }`). If an initial query executed before workspace context resolved, the empty result was saved into memory cache.
+- `contacts/page.tsx` used a global cache key `'contacts_p0_s_t_qall'` missing the `accountId`. Switching workspaces or clearing cookies re-used this key, causing empty cached states to persist until storage/cookies were manually cleared.
+
+### Objective & Fixes
+- **Empty Result Rejection**: Updated `src/lib/cache/page-cache.ts` to reject storing empty data structures (e.g. `contacts: []` or 0 records) and set a 30-second TTL auto-expiration.
+- **Account-Scoped Cache Keys**: Updated `src/app/(dashboard)/contacts/page.tsx` to scope cache keys by `accountId` (`contacts_${accountId}_...`) and only cache valid non-empty contact results.
+
+### Files Modified
+- `src/lib/cache/page-cache.ts`
+- `src/app/(dashboard)/contacts/page.tsx`
+- `changes.md`
+
+---
+
 ## [2026-08-09 01:23] Fix (Contacts & Auth) — Instant Account ID Resolution & Contact Query Filtering
 
 ### Root Cause

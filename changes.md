@@ -4,6 +4,21 @@ This file tracks all modifications, updates, bug fixes, and feature additions ma
 
 ---
 
+## [2026-08-09 00:50] Feat (Shopify) — Multi-Source Shopify Contact Sync (Customers + Orders + Checkouts)
+
+### Objective & Fixes
+- Enhanced Shopify contact sync (`src/app/api/shopify/sync-customers/route.ts`) to fetch contacts across **all three Shopify data sources**:
+  1. `/customers.json?limit=250` (Registered store customers)
+  2. `/orders.json?status=any&limit=250` (Guest checkout buyers & recent order placements)
+  3. `/checkouts.json?limit=250` (Abandoned checkout leads)
+- Added name, email, and phone fallback extraction so guest buyers and abandoned checkout leads automatically get imported into `contacts`.
+
+### Files Modified
+- `src/app/api/shopify/sync-customers/route.ts`
+- `changes.md`
+
+---
+
 ## [2026-08-09 00:30] Critical Fix — Meta WABA Webhook Subscription & Image Header Template Parameters
 
 ### Root Cause

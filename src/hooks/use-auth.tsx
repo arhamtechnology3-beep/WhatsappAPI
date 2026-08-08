@@ -73,7 +73,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Workspaces state
   const [workspaces, setWorkspaces] = useState<any[]>(() => getCachedData<any[]>("user_workspaces") || []);
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => {
+    if (typeof document === "undefined") return null;
+    const match = document.cookie.match(/wacrm_active_workspace_id=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  });
 
   const fetchWorkspaces = useCallback(async () => {
     try {

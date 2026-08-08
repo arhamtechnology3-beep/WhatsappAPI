@@ -4,6 +4,23 @@ This file tracks all modifications, updates, bug fixes, and feature additions ma
 
 ---
 
+## [2026-08-09 01:12] Fix (Auth & UI) — Synchronous Workspace Cookie Initialization & Infinite Loading Prevention
+
+### Root Cause
+- `useAuth()` initialized `activeWorkspaceId` as `null` on client mount while awaiting asynchronous `/api/workspaces` HTTP fetch. During those milliseconds, page queries executed without workspace context cookie state, returning 0 rows or causing RLS mismatches.
+- `fetchContacts()` and dashboard data fetchers lacked a `try ... finally` block, causing superseded sequence checks (`seq !== fetchSeq.current`) or RLS errors to leave `loading = true` on screen indefinitely without resetting state.
+
+### Objective & Fixes
+- **Synchronous Cookie Initialization**: Updated `src/hooks/use-auth.tsx` to initialize `activeWorkspaceId` synchronously from the `wacrm_active_workspace_id` cookie on mount.
+- **Guaranteed `setLoading(false)`**: Wrapped `fetchContacts()` in `try ... finally` blocks and added a 3-second safety fallback timer to ensure loading spinners never get stuck.
+
+### Files Modified
+- `src/hooks/use-auth.tsx`
+- `src/app/(dashboard)/contacts/page.tsx`
+- `changes.md`
+
+---
+
 ## [2026-08-09 01:00] Feat (Templates) — E-Commerce Lifecycle Templates & Store Product Image Enforcement
 
 ### Objective & Fixes

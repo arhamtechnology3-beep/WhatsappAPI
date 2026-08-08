@@ -151,127 +151,127 @@ export default function ContactsPage() {
   const fetchContacts = useCallback(async () => {
     const seq = ++fetchSeq.current;
     setLoading(true);
-    // The visible rows are about to change — drop any selection that
-    // referred to the old page/search results so the bulk bar can't
-    // act on rows the user can no longer see.
+    // Drop selection on visible data change
     setSelected(new Set());
 
     const from = page * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
     const term = search.trim();
 
-    let contactRows: Contact[];
-    let count: number;
+    try {
+      let contactRows: Contact[] = [];
+      let count = 0;
 
-    if (selectedTagIds.length > 0) {
-      // Tag filter active — resolve it server-side (join + distinct +
-      // windowed total count + pagination) so a tag covering many
-      // contacts can't silently truncate the result or overflow an IN
-      // clause. See migration 025_filter_contacts_by_tags.
-      const { data, error } = await supabase.rpc('filter_contacts_by_tags', {
-        p_tag_ids: selectedTagIds,
-        p_search: term || null,
-        p_limit: PAGE_SIZE,
-        p_offset: from,
+      if (selectedTagIds.length > 0) {
+        const { data, error } = await supabase.rpc('filter_contacts_by_tags', {
+          p_tag_ids: selectedTagIds,
+          p_search: term || null,
+          p_limit: PAGE_SIZE,
+          p_offset: from,
+        });
+        if (seq !== fetchSeq.current) return;
+        if (error) {
+          toast.error('Failed to load contacts');
+          return;
+        }
+        const rows = (data ?? []) as { contact: Contact; total_count: number }[];
+        contactRows = rows.map((r) => r.contact);
+        count = rows.length > 0 ? Number(rows[0].total_count) : 0;
+      } else {
+        let selectFields = '*';
+        if (quickFilter === 'abandoned') {
+          selectFields = '*, shopify_checkouts!inner(id, status)';
+        }
+
+        let query = supabase
+          .from('contacts')
+          .select(selectFields, { count: 'exact' })
+          .order('created_at', { ascending: false })
+          .range(from, to);
+
+        if (quickFilter === 'abandoned') {
+          query = query.in('shopify_checkouts.status', ['open', 'abandoned_notified']);
+        } else if (quickFilter === 'shopify') {
+          query = query.not('shopify_customer_id', 'is', null).neq('shopify_customer_id', '');
+        } else if (quickFilter === 'opted_in') {
+          query = query.eq('marketing_opt_in', true).is('marketing_opt_out_at', null);
+        } else if (quickFilter === 'opted_out') {
+          query = query.not('marketing_opt_out_at', 'is', null).eq('marketing_opt_in', false);
+        } else if (quickFilter === 'not_opted_in') {
+          query = query.eq('marketing_opt_in', false).is('marketing_opt_out_at', null);
+        }
+
+        if (term) {
+          const like = `%${term}%`;
+          query = query.or(`name.ilike.${like},phone.ilike.${like},email.ilike.${like}`);
+        }
+
+        const { data, count: exactCount, error } = await query;
+        if (seq !== fetchSeq.current) return;
+        if (error) {
+          toast.error('Failed to load contacts');
+          return;
+        }
+        contactRows = (data as unknown as Contact[]) ?? [];
+        count = exactCount ?? 0;
+      }
+
+      if (seq !== fetchSeq.current) return;
+      setTotalCount(count);
+
+      if (contactRows.length === 0) {
+        setContacts([]);
+        return;
+      }
+
+      // Fetch tags for these contacts
+      const contactIds = contactRows.map((c) => c.id);
+      const { data: contactTags } = await supabase
+        .from('contact_tags')
+        .select('contact_id, tag_id')
+        .in('contact_id', contactIds);
+      if (seq !== fetchSeq.current) return;
+
+      const tagsByContact: Record<string, string[]> = {};
+      contactTags?.forEach((ct) => {
+        if (!tagsByContact[ct.contact_id]) tagsByContact[ct.contact_id] = [];
+        tagsByContact[ct.contact_id].push(ct.tag_id);
       });
-      if (seq !== fetchSeq.current) return; // superseded by a newer fetch
-      if (error) {
-        toast.error('Failed to load contacts');
+
+      // Fetch shopify checkouts for landing/checkout URLs
+      const { data: checkoutsData } = await supabase
+        .from('shopify_checkouts')
+        .select('contact_id, abandoned_checkout_url')
+        .in('contact_id', contactIds);
+      if (seq !== fetchSeq.current) return;
+
+      const checkoutUrlMap: Record<string, string> = {};
+      checkoutsData?.forEach((co) => {
+        if (co.contact_id && co.abandoned_checkout_url) {
+          checkoutUrlMap[co.contact_id] = co.abandoned_checkout_url;
+        }
+      });
+
+      const enriched: ContactWithTags[] = contactRows.map((c) => ({
+        ...c,
+        tags: (tagsByContact[c.id] ?? [])
+          .map((tid) => tagsMap[tid])
+          .filter(Boolean),
+        checkout_url: checkoutUrlMap[c.id] || undefined
+      }));
+
+      setContacts(enriched);
+      setCachedData(`contacts_p${page}_s${term}_t${selectedTagIds.join(',')}_q${quickFilter}`, {
+        contacts: enriched,
+        count,
+      });
+    } catch (err) {
+      console.error('[ContactsPage] fetchContacts error:', err);
+    } finally {
+      if (seq === fetchSeq.current) {
         setLoading(false);
-        return;
       }
-      const rows = (data ?? []) as { contact: Contact; total_count: number }[];
-      contactRows = rows.map((r) => r.contact);
-      count = rows.length > 0 ? Number(rows[0].total_count) : 0;
-    } else {
-      let selectFields = '*'
-      if (quickFilter === 'abandoned') {
-        selectFields = '*, shopify_checkouts!inner(id, status)'
-      }
-
-      let query = supabase
-        .from('contacts')
-        .select(selectFields, { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range(from, to);
-
-      if (quickFilter === 'abandoned') {
-        query = query.in('shopify_checkouts.status', ['open', 'abandoned_notified'])
-      } else if (quickFilter === 'shopify') {
-        query = query.not('shopify_customer_id', 'is', null).neq('shopify_customer_id', '')
-      } else if (quickFilter === 'opted_in') {
-        query = query.eq('marketing_opt_in', true).is('marketing_opt_out_at', null)
-      } else if (quickFilter === 'opted_out') {
-        query = query.not('marketing_opt_out_at', 'is', null).eq('marketing_opt_in', false)
-      } else if (quickFilter === 'not_opted_in') {
-        query = query.eq('marketing_opt_in', false).is('marketing_opt_out_at', null)
-      }
-
-      if (term) {
-        const like = `%${term}%`;
-        query = query.or(`name.ilike.${like},phone.ilike.${like},email.ilike.${like}`);
-      }
-
-      const { data, count: exactCount, error } = await query;
-      if (seq !== fetchSeq.current) return; // superseded by a newer fetch
-      if (error) {
-        toast.error('Failed to load contacts');
-        setLoading(false);
-        return;
-      }
-      contactRows = (data as unknown as Contact[]) ?? [];
-      count = exactCount ?? 0;
     }
-
-    setTotalCount(count);
-
-    if (contactRows.length === 0) {
-      setContacts([]);
-      setLoading(false);
-      return;
-    }
-
-    // Fetch tags for these contacts
-    const contactIds = contactRows.map((c) => c.id);
-    const { data: contactTags } = await supabase
-      .from('contact_tags')
-      .select('contact_id, tag_id')
-      .in('contact_id', contactIds);
-    if (seq !== fetchSeq.current) return; // superseded by a newer fetch
-
-    const tagsByContact: Record<string, string[]> = {};
-    contactTags?.forEach((ct) => {
-      if (!tagsByContact[ct.contact_id]) tagsByContact[ct.contact_id] = [];
-      tagsByContact[ct.contact_id].push(ct.tag_id);
-    });
-
-    // Fetch shopify checkouts for these contacts to get their landing/checkout URL
-    const { data: checkoutsData } = await supabase
-      .from('shopify_checkouts')
-      .select('contact_id, abandoned_checkout_url')
-      .in('contact_id', contactIds)
-
-    const checkoutUrlMap: Record<string, string> = {}
-    checkoutsData?.forEach((co) => {
-      if (co.contact_id && co.abandoned_checkout_url) {
-        checkoutUrlMap[co.contact_id] = co.abandoned_checkout_url
-      }
-    })
-
-    const enriched: ContactWithTags[] = contactRows.map((c) => ({
-      ...c,
-      tags: (tagsByContact[c.id] ?? [])
-        .map((tid) => tagsMap[tid])
-        .filter(Boolean),
-      checkout_url: checkoutUrlMap[c.id] || undefined
-    }));
-
-    setContacts(enriched);
-    setCachedData(`contacts_p${page}_s${term}_t${selectedTagIds.join(',')}_q${quickFilter}`, {
-      contacts: enriched,
-      count,
-    });
-    setLoading(false);
   }, [supabase, page, search, selectedTagIds, tagsMap, quickFilter]);
 
   // Load-once-on-mount-ish data fetches. Each setter inside runs
@@ -283,7 +283,9 @@ export default function ContactsPage() {
   }, [fetchTags]);
 
   useEffect(() => {
-    fetchContacts();
+    const timer = setTimeout(() => setLoading(false), 3000);
+    fetchContacts().finally(() => clearTimeout(timer));
+    return () => clearTimeout(timer);
   }, [fetchContacts]);
 
   function openAddForm() {

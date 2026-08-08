@@ -185,7 +185,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         messageParams.headerMediaUrl =
           resolvedImageUrl ||
           templateRow.header_media_url ||
-          'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
+          'https://divyaprabhafoods.com/cdn/shop/files/Gor_Keri.jpg'
       }
 
       const r = await sendTemplateMessage({

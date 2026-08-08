@@ -4,6 +4,19 @@ This file tracks all modifications, updates, bug fixes, and feature additions ma
 
 ---
 
+## [2026-08-09 01:00] Feat (Templates) — E-Commerce Lifecycle Templates & Store Product Image Enforcement
+
+### Objective & Fixes
+- Updated all 10 message template definitions in Supabase database (`message_templates` table) and `src/lib/automations/meta-send.ts` to replace stock Unsplash image URLs with authentic **DivyaPrabha Foods store product images** (`https://divyaprabhafoods.com/cdn/shop/files/Gor_Keri.jpg`).
+- Verified complete Meta-compliant E-Commerce Lifecycle Messaging setup covering Pre-Purchase (Welcome, Browse Abandoned, 3-Step Cart Recovery) and Post-Purchase (Order Confirmed, COD Interactive Verification, Order Shipped, Out for Delivery, Order Delivered & Feedback).
+- Ensured all templates include Call-to-Action (CTA) buttons, store product photos, and Opt-Out Footers (`Reply STOP to Unsubscribe`).
+
+### Files Modified
+- `src/lib/automations/meta-send.ts`
+- `changes.md`
+
+---
+
 ## [2026-08-09 00:50] Feat (Shopify) — Multi-Source Shopify Contact Sync (Customers + Orders + Checkouts)
 
 ### Objective & Fixes

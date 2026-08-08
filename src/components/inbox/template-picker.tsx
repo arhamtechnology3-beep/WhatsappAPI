@@ -26,6 +26,7 @@ import { extractVariableIndices } from "@/lib/whatsapp/template-validators";
 export interface TemplateSendValues {
   body: string[];
   headerText?: string;
+  headerMediaUrl?: string;
   buttonParams?: Record<number, string>;
 }
 

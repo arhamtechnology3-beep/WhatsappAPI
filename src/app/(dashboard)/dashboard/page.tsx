@@ -38,17 +38,24 @@ import { ActivityFeed } from '@/components/dashboard/activity-feed'
 
 type RangeDays = 7 | 30 | 90
 
+const DEFAULT_METRICS: MetricsBundle = {
+  activeConversations: { current: 0, previous: 0 },
+  newContactsToday: { current: 0, previous: 0 },
+  openDealsValue: 0,
+  openDealsCount: 0,
+  messagesSentToday: { current: 0, previous: 0 },
+  cartsRecoveredThisWeek: 0,
+  cartRecoveryRate: 0,
+}
+
 export default function DashboardPage() {
   const { defaultCurrency } = useAuth()
-  const [metrics, setMetrics] = useState<MetricsBundle | null>(null)
+  const [metrics, setMetrics] = useState<MetricsBundle>(DEFAULT_METRICS)
   const [metricsLoading, setMetricsLoading] = useState(true)
   const [optInStats, setOptInStats] = useState<{ total: number; optedIn: number; optedOut: number; pct: number } | null>(null)
   const [optInLoading, setOptInLoading] = useState(true)
 
   const [range, setRange] = useState<RangeDays>(30)
-  // Keep a cache per range so switching tabs doesn't re-fetch what we
-  // already have. Ranges the user hasn't opened yet stay null and
-  // trigger a fetch on first view.
   const [series, setSeries] = useState<Record<RangeDays, ConversationsSeriesPoint[] | null>>({
     7: null,
     30: null,
@@ -68,17 +75,20 @@ export default function DashboardPage() {
   const loadAll = useCallback(() => {
     const db = createClient()
 
-    // Kick everything off in parallel. Each block has its own
-    // setState + finally so a slow query doesn't hold up faster
-    // sections — each widget shows its own skeleton independently.
     void loadMetrics(db)
-      .then((m) => setMetrics(m))
-      .catch((err) => console.error('[dashboard] metrics failed:', err))
+      .then((m) => setMetrics(m || DEFAULT_METRICS))
+      .catch((err) => {
+        console.error('[dashboard] metrics failed:', err)
+        setMetrics(DEFAULT_METRICS)
+      })
       .finally(() => setMetricsLoading(false))
 
     void loadConversationsSeries(db, 30)
-      .then((s) => setSeries((prev) => ({ ...prev, 30: s })))
-      .catch((err) => console.error('[dashboard] series failed:', err))
+      .then((s) => setSeries((prev) => ({ ...prev, 30: s || [] })))
+      .catch((err) => {
+        console.error('[dashboard] series failed:', err)
+        setSeries((prev) => ({ ...prev, 30: [] }))
+      })
       .finally(() => setSeriesLoading(false))
 
     void loadPipelineDonut(db)
@@ -91,15 +101,11 @@ export default function DashboardPage() {
       .catch((err) => console.error('[dashboard] response time failed:', err))
       .finally(() => setResponseTimeLoading(false))
 
-    // Fetch up to 50 so the biggest page-size option in the feed
-    // (50 rows) is already in memory — switching sizes then becomes
-    // a pure client-side slice with no extra round trip.
     void loadActivity(db, 50)
-      .then((a) => setActivity(a))
+      .then((a) => setActivity(a || []))
       .catch((err) => console.error('[dashboard] activity failed:', err))
       .finally(() => setActivityLoading(false))
 
-    // Fetch opt-in metrics
     const fetchOptInStats = async () => {
       try {
         const { data } = await db
@@ -111,9 +117,12 @@ export default function DashboardPage() {
           const optedOut = data.filter((c: any) => c.marketing_opt_out_at).length;
           const pct = total > 0 ? Math.round((optedIn / total) * 100) : 0;
           setOptInStats({ total, optedIn, optedOut, pct });
+        } else {
+          setOptInStats({ total: 0, optedIn: 0, optedOut: 0, pct: 0 });
         }
       } catch (err) {
         console.error('[dashboard] opt-in metrics failed:', err);
+        setOptInStats({ total: 0, optedIn: 0, optedOut: 0, pct: 0 });
       } finally {
         setOptInLoading(false);
       }
@@ -122,7 +131,19 @@ export default function DashboardPage() {
   }, [])
 
   useEffect(() => {
+    const safetyTimer = setTimeout(() => {
+      setMetricsLoading(false)
+      setOptInLoading(false)
+      setSeriesLoading(false)
+      setPipelineLoading(false)
+      setResponseTimeLoading(false)
+      setActivityLoading(false)
+      setMetrics((prev) => prev || DEFAULT_METRICS)
+    }, 3000)
+
     loadAll()
+
+    return () => clearTimeout(safetyTimer)
   }, [loadAll])
 
   // Range switch handler — kept in an event callback (not an effect)
@@ -155,7 +176,7 @@ export default function DashboardPage() {
 
       {/* Metric cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        {metricsLoading || optInLoading || !metrics ? (
+        {metricsLoading || optInLoading ? (
           Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
         ) : (
           <>

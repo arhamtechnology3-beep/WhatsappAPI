@@ -4,6 +4,21 @@ This file tracks all modifications, updates, bug fixes, and feature additions ma
 
 ---
 
+## [2026-08-09 01:15] Fix (Dashboard) — Dashboard Skeleton Loader Unfreezing & Default Metrics Fallback
+
+### Root Cause
+- `DashboardPage` (`src/app/(dashboard)/dashboard/page.tsx`) checked `{metricsLoading || optInLoading || !metrics}` to render metric card skeletons. If `loadMetrics` returned `null` or encountered an initial query delay, `!metrics` evaluated to `true` indefinitely, locking the dashboard in skeleton loaders.
+
+### Objective & Fixes
+- **Fallback Metrics**: Initialized `metrics` state with a valid default `DEFAULT_METRICS` bundle to handle query fallbacks cleanly.
+- **Safety Loading Fallbacks**: Added 3-second safety timers across all widget loading states (`setMetricsLoading`, `setOptInLoading`, `setSeriesLoading`, `setPipelineLoading`, `setResponseTimeLoading`, `setActivityLoading`) and removed `!metrics` from skeleton conditionals so widgets unfreeze immediately.
+
+### Files Modified
+- `src/app/(dashboard)/dashboard/page.tsx`
+- `changes.md`
+
+---
+
 ## [2026-08-09 01:12] Fix (Auth & UI) — Synchronous Workspace Cookie Initialization & Infinite Loading Prevention
 
 ### Root Cause

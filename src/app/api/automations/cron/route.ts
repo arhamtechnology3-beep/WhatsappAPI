@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
-import { resumePendingExecution } from '@/lib/automations/engine'
+import { resumePendingExecution, runAutomationsForTrigger } from '@/lib/automations/engine'
 import type { AutomationContext } from '@/lib/automations/engine'
+import { authorizeCron } from '@/lib/cron/auth'
+import { cronMatchesNow } from '@/lib/cron/schedule'
 
 /**
  * Drain due `automation_pending_executions` rows. Meant to be hit
@@ -15,14 +17,8 @@ import type { AutomationContext } from '@/lib/automations/engine'
  * two-step UPDATE-by-id.
  */
 export async function GET(request: Request) {
-  const expected = process.env.AUTOMATION_CRON_SECRET
-  if (!expected) {
-    return NextResponse.json({ error: 'cron not configured' }, { status: 503 })
-  }
-  const supplied = request.headers.get('x-cron-secret')
-  if (supplied !== expected) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const denied = authorizeCron(request)
+  if (denied) return denied
 
   const admin = supabaseAdmin()
   const { data: due, error } = await admin
@@ -64,5 +60,48 @@ export async function GET(request: Request) {
     processed++
   }
 
-  return NextResponse.json({ processed })
+  let timeBasedFired = 0
+  const { data: scheduled } = await admin
+    .from('automations')
+    .select('id, account_id, trigger_config, last_executed_at')
+    .eq('trigger_type', 'time_based')
+    .eq('is_active', true)
+
+  const now = new Date()
+  const dueByAccount = new Map<string, string[]>()
+  for (const automation of scheduled || []) {
+    const schedule = (automation.trigger_config as { schedule?: string } | null)?.schedule
+    if (!schedule || !cronMatchesNow(schedule, now)) continue
+    const last = automation.last_executed_at ? new Date(automation.last_executed_at).getTime() : 0
+    if (last && now.getTime() - last < 45_000) continue
+    const ids = dueByAccount.get(automation.account_id) || []
+    ids.push(automation.id)
+    dueByAccount.set(automation.account_id, ids)
+  }
+
+  for (const [accountId, automationIds] of dueByAccount) {
+    const { data: contacts } = await admin
+      .from('contacts')
+      .select('id')
+      .eq('account_id', accountId)
+      .or('marketing_opt_in.eq.true,whatsapp_marketing_opt_in.eq.true')
+      .limit(50)
+
+    for (const contact of contacts || []) {
+      await runAutomationsForTrigger({
+        accountId,
+        triggerType: 'time_based',
+        contactId: contact.id,
+        context: {},
+      })
+      timeBasedFired++
+    }
+
+    await admin
+      .from('automations')
+      .update({ last_executed_at: now.toISOString() })
+      .in('id', automationIds)
+  }
+
+  return NextResponse.json({ processed, timeBasedFired })
 }

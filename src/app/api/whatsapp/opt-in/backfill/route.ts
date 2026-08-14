@@ -119,12 +119,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: fetchErr.message }, { status: 500 });
     }
 
-    if (!contacts || contacts.length === 0) {
-      return NextResponse.json({ success: true, count: 0, message: "No eligible contacts found for backfill campaign." });
+    const withPhone = (contacts || []).filter((c) => !!c.phone?.trim());
+    if (withPhone.length === 0) {
+      return NextResponse.json({ success: true, count: 0, message: "No eligible contacts with a phone number found for backfill campaign." });
     }
 
-    // 2. Queue WhatsApp send jobs for each eligible contact
-    const jobs = contacts.map((c) => ({
+    // 2. Queue WhatsApp send jobs for each eligible contact that has a phone
+    const jobs = withPhone.map((c) => ({
       account_id: accountId,
       contact_id: c.id,
       template_name: templateName,
@@ -142,7 +143,7 @@ export async function POST(request: Request) {
     }
 
     // 3. Mark opt_in_prompt_sent_at for targeted contacts
-    const contactIds = contacts.map((c) => c.id);
+    const contactIds = withPhone.map((c) => c.id);
     const { error: updateErr } = await supabase
       .from("contacts")
       .update({
@@ -156,7 +157,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      count: contacts.length,
+      count: withPhone.length,
     });
   } catch (err: any) {
     console.error("[opt-in-backfill] POST error:", err);

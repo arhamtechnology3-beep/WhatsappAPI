@@ -21,13 +21,15 @@ export async function canSendMarketing(contactId: string): Promise<boolean> {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("contacts")
-      .select("marketing_opt_in, marketing_opt_out_at")
+      .select("marketing_opt_in, whatsapp_marketing_opt_in, marketing_opt_out_at")
       .eq("id", contactId)
       .maybeSingle();
 
     if (error || !data) return false;
 
-    return data.marketing_opt_in === true && data.marketing_opt_out_at === null;
+    return data.marketing_opt_in === true || data.whatsapp_marketing_opt_in === true
+      ? data.marketing_opt_out_at === null
+      : false;
   } catch (err) {
     console.error("[opt-in-helper] error checking canSendMarketing:", err);
     return false;

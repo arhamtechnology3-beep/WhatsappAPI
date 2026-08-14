@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account'
 import { fetchShopify } from '@/lib/shopify/shopify-client'
+import { findExistingContact } from '@/lib/contacts/dedupe'
+import { normalizePhone } from '@/lib/whatsapp/phone-utils'
 
 export async function POST() {
   try {
@@ -13,34 +15,38 @@ export async function POST() {
     const processedPhones = new Set<string>()
     const processedEmails = new Set<string>()
 
-    // 1. Fetch Customers from Shopify (up to 250)
+    let fetchWarnings: string[] = []
+
     let shopifyCustomers: any[] = []
     try {
       const res = await fetchShopify('/customers.json?limit=250')
       shopifyCustomers = res.customers || []
     } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
       console.warn('[shopify-sync] Failed to fetch /customers.json:', err)
+      fetchWarnings.push(`customers: ${msg}`)
     }
 
-    // 2. Fetch Orders from Shopify (captures guest checkout customers & recent buyers)
     let shopifyOrders: any[] = []
     try {
       const res = await fetchShopify('/orders.json?status=any&limit=250')
       shopifyOrders = res.orders || []
     } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
       console.warn('[shopify-sync] Failed to fetch /orders.json:', err)
+      fetchWarnings.push(`orders: ${msg}`)
     }
 
-    // 3. Fetch Abandoned Checkouts from Shopify
     let shopifyCheckouts: any[] = []
     try {
       const res = await fetchShopify('/checkouts.json?limit=250')
       shopifyCheckouts = res.checkouts || []
     } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
       console.warn('[shopify-sync] Failed to fetch /checkouts.json:', err)
+      fetchWarnings.push(`checkouts: ${msg}`)
     }
 
-    // Helper to process and upsert a contact into DB
     const processContact = async (data: {
       shopifyCustomerId?: string
       name: string
@@ -49,20 +55,18 @@ export async function POST() {
       company?: string | null
       createdAt?: string | null
     }) => {
-      let phone = data.phone ? data.phone.trim() : null
-      let email = data.email ? data.email.trim() : null
+      const phone = data.phone ? (normalizePhone(data.phone) || data.phone.trim()) : null
+      const email = data.email ? data.email.trim() : null
 
       if (!phone && !email) return
 
-      // Deduplicate within this single sync batch
-      const dedupeKey = phone || email!
-      if (processedPhones.has(dedupeKey) || (email && processedEmails.has(email))) {
+      const phoneKey = phone || ''
+      if ((phoneKey && processedPhones.has(phoneKey)) || (email && processedEmails.has(email))) {
         return
       }
 
       let existingId: string | null = null
 
-      // Search DB by shopify_customer_id first
       if (data.shopifyCustomerId) {
         const { data: byId } = await ctx.supabase
           .from('contacts')
@@ -74,19 +78,11 @@ export async function POST() {
         if (byId) existingId = byId.id
       }
 
-      // Search by phone if not found
       if (!existingId && phone) {
-        const { data: byPhone } = await ctx.supabase
-          .from('contacts')
-          .select('id')
-          .eq('account_id', ctx.accountId)
-          .eq('phone', phone)
-          .maybeSingle()
-
-        if (byPhone) existingId = byPhone.id
+        const existing = await findExistingContact(ctx.supabase, ctx.accountId, phone)
+        if (existing) existingId = existing.id
       }
 
-      // Search by email if not found
       if (!existingId && email) {
         const { data: byEmail } = await ctx.supabase
           .from('contacts')
@@ -108,24 +104,34 @@ export async function POST() {
       if (data.shopifyCustomerId) updatePayload.shopify_customer_id = String(data.shopifyCustomerId)
 
       if (existingId) {
-        await ctx.supabase
+        const { error } = await ctx.supabase
           .from('contacts')
           .update(updatePayload)
           .eq('id', existingId)
+        if (error) {
+          console.error('[shopify-sync] update failed:', error.message)
+          return
+        }
       } else {
-        await ctx.supabase
+        const { error } = await ctx.supabase
           .from('contacts')
           .insert({
             account_id: ctx.accountId,
             user_id: ctx.userId,
             name: data.name,
             email: email || undefined,
-            phone: phone || undefined,
+            phone: phone || '',
             company: data.company || undefined,
             shopify_customer_id: data.shopifyCustomerId ? String(data.shopifyCustomerId) : undefined,
+            marketing_opt_in: true,
+            whatsapp_marketing_opt_in: true,
             created_at: data.createdAt || new Date().toISOString(),
             updated_at: new Date().toISOString()
           })
+        if (error) {
+          console.error('[shopify-sync] insert failed:', error.message)
+          return
+        }
       }
 
       if (phone) processedPhones.add(phone)
@@ -207,7 +213,8 @@ export async function POST() {
 
     return NextResponse.json({
       success: true,
-      syncedCount
+      syncedCount,
+      warnings: fetchWarnings,
     })
   } catch (err: unknown) {
     console.error('[shopify-sync] sync-customers error:', err)

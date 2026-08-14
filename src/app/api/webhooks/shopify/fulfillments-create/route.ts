@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     // Find the associated order
     const { data: order } = await supabase
       .from('shopify_orders')
-      .select('id, contact_id, order_number, contacts(name, first_name, phone)')
+      .select('id, contact_id, order_number, contacts(name, phone)')
       .eq('shopify_order_id', shopifyOrderId)
       .maybeSingle()
 
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
 
     // Enqueue order_fulfilled WhatsApp Send Job
     const contact: any = order.contacts
-    const customerFirstName = contact?.first_name || contact?.name || 'Customer'
+    const customerFirstName = contact?.name?.split(' ')[0] || 'Customer'
     const orderNumber = order.order_number || ''
     const phone = contact?.phone || ''
 

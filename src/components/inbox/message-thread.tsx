@@ -776,6 +776,20 @@ export function MessageThread({
       }
 
       onAssignChange(conversation.id, agentId);
+      if (agentId && conversation.contact_id) {
+        fetch("/api/automations/engine", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            trigger_type: "conversation_assigned",
+            contact_id: conversation.contact_id,
+            context: {
+              conversation_id: conversation.id,
+              agent_id: agentId,
+            },
+          }),
+        }).catch((err) => console.error("[assign] automation dispatch failed:", err));
+      }
     },
     [conversation, onAssignChange],
   );

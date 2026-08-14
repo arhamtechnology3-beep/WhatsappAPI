@@ -131,6 +131,22 @@ interface CustomTemplate {
   header_media_url?: string
 }
 
+type DelayLabel = 'Instant' | '5 min' | '1 hr' | '10 hr'
+
+function delayToMinutes(d: DelayLabel): number {
+  if (d === '5 min') return 5
+  if (d === '1 hr') return 60
+  if (d === '10 hr') return 600
+  return 0
+}
+
+function minutesToDelayLabel(m: number): DelayLabel {
+  if (m >= 600) return '10 hr'
+  if (m >= 60) return '1 hr'
+  if (m >= 5) return '5 min'
+  return 'Instant'
+}
+
 export default function ShopifyDashboardPage() {
   const supabase = createClient()
   const { accountId, user, accountRole } = useAuth()
@@ -350,14 +366,6 @@ export default function ShopifyDashboardPage() {
       })
 
       if (user) {
-        // Clean up legacy default templates with invalid 'en' language code
-        await supabase
-          .from('message_templates')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('language', 'en')
-          .like('name', 'wacrm_%')
-
         const { data: msgTemplates } = await supabase
           .from('message_templates')
           .select('name, body_text, status, category, language, header_type, header_media_url')
@@ -466,15 +474,44 @@ export default function ShopifyDashboardPage() {
         setSequences(mapped)
       }
 
-      // 6. Verify shop connection
-      const response = await fetch('/api/shopify/test-connection')
-      const shopInfo = await response.json()
-      if (response.ok && shopInfo.success) {
-        setConnectionStatus('connected')
-        setShopName(shopInfo.shopName)
-      } else {
-        setConnectionStatus('disconnected')
+      const { data: rules } = await supabase
+        .from('shopify_automation_rules')
+        .select('*')
+        .eq('account_id', accountId)
+      if (rules) {
+        const cod = rules.find((r: { trigger_type: string }) => r.trigger_type === 'cod_confirmation')
+        const prepaid = rules.find((r: { trigger_type: string }) => r.trigger_type === 'order_created')
+        const fulfilled = rules.find((r: { trigger_type: string }) => r.trigger_type === 'order_fulfilled')
+        if (cod) {
+          setCodActive(!!cod.is_active)
+          setCodDelay(minutesToDelayLabel(cod.delay_minutes || 0))
+        }
+        if (prepaid) {
+          setPrepaidActive(!!prepaid.is_active)
+          setPrepaidDelay(minutesToDelayLabel(prepaid.delay_minutes || 0))
+        }
+        if (fulfilled) {
+          setFulfilledActive(!!fulfilled.is_active)
+          setFulfilledDelay(minutesToDelayLabel(fulfilled.delay_minutes || 0))
+        }
       }
+
+      // 6. Verify shop connection
+      // Connection badge is non-blocking — Shopify Admin round-trips
+      // must not keep the whole panel on a spinner.
+      void fetch('/api/shopify/test-connection', { signal: AbortSignal.timeout(8000) })
+        .then(async (response) => {
+          const shopInfo = await response.json().catch(() => ({}))
+          if (response.ok && shopInfo.success) {
+            setConnectionStatus('connected')
+            setShopName(shopInfo.shopName)
+          } else {
+            setConnectionStatus('disconnected')
+          }
+        })
+        .catch(() => {
+          setConnectionStatus('disconnected')
+        })
 
       // 7. Fetch broadcasts
       const { data: allBroadcasts } = await supabase
@@ -647,7 +684,50 @@ export default function ShopifyDashboardPage() {
     }
   }
 
-  const saveAutometickRule = (type: 'cod' | 'prepaid' | 'fulfilled') => {
+  const saveAutometickRule = async (type: 'cod' | 'prepaid' | 'fulfilled') => {
+    if (!accountId) {
+      toast.error('Account not loaded yet.')
+      return
+    }
+    const cfg = {
+      cod: {
+        trigger_type: 'cod_confirmation',
+        template_name: 'wacrm_cod_confirmation_v1',
+        is_active: codActive,
+        delay_minutes: delayToMinutes(codDelay),
+        mapping: ['customer_name', 'order_number', 'total_price'],
+      },
+      prepaid: {
+        trigger_type: 'order_created',
+        template_name: 'wacrm_order_confirmed_v1',
+        is_active: prepaidActive,
+        delay_minutes: delayToMinutes(prepaidDelay),
+        mapping: ['customer_name', 'order_number', 'total_price'],
+      },
+      fulfilled: {
+        trigger_type: 'order_fulfilled',
+        template_name: 'wacrm_order_shipped_v1',
+        is_active: fulfilledActive,
+        delay_minutes: delayToMinutes(fulfilledDelay),
+        mapping: ['customer_name', 'order_number', 'tracking_url'],
+      },
+    }[type]
+
+    const { error } = await supabase.from('shopify_automation_rules').upsert({
+      account_id: accountId,
+      trigger_type: cfg.trigger_type,
+      template_name: cfg.template_name,
+      template_variable_mapping: cfg.mapping,
+      delay_minutes: cfg.delay_minutes,
+      is_active: cfg.is_active,
+      meta_approval_status: 'approved',
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'account_id,trigger_type' })
+
+    if (error) {
+      toast.error(`Failed to save ${type} settings: ${error.message}`)
+      return
+    }
     toast.success(`${type.toUpperCase()} confirmation settings saved successfully!`)
   }
 
@@ -2027,6 +2107,12 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
                                           .update({ is_active: checked })
                                           .eq('id', step.id)
                                         if (error) throw error
+                                        if (checked) {
+                                          await supabase
+                                            .from('shopify_automation_sequences')
+                                            .update({ is_active: true })
+                                            .eq('id', seq.id)
+                                        }
                                         toast.success(`Step ${step.step_order} ${checked ? 'activated' : 'deactivated'}`)
                                         loadData()
                                       } catch (err: unknown) {

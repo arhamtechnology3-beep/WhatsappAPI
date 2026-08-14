@@ -31,15 +31,6 @@ export function verifyShopifyWebhookSignature(
     .update(rawBody)
     .digest('base64')
 
-  console.log('[shopify-webhook] Verification details:', {
-    secretLength: secret.length,
-    secretPrefix: secret.substring(0, 8),
-    signatureHeader,
-    expected,
-    bodyLength: rawBody.length,
-    bodySnippet: rawBody.substring(0, 120),
-  })
-
   const a = Buffer.from(signatureHeader)
   const b = Buffer.from(expected)
 

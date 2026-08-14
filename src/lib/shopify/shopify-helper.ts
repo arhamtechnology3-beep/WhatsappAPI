@@ -47,8 +47,10 @@ export async function matchOrCreateShopifyContact(
   customer: ShopifyCustomerPayload
 ): Promise<any> {
   const email = customer.email?.trim() || null
-  const phone = customer.phone?.trim() || null
+  const rawPhone = customer.phone?.trim() || null
+  const phone = rawPhone ? (normalizePhone(rawPhone) || rawPhone) : null
   const name = [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || null
+  const optedIn = customer.marketing_opt_in ?? true
 
   let contact: any = null
 
@@ -98,9 +100,10 @@ export async function matchOrCreateShopifyContact(
         email: email,
         name: name || email || 'Shopify Customer',
         shopify_customer_id: shopifyCustomerId,
-        marketing_opt_in: !!customer.marketing_opt_in,
-        marketing_opt_in_source: customer.marketing_opt_in ? 'checkout' : null,
-        marketing_opt_in_at: customer.marketing_opt_in ? new Date().toISOString() : null,
+        marketing_opt_in: optedIn,
+        whatsapp_marketing_opt_in: optedIn,
+        marketing_opt_in_source: optedIn ? 'checkout' : null,
+        marketing_opt_in_at: optedIn ? new Date().toISOString() : null,
       })
       .select()
       .single()
@@ -111,7 +114,7 @@ export async function matchOrCreateShopifyContact(
     }
     contact = newContact
 
-    if (customer.marketing_opt_in) {
+    if (optedIn) {
       await supabase.from('opt_in_events').insert({
         account_id: accountId,
         contact_id: contact.id,
@@ -130,7 +133,7 @@ export async function matchOrCreateShopifyContact(
       updates.email = email
     }
     // Fill in phone if the existing contact has a blank phone but we now have one
-    if (phone && !contact.phone) {
+    if (phone && (!contact.phone || contact.phone !== phone)) {
       updates.phone = phone
     }
     if (name && (contact.name === 'Shopify Customer' || contact.name === contact.phone || !contact.name)) {
@@ -138,8 +141,9 @@ export async function matchOrCreateShopifyContact(
     }
 
     let optInLogged = false
-    if (customer.marketing_opt_in && !contact.marketing_opt_in) {
+    if (optedIn && !contact.marketing_opt_in) {
       updates.marketing_opt_in = true
+      updates.whatsapp_marketing_opt_in = true
       updates.marketing_opt_in_source = 'checkout'
       updates.marketing_opt_in_at = new Date().toISOString()
       updates.marketing_opt_out_at = null
@@ -408,122 +412,131 @@ export async function enqueueShopifyNotification(
   }
 ): Promise<{ status: 'enqueued' | 'skipped_not_activated' | 'error'; message?: string }> {
   try {
-    const events = TRIGGER_EVENT_MAP[triggerType] || [];
-    if (events.length === 0) {
-      return { status: 'skipped_not_activated' };
+    const recipientPhone = (normalizePhone(phone) || phone || '').trim()
+    if (!recipientPhone) {
+      return { status: 'error', message: 'contact has no phone number' }
     }
+    const events = TRIGGER_EVENT_MAP[triggerType] || []
 
-    // 1) Load active merchant workflows matching the mapped trigger events
-    const { data: workflows, error: wfErr } = await supabase
-      .from('merchant_workflows')
-      .select(`
-        id,
-        message_template,
-        config,
-        workflow_templates (
+    let enqueuedCount = 0
+
+    if (events.length > 0) {
+      const { data: workflows, error: wfErr } = await supabase
+        .from('merchant_workflows')
+        .select(`
           id,
-          key,
-          name,
-          trigger_event,
-          delay_minutes,
-          meta_template_name
+          message_template,
+          config,
+          workflow_templates (
+            id,
+            key,
+            name,
+            trigger_event,
+            delay_minutes,
+            meta_template_name
+          )
+        `)
+        .eq('merchant_id', accountId)
+        .eq('status', 'active')
+
+      if (wfErr) {
+        console.warn('[shopify-helper] merchant_workflows load failed, falling back to rules:', wfErr.message)
+      } else {
+        const matchedWorkflows = (workflows || []).filter((w: any) =>
+          w.workflow_templates && events.includes(w.workflow_templates.trigger_event)
         )
-      `)
-      .eq('merchant_id', accountId)
-      .eq('status', 'active');
 
-    if (wfErr) {
-      return { status: 'error', message: 'Failed to load merchant workflows: ' + wfErr.message };
+        for (const mw of matchedWorkflows) {
+          const template = mw.workflow_templates as any
+          if (!template) continue
+          if (template.key === 'cod_confirmation' && !data.is_cod) continue
+          if (template.key === 'order_confirmation' && data.is_cod) continue
+
+          const templateName = template.meta_template_name
+          const variables = getVariablesForTemplate(templateName, template.key)
+          const templateParams = variables.map((variableName) => {
+            return data[variableName as keyof typeof data] || ''
+          })
+
+          const { data: logRow } = await supabase
+            .from('workflow_logs')
+            .insert({
+              account_id: accountId,
+              workflow_template_id: template.id,
+              workflow_name: template.name,
+              contact_id: contactId,
+              contact_name: data.customer_name || 'Customer',
+              contact_phone: recipientPhone,
+              status: 'pending',
+            })
+            .select('id')
+            .single()
+
+          const delay = template.delay_minutes ?? 0
+          const { error: insertError } = await supabase.from('whatsapp_send_jobs').insert({
+            account_id: accountId,
+            contact_id: contactId,
+            recipient_phone: recipientPhone,
+            template_name: templateName,
+            template_params: templateParams,
+            status: 'pending',
+            run_at: new Date(Date.now() + delay * 60000).toISOString(),
+            workflow_log_id: logRow?.id || null,
+          })
+
+          if (insertError) {
+            console.error('[shopify-helper] failed to insert send job:', insertError.message)
+          } else {
+            enqueuedCount++
+          }
+        }
+      }
     }
 
-    const matchedWorkflows = (workflows || []).filter((w: any) =>
-      w.workflow_templates && events.includes(w.workflow_templates.trigger_event)
-    );
+    if (enqueuedCount === 0) {
+      const ruleTrigger =
+        triggerType === 'order_created' && data.is_cod ? 'cod_confirmation' : triggerType
 
-    if (matchedWorkflows.length === 0) {
-      return { status: 'skipped_not_activated' };
-    }
+      const { data: rule } = await supabase
+        .from('shopify_automation_rules')
+        .select('*')
+        .eq('account_id', accountId)
+        .eq('trigger_type', ruleTrigger)
+        .eq('is_active', true)
+        .maybeSingle()
 
-    let enqueuedCount = 0;
-
-    for (const mw of matchedWorkflows) {
-      const template = mw.workflow_templates as any;
-      if (!template) continue;
-
-      // Conditional routing logic:
-      // - COD confirmation ONLY runs if order is COD.
-      // - Order confirmation ONLY runs if order is NOT COD.
-      if (template.key === 'cod_confirmation' && !data.is_cod) {
-        continue;
-      }
-      if (template.key === 'order_confirmation' && data.is_cod) {
-        continue;
-      }
-
-      const templateName = template.meta_template_name;
-      const variables = getVariablesForTemplate(templateName, template.key);
-
-      // Resolve template variables
-      const templateParams = variables.map((variableName) => {
-        return data[variableName as keyof typeof data] || '';
-      });
-
-      // 2) Insert pending log into workflow_logs
-      const { data: logRow, error: logErr } = await supabase
-        .from('workflow_logs')
-        .insert({
-          account_id: accountId,
-          workflow_template_id: template.id,
-          workflow_name: template.name,
-          contact_id: contactId,
-          contact_name: data.customer_name || 'Customer',
-          contact_phone: phone,
-          status: 'pending',
+      if (rule) {
+        const mapping: string[] = Array.isArray(rule.template_variable_mapping)
+          ? rule.template_variable_mapping
+          : []
+        const templateParams = mapping.map((variableName) => {
+          return (data as Record<string, string | boolean | undefined>)[variableName] || ''
         })
-        .select('id')
-        .single();
-
-      if (logErr) {
-        console.error('[shopify-helper] error logging workflow:', logErr);
-      }
-
-      // 3) Enqueue send job
-      const delay = template.delay_minutes ?? 0;
-      const runAt = new Date(Date.now() + delay * 60000).toISOString();
-
-      const { error: insertError } = await supabase
-        .from('whatsapp_send_jobs')
-        .insert({
+        const delay = rule.delay_minutes ?? 0
+        const { error: insertError } = await supabase.from('whatsapp_send_jobs').insert({
           account_id: accountId,
           contact_id: contactId,
-          recipient_phone: phone,
-          template_name: templateName,
+          recipient_phone: recipientPhone,
+          template_name: rule.template_name,
           template_params: templateParams,
           status: 'pending',
-          run_at: runAt,
-          workflow_log_id: logRow?.id || null,
-        });
-
-      if (insertError) {
-        console.error('[shopify-helper] failed to insert send job:', insertError.message);
-        if (logRow?.id) {
-          await supabase
-            .from('workflow_logs')
-            .update({ status: 'failed', error_message: insertError.message })
-            .eq('id', logRow.id);
+          run_at: new Date(Date.now() + delay * 60000).toISOString(),
+        })
+        if (insertError) {
+          console.error('[shopify-helper] failed to insert rule send job:', insertError.message)
+        } else {
+          enqueuedCount++
         }
-      } else {
-        enqueuedCount++;
       }
     }
 
     if (enqueuedCount > 0) {
-      return { status: 'enqueued' };
+      return { status: 'enqueued' }
     }
 
-    return { status: 'skipped_not_activated' };
+    return { status: 'skipped_not_activated' }
   } catch (err: any) {
-    return { status: 'error', message: err.message || String(err) };
+    return { status: 'error', message: err.message || String(err) }
   }
 }
 
@@ -557,16 +570,22 @@ export async function initializeCheckoutRecoverySequence(
 
   if (existingTracking) return
 
-  // Load the active cart_abandoned sequence rules
-  const { data: sequence } = await supabase
+  let { data: sequence } = await supabase
     .from('shopify_automation_sequences')
     .select('id, is_active')
     .eq('account_id', accountId)
     .eq('trigger_type', 'cart_abandoned')
-    .eq('is_active', true)
     .maybeSingle()
 
-  if (!sequence || !sequence.is_active) return
+  if (!sequence) return
+
+  if (!sequence.is_active) {
+    await supabase
+      .from('shopify_automation_sequences')
+      .update({ is_active: true, updated_at: new Date().toISOString() })
+      .eq('id', sequence.id)
+    sequence = { ...sequence, is_active: true }
+  }
 
   // Load step 1 to get delay
   const { data: step } = await supabase

@@ -1,18 +1,12 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
-import { enqueueShopifyNotification, moveDealToStageName } from '@/lib/shopify/shopify-helper'
+import { enqueueShopifyNotification, initializeCheckoutRecoverySequence, moveDealToStageName } from '@/lib/shopify/shopify-helper'
+import { authorizeCron } from '@/lib/cron/auth'
 
 export async function GET(request: Request) {
-  // 1) Verify cron secret
-  const expected = process.env.AUTOMATION_CRON_SECRET
-  if (!expected) {
-    return NextResponse.json({ error: 'cron not configured' }, { status: 503 })
-  }
-  const supplied = request.headers.get('x-cron-secret')
-  if (supplied !== expected) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const denied = authorizeCron(request)
+  if (denied) return denied
 
   const supabase = supabaseAdmin()
   const thresholdMinutes = parseInt(process.env.ABANDONED_CART_THRESHOLD_MINUTES || '30')
@@ -60,22 +54,38 @@ export async function GET(request: Request) {
         const checkoutUrl = checkout.abandoned_checkout_url || ''
         const storeName = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN || 'Our Store'
 
-        const notifyRes = await enqueueShopifyNotification(
+        const notifyRes = await initializeCheckoutRecoverySequence(
           supabase,
           checkout.account_id,
           checkout.contact_id,
-          checkout.customer_phone || contact?.phone || '',
-          'cart_abandoned',
-          {
-            customer_name: customerFirstName,
-            product_name: productName,
-            store_name: storeName,
-            checkout_url: checkoutUrl,
-          }
-        )
+          checkout.shopify_checkout_id ? String(checkout.shopify_checkout_id) : '',
+          checkout.created_at,
+        ).then(async () => {
+          const { data: sequence } = await supabase
+            .from('shopify_automation_sequences')
+            .select('id')
+            .eq('account_id', checkout.account_id)
+            .eq('trigger_type', 'cart_abandoned')
+            .eq('is_active', true)
+            .maybeSingle()
+          if (sequence) return { status: 'enqueued' as const }
+
+          return enqueueShopifyNotification(
+            supabase,
+            checkout.account_id,
+            checkout.contact_id,
+            checkout.customer_phone || contact?.phone || '',
+            'cart_abandoned',
+            {
+              customer_name: customerFirstName,
+              product_name: productName,
+              store_name: storeName,
+              checkout_url: checkoutUrl,
+            }
+          )
+        })
 
         if (notifyRes.status === 'enqueued') {
-          // Mark checkout as abandoned_notified
           await supabase
             .from('shopify_checkouts')
             .update({ status: 'abandoned_notified', updated_at: new Date().toISOString() })
@@ -85,13 +95,8 @@ export async function GET(request: Request) {
             await moveDealToStageName(supabase, checkout.deal_id, 'Nudged / In Recovery', checkout.account_id)
           }
           checkoutsNotified++
-        } else {
-          // Mark as expired so it is not processed again in subsequent cron sweeps
-          await supabase
-            .from('shopify_checkouts')
-            .update({ status: 'expired', updated_at: new Date().toISOString() })
-            .eq('id', checkout.id)
         }
+        // Leave status=open if nothing is activated so a later toggle/cron can still send.
       }
     }
 
@@ -177,7 +182,11 @@ export async function GET(request: Request) {
           const errMsg = err.message || String(err)
           console.error(`[shopify-cron] error sending WhatsApp template job ${job.id}:`, errMsg)
 
-          // Compute exponential backoff for run_at (5 mins, 10 mins, 15 mins)
+          const permanent =
+            errMsg.includes('contact has no phone') ||
+            errMsg.includes('contact not found') ||
+            errMsg.includes('#132001')
+          const attempts = permanent ? 3 : nextAttempt
           const backoffMinutes = 5 * nextAttempt
           const nextRunAt = new Date(Date.now() + backoffMinutes * 60 * 1000).toISOString()
 
@@ -185,7 +194,7 @@ export async function GET(request: Request) {
             .from('whatsapp_send_jobs')
             .update({
               status: 'failed',
-              attempts: nextAttempt,
+              attempts,
               last_error: errMsg,
               run_at: nextRunAt,
             } as any)

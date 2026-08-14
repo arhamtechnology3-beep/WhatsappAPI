@@ -1,21 +1,25 @@
 // Shopify Web Pixel integration for wacrm
 // Listens to product views on the storefront and synchronizes them to the CRM.
 
+const CRM_BASE =
+  (typeof shopify !== 'undefined' && shopify?.settings?.crmUrl) ||
+  'https://whatsapp.arhamtechnology.com'
+
 analytics.subscribe('product_viewed', (event) => {
-  const customer = event.data.customer;
-  const productVariant = event.data.productVariant;
-  const product = productVariant?.product;
+  const customer = event.data.customer
+  const productVariant = event.data.productVariant
+  const product = productVariant?.product
 
   if (!customer || !productVariant || !product) {
-    return; // Ignore fully anonymous or incomplete view events
+    return
   }
 
-  const customerId = customer.id;
-  const email = customer.email;
-  const phone = customer.phone;
+  const customerId = customer.id
+  const email = customer.email
+  const phone = customer.phone
 
   if (!customerId && !email && !phone) {
-    return; // Respect privacy constraints: only identify visitor if contact data is present
+    return
   }
 
   const payload = {
@@ -28,15 +32,14 @@ analytics.subscribe('product_viewed', (event) => {
     product_title: product.title,
     price: productVariant.price?.amount ? parseFloat(productVariant.price.amount) : 0,
     product_url: event.context.document?.location?.href || '',
-  };
+  }
 
-  // Dispatch to the wacrm pixel receiver endpoint
-  fetch('/api/shopify/pixel/product-viewed', {
+  fetch(`${CRM_BASE.replace(/\/$/, '')}/api/shopify/pixel/product-viewed`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
-    keepalive: true
-  }).catch((err) => console.warn('[wacrm-pixel] failed to send product view:', err));
-});
+    keepalive: true,
+  }).catch((err) => console.warn('[wacrm-pixel] failed to send product view:', err))
+})

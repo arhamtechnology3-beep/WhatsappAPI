@@ -2,17 +2,11 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
 import { createShopifyDiscountCode } from '@/lib/shopify/discount-generator'
+import { authorizeCron } from '@/lib/cron/auth'
 
 export async function GET(request: Request) {
-  // 1) Verify cron secret
-  const expected = process.env.AUTOMATION_CRON_SECRET
-  if (!expected) {
-    return NextResponse.json({ error: 'cron not configured' }, { status: 503 })
-  }
-  const supplied = request.headers.get('x-cron-secret')
-  if (supplied !== expected) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const denied = authorizeCron(request)
+  if (denied) return denied
 
   const supabase = supabaseAdmin()
   const now = new Date().toISOString()
@@ -26,7 +20,7 @@ export async function GET(request: Request) {
       .from('shopify_recovery_tracking')
       .select(`
         *,
-        contacts(name, first_name, phone, whatsapp_marketing_opt_in),
+        contacts(name, phone, marketing_opt_in, whatsapp_marketing_opt_in),
         shopify_automation_sequences(id, trigger_type, is_active)
       `)
       .eq('status', 'in_progress')
@@ -116,7 +110,8 @@ export async function GET(request: Request) {
         // 5) COMPLIANCE: OPT-IN CHECK
         // Step 1 cart abandoned reminder is transactional (uses 24h window), but Step 2, 3, and all browse reminders require marketing opt-in consent
         const requiresOptIn = tracking.current_step > 1 || sequence.trigger_type === 'browse_abandoned'
-        if (requiresOptIn && !contact?.whatsapp_marketing_opt_in) {
+        const hasConsent = !!(contact?.whatsapp_marketing_opt_in || contact?.marketing_opt_in)
+        if (requiresOptIn && !hasConsent) {
           // Stop tracking sequence immediately if contact did not opt in
           await supabase
             .from('shopify_recovery_tracking')
@@ -154,13 +149,13 @@ export async function GET(request: Request) {
         // Generate dynamic discount code if this is the final step
         let discountCode = tracking.discount_code
         if (tracking.current_step === 3 && !discountCode) {
-          const storeDomain = process.env.SHOPIFY_STORE_DOMAIN || 'divyaprabhafoods.myshopify.com'
+          const storeDomain = process.env.SHOPIFY_STORE_DOMAIN || process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN || ''
           const token = process.env.SHOPIFY_ADMIN_API_TOKEN || ''
           discountCode = await createShopifyDiscountCode(storeDomain, token)
         }
 
         // Map template variables
-        const customerName = contact?.first_name || contact?.name || 'Customer'
+        const customerName = contact?.name || 'Customer'
         const storeName = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN || 'Our Store'
 
         const mapping: string[] = step.template_variable_mapping || []
@@ -240,16 +235,23 @@ export async function GET(request: Request) {
         }
 
         if (conv) {
-          // Send message
-          await engineSendTemplate({
-            accountId: tracking.account_id,
-            userId: ownerUserId,
-            conversationId: conv.id,
-            contactId: tracking.contact_id,
-            templateName: step.template_name,
-            params: templateParams,
-          })
-          messagesSent++
+          try {
+            await engineSendTemplate({
+              accountId: tracking.account_id,
+              userId: ownerUserId,
+              conversationId: conv.id,
+              contactId: tracking.contact_id,
+              templateName: step.template_name,
+              params: templateParams,
+            })
+            messagesSent++
+          } catch (sendErr) {
+            console.error('[shopify-sequence-cron] send failed, will retry next run:', sendErr)
+            continue
+          }
+        } else {
+          console.error('[shopify-sequence-cron] no conversation for tracking', tracking.id)
+          continue
         }
 
         // Advance or complete sequence

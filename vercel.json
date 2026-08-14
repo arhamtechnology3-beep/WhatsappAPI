@@ -1,0 +1,8 @@
+{
+  "crons": [
+    { "path": "/api/shopify/cron", "schedule": "* * * * *" },
+    { "path": "/api/shopify/cron/sequences", "schedule": "* * * * *" },
+    { "path": "/api/automations/cron", "schedule": "* * * * *" },
+    { "path": "/api/flows/cron", "schedule": "*/5 * * * *" }
+  ]
+}

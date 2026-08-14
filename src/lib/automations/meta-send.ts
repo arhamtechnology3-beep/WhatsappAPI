@@ -87,8 +87,11 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     .eq('id', input.contactId)
     .eq('account_id', input.accountId)
     .maybeSingle()
-  if (contactErr || !contact?.phone) {
+  if (contactErr || !contact) {
     throw new Error('contact not found for this account')
+  }
+  if (!contact.phone?.trim()) {
+    throw new Error('contact has no phone number')
   }
 
   const sanitized = sanitizePhoneForMeta(contact.phone)
@@ -185,7 +188,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         messageParams.headerMediaUrl =
           resolvedImageUrl ||
           templateRow.header_media_url ||
-          'https://divyaprabhafoods.com/cdn/shop/files/Gor_Keri.jpg'
+          undefined
       }
 
       const r = await sendTemplateMessage({

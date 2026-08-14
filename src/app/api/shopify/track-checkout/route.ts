@@ -6,37 +6,16 @@ import {
   createOrUpdateShopifyDeal,
   initializeCheckoutRecoverySequence,
 } from '@/lib/shopify/shopify-helper'
-
-// Allow CORS preflight and actual requests from the Shopify storefront domain
-function setCorsHeaders(response: NextResponse, origin: string | null) {
-  const allowedOrigins = [
-    'https://divyaprabhafoods.com',
-    'https://divyaprabhafoods.myshopify.com',
-    'http://127.0.0.1:9292',
-    'http://localhost:3000'
-  ]
-  
-  if (origin && allowedOrigins.includes(origin)) {
-    response.headers.set('Access-Control-Allow-Origin', origin)
-  } else {
-    response.headers.set('Access-Control-Allow-Origin', 'https://divyaprabhafoods.com')
-  }
-  response.headers.set('Access-Control-Allow-Methods', 'POST, OPTIONS')
-  response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Accept')
-  response.headers.set('Access-Control-Max-Age', '86400')
-}
+import { applyShopifyCors, shopifyCorsPreflight } from '@/lib/shopify/cors'
 
 export async function OPTIONS(request: Request) {
-  const origin = request.headers.get('origin')
-  const response = new NextResponse(null, { status: 204 })
-  setCorsHeaders(response, origin)
-  return response
+  return shopifyCorsPreflight(request)
 }
 
 export async function POST(request: Request) {
   const origin = request.headers.get('origin')
   const response = new NextResponse()
-  setCorsHeaders(response, origin)
+  applyShopifyCors(response, origin)
 
   const supabase = supabaseAdmin()
 
@@ -97,7 +76,7 @@ export async function POST(request: Request) {
     )
 
     // Build checkout url
-    const storeDomain = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN || 'divyaprabhafoods.myshopify.com'
+    const storeDomain = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN || process.env.SHOPIFY_STORE_DOMAIN || ''
     const abandonedUrl = `https://${storeDomain}/cart`
 
     // Upsert shopify_checkouts

@@ -47,6 +47,7 @@ interface WhatsAppMessage {
   sticker?: { id: string; mime_type: string }
   location?: { latitude: number; longitude: number; name?: string; address?: string }
   reaction?: { message_id: string; emoji: string }
+  button?: { payload?: string; text?: string }
   referral?: {
     source_url?: string
     source_id?: string
@@ -391,6 +392,7 @@ async function handleStatusUpdate(status: {
             .from('contacts')
             .update({
               marketing_opt_in: false,
+              whatsapp_marketing_opt_in: false,
               marketing_opt_out_at: new Date().toISOString()
             })
             .eq('id', contact.id)
@@ -665,7 +667,9 @@ async function processMessage(
     ? message.type
     : message.type === 'sticker'
       ? 'image'   // stickers are images
-      : 'text'    // reaction, unknown → text fallback
+      : message.type === 'button'
+        ? 'interactive'
+        : 'text'    // reaction, unknown → text fallback
 
   // Determine whether this is the contact's very first inbound message
   // BEFORE we insert, so the count is accurate. Covers the case where
@@ -970,6 +974,7 @@ async function processMessage(
       .from('contacts')
       .update({
         marketing_opt_in: false,
+        whatsapp_marketing_opt_in: false,
         marketing_opt_out_at: new Date().toISOString()
       })
       .eq('id', contactRecord.id)
@@ -1256,12 +1261,6 @@ async function parseMessageContent(
       return { ...empty, contentText: message.reaction?.emoji || null }
 
     case 'interactive': {
-      // The customer tapped a reply button or a list row on a message
-      // we previously sent. Meta delivers `interactive.button_reply` for
-      // 3-button messages and `interactive.list_reply` for list messages.
-      // Use the human-readable title as contentText so the inbox bubble
-      // renders the tap legibly ("Existing customer"), and stash the
-      // stable id separately so the Flows engine can route on it.
       const reply =
         message.interactive?.button_reply ?? message.interactive?.list_reply
       if (reply?.id) {
@@ -1272,6 +1271,15 @@ async function parseMessageContent(
         }
       }
       return { ...empty, contentText: '[Interactive reply]' }
+    }
+
+    case 'button': {
+      const payload = message.button?.payload || null
+      return {
+        ...empty,
+        contentText: message.button?.text || payload,
+        interactiveReplyId: payload,
+      }
     }
 
     default:

@@ -4,8 +4,14 @@ import {
   getShopifyAccountContext,
   matchOrCreateShopifyContact,
 } from '@/lib/shopify/shopify-helper'
+import { applyShopifyCors, shopifyCorsPreflight } from '@/lib/shopify/cors'
+
+export async function OPTIONS(request: Request) {
+  return shopifyCorsPreflight(request)
+}
 
 export async function POST(request: Request) {
+  const origin = request.headers.get('origin')
   const supabase = supabaseAdmin()
 
   try {
@@ -13,12 +19,12 @@ export async function POST(request: Request) {
     const { customer_id, email, phone, first_name, last_name, product_id, product_title, price, product_url } = payload
 
     if (!customer_id && !email && !phone) {
-      return NextResponse.json({ success: false, message: 'Unidentifiable visitor, skipped' })
+      const res = NextResponse.json({ success: false, message: 'Unidentifiable visitor, skipped' })
+      return applyShopifyCors(res, origin)
     }
 
     const { accountId, userId } = await getShopifyAccountContext(supabase)
 
-    // Resolve contact
     const contact = await matchOrCreateShopifyContact(supabase, accountId, userId, {
       id: customer_id,
       email,
@@ -27,12 +33,17 @@ export async function POST(request: Request) {
       last_name,
     })
 
-    // Verify marketing consent
-    if (!contact.whatsapp_marketing_opt_in) {
-      return NextResponse.json({ success: false, message: 'Skipped: Contact does not have marketing consent' })
+    if (!contact) {
+      const res = NextResponse.json({ success: false, message: 'Could not resolve contact' })
+      return applyShopifyCors(res, origin)
     }
 
-    // Verify there is no active sequence running for this contact
+    const hasConsent = !!(contact.whatsapp_marketing_opt_in || contact.marketing_opt_in)
+    if (!hasConsent) {
+      const res = NextResponse.json({ success: false, message: 'Skipped: Contact does not have marketing consent' })
+      return applyShopifyCors(res, origin)
+    }
+
     const { data: activeSeq } = await supabase
       .from('shopify_recovery_tracking')
       .select('id')
@@ -41,10 +52,10 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     if (activeSeq) {
-      return NextResponse.json({ success: false, message: 'Skipped: Active recovery sequence already in progress' })
+      const res = NextResponse.json({ success: false, message: 'Skipped: Active recovery sequence already in progress' })
+      return applyShopifyCors(res, origin)
     }
 
-    // Load active browse_abandoned sequence rules
     const { data: sequence } = await supabase
       .from('shopify_automation_sequences')
       .select('id, is_active')
@@ -54,10 +65,10 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     if (!sequence) {
-      return NextResponse.json({ success: false, message: 'Skipped: Browse abandonment sequence not active' })
+      const res = NextResponse.json({ success: false, message: 'Skipped: Browse abandonment sequence not active' })
+      return applyShopifyCors(res, origin)
     }
 
-    // Load step 1 details
     const { data: step } = await supabase
       .from('shopify_automation_sequence_steps')
       .select('id, delay_minutes_from_previous_step, meta_approval_status, is_active')
@@ -68,12 +79,12 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     if (!step) {
-      return NextResponse.json({ success: false, message: 'Skipped: Browse abandonment step 1 not active/approved' })
+      const res = NextResponse.json({ success: false, message: 'Skipped: Browse abandonment step 1 not active/approved' })
+      return applyShopifyCors(res, origin)
     }
 
     const nextSendAt = new Date(Date.now() + step.delay_minutes_from_previous_step * 60000).toISOString()
 
-    // Create sequence tracking row
     await supabase
       .from('shopify_recovery_tracking')
       .insert({
@@ -91,9 +102,12 @@ export async function POST(request: Request) {
         },
       })
 
-    return NextResponse.json({ success: true })
-  } catch (err: any) {
+    const res = NextResponse.json({ success: true })
+    return applyShopifyCors(res, origin)
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err)
     console.error('[wacrm-pixel] error tracking product view:', err)
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })
+    const res = NextResponse.json({ error: message }, { status: 500 })
+    return applyShopifyCors(res, origin)
   }
 }

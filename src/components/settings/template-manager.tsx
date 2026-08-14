@@ -189,14 +189,6 @@ export function TemplateManager() {
 
   async function fetchTemplates(userId: string) {
     try {
-      // Clean up legacy default templates with invalid 'en' language code
-      await supabase
-        .from('message_templates')
-        .delete()
-        .eq('user_id', userId)
-        .eq('language', 'en')
-        .like('name', 'wacrm_%');
-
       const { data, error } = await supabase
         .from('message_templates')
         .select('*')

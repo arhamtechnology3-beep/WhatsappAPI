@@ -69,28 +69,36 @@ export function ConversationList({
     let cancelled = false;
 
     (async () => {
-      const { data, error } = await supabase
-        .from("conversations")
-        .select("*, contact:contacts(*)")
-        .order("last_message_at", { ascending: false });
+      try {
+        const { data, error } = await supabase
+          .from("conversations")
+          .select("*, contact:contacts(*)")
+          .order("last_message_at", { ascending: false })
+          .limit(100)
+          .abortSignal(AbortSignal.timeout(15000));
 
-      if (cancelled) return;
+        if (cancelled) return;
 
-      if (error) {
-        console.error("Failed to fetch conversations:", {
-          message: error.message,
-          details: error.details,
-          hint: error.hint,
-          code: error.code,
-        });
-        setLoading(false);
-        return;
+        if (error) {
+          console.error("Failed to fetch conversations:", {
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            code: error.code,
+          });
+          return;
+        }
+
+        const list = data ?? [];
+        setCachedData("inbox_conversations", list);
+        onConversationsLoadedRef.current(list);
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to fetch conversations:", err);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      const list = data ?? [];
-      setCachedData("inbox_conversations", list);
-      onConversationsLoadedRef.current(list);
-      setLoading(false);
     })();
 
     return () => {

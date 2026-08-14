@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import crypto from 'crypto'
 import { cookies } from 'next/headers'
+import { registerShopifyWebhooks } from '@/lib/shopify/register-webhooks'
 
 export async function GET(request: Request) {
   try {
@@ -15,7 +16,10 @@ export async function GET(request: Request) {
     }
 
     // 1) Verify HMAC signature
-    const secret = process.env.SHOPIFY_API_SECRET || 'mock_api_secret'
+    const secret = process.env.SHOPIFY_API_SECRET
+    if (!secret) {
+      return NextResponse.json({ error: 'SHOPIFY_API_SECRET is not configured' }, { status: 500 })
+    }
     const params: string[] = []
     searchParams.forEach((val, key) => {
       if (key !== 'hmac') {
@@ -31,7 +35,10 @@ export async function GET(request: Request) {
     }
 
     // 2) Exchange code for access token
-    const apiKey = process.env.SHOPIFY_API_KEY || 'mock_api_key'
+    const apiKey = process.env.SHOPIFY_API_KEY || process.env.SHOPIFY_CLIENT_ID
+    if (!apiKey) {
+      return NextResponse.json({ error: 'SHOPIFY_API_KEY is not configured' }, { status: 500 })
+    }
     const tokenRes = await fetch(`https://${shop}/admin/oauth/access_token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -49,6 +56,16 @@ export async function GET(request: Request) {
 
     const tokenData = await tokenRes.json()
     const accessToken = tokenData.access_token
+
+    try {
+      const results = await registerShopifyWebhooks({ shop, accessToken })
+      const failed = results.filter((r) => !r.ok)
+      if (failed.length > 0) {
+        console.warn('[shopify-callback] webhook registration issues:', failed)
+      }
+    } catch (err) {
+      console.error('[shopify-callback] webhook registration failed:', err)
+    }
 
     // 3) Fetch Shop details
     const shopRes = await fetch(`https://${shop}/admin/api/2024-04/shop.json`, {

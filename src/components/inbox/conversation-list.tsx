@@ -68,7 +68,7 @@ export function ConversationList({
   });
 
   useEffect(() => {
-    if (authLoading || !accountId) {
+    if (authLoading) {
       setLoading(true);
       return;
     }
@@ -79,12 +79,15 @@ export function ConversationList({
 
     (async () => {
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from("conversations")
           .select("*, contact:contacts(*)")
-          .eq("account_id", accountId)
           .order("last_message_at", { ascending: false })
           .limit(100);
+        if (accountId) {
+          query = query.eq("account_id", accountId);
+        }
+        const { data, error } = await query;
 
         if (gen !== fetchGen.current) return;
 

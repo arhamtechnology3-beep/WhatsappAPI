@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     }
 
     const cookieStore = await cookies()
-    cookieStore.set('wacrm_active_workspace_id', workspaceId, { path: '/' })
+    cookieStore.set('wacrm_active_workspace_id', workspaceId, { path: '/', httpOnly: false, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 })
 
     return NextResponse.json({ success: true, role: member.role })
   } catch (err: any) {

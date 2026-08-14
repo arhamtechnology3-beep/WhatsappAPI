@@ -94,7 +94,7 @@ export async function POST(request: Request) {
 
     // Set as active workspace in cookies
     const cookieStore = await cookies()
-    cookieStore.set('wacrm_active_workspace_id', workspace.id, { path: '/' })
+    cookieStore.set('wacrm_active_workspace_id', workspace.id, { path: '/', httpOnly: false, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 })
 
     return NextResponse.json({
       success: true,

@@ -157,7 +157,6 @@ export default function ContactsPage() {
   tagsMapRef.current = tagsMap;
 
   const fetchContacts = useCallback(async () => {
-    if (!accountId) return;
     const seq = ++fetchSeq.current;
     setLoading(true);
     // Drop selection on visible data change
@@ -198,7 +197,9 @@ export default function ContactsPage() {
           .order('created_at', { ascending: false })
           .range(from, to);
 
-        query = query.eq('account_id', accountId);
+        if (accountId) {
+          query = query.eq('account_id', accountId);
+        }
 
         if (quickFilter === 'abandoned') {
           query = query.in('shopify_checkouts.status', ['open', 'abandoned_notified']);
@@ -296,7 +297,7 @@ export default function ContactsPage() {
   }, [fetchTags]);
 
   useEffect(() => {
-    if (authLoading || !accountId) {
+    if (authLoading) {
       setLoading(true);
       return;
     }

@@ -21,6 +21,33 @@ import {
 } from "@/lib/auth/roles";
 
 import { getCachedData, setCachedData } from "@/lib/cache/page-cache";
+import {
+  WORKSPACE_COOKIE,
+  WORKSPACE_STORAGE_KEY,
+} from "@/lib/auth/workspace-cookie";
+
+function readClientWorkspaceId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = localStorage.getItem(WORKSPACE_STORAGE_KEY);
+    if (stored) return stored;
+  } catch {
+    // private mode
+  }
+  const match = document.cookie.match(
+    new RegExp(`(?:^|; )${WORKSPACE_COOKIE}=([^;]*)`),
+  );
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function persistClientWorkspaceId(id: string) {
+  try {
+    localStorage.setItem(WORKSPACE_STORAGE_KEY, id);
+  } catch {
+    // private mode
+  }
+  document.cookie = `${WORKSPACE_COOKIE}=${encodeURIComponent(id)}; path=/; max-age=31536000; SameSite=Lax`;
+}
 
 interface Profile {
   id: string;
@@ -73,11 +100,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Workspaces state
   const [workspaces, setWorkspaces] = useState<any[]>(() => getCachedData<any[]>("user_workspaces") || []);
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => {
-    if (typeof document === "undefined") return null;
-    const match = document.cookie.match(/wacrm_active_workspace_id=([^;]+)/);
-    return match ? decodeURIComponent(match[1]) : null;
-  });
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
+    () => readClientWorkspaceId(),
+  );
 
   const fetchWorkspaces = useCallback(async () => {
     try {
@@ -92,20 +117,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setWorkspaces(list);
         setCachedData("user_workspaces", list);
 
-        // Get cookie helper
-        const cookiesMap = document.cookie.split("; ").reduce((acc: any, row) => {
-          const [key, val] = row.split("=");
-          if (key) acc[key] = val;
-          return acc;
-        }, {});
-        const cookieActiveId = cookiesMap["wacrm_active_workspace_id"];
-
+        const cookieActiveId = readClientWorkspaceId();
         const currentActive = list.find((w: any) => w.id === cookieActiveId) || list[0] || null;
         if (currentActive) {
           setActiveWorkspaceId(currentActive.id);
-          if (!cookieActiveId) {
-            document.cookie = `wacrm_active_workspace_id=${currentActive.id}; path=/; max-age=31536000; SameSite=Lax`;
-          }
+          persistClientWorkspaceId(currentActive.id);
         }
       }
     } catch (err) {
@@ -151,6 +167,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
         setProfile(profData);
         setCachedData("user_profile", profData);
+        if (profData.account_id && !readClientWorkspaceId()) {
+          persistClientWorkspaceId(profData.account_id);
+          setActiveWorkspaceId(profData.account_id);
+        }
       }
     } catch (err) {
       console.error("[AuthProvider] fetchProfile threw:", err);

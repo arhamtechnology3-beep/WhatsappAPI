@@ -95,7 +95,7 @@ export async function GET(request: Request) {
 
     if (existingWorkspace) {
       // Set active workspace cookie
-      cookieStore.set('wacrm_active_workspace_id', existingWorkspace.id, { path: '/' })
+      cookieStore.set('wacrm_active_workspace_id', existingWorkspace.id, { path: '/', httpOnly: false, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 })
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 
@@ -163,7 +163,7 @@ export async function GET(request: Request) {
         config: { accessToken, shop },
       })
 
-      cookieStore.set('wacrm_active_workspace_id', workspace.id, { path: '/' })
+      cookieStore.set('wacrm_active_workspace_id', workspace.id, { path: '/', httpOnly: false, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 })
       return NextResponse.redirect(new URL('/settings?tab=whatsapp', request.url))
     } else {
       // Store Shopify token in merchant_integrations

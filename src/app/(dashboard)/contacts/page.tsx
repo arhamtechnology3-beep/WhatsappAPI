@@ -159,12 +159,12 @@ export default function ContactsPage() {
   const fetchContacts = useCallback(async () => {
     const seq = ++fetchSeq.current;
     setLoading(true);
-    // Drop selection on visible data change
     setSelected(new Set());
 
     const from = page * PAGE_SIZE;
     const to = from + PAGE_SIZE - 1;
     const term = search.trim();
+    const abort = AbortSignal.timeout(8000);
 
     try {
       let contactRows: Contact[] = [];
@@ -186,16 +186,17 @@ export default function ContactsPage() {
         contactRows = rows.map((r) => r.contact);
         count = rows.length > 0 ? Number(rows[0].total_count) : 0;
       } else {
-        let selectFields = '*';
-        if (quickFilter === 'abandoned') {
-          selectFields = '*, shopify_checkouts!inner(id, status)';
-        }
+        const selectFields =
+          quickFilter === 'abandoned'
+            ? 'id, name, phone, email, company, created_at, marketing_opt_in, marketing_opt_out_at, shopify_customer_id, account_id, shopify_checkouts!inner(id, status)'
+            : 'id, name, phone, email, company, created_at, marketing_opt_in, marketing_opt_out_at, shopify_customer_id, account_id';
 
         let query = supabase
           .from('contacts')
-          .select(selectFields, { count: 'exact' })
+          .select(selectFields)
           .order('created_at', { ascending: false })
-          .range(from, to);
+          .range(from, to)
+          .abortSignal(abort);
 
         if (accountId) {
           query = query.eq('account_id', accountId);
@@ -218,14 +219,14 @@ export default function ContactsPage() {
           query = query.or(`name.ilike.${like},phone.ilike.${like},email.ilike.${like}`);
         }
 
-        const { data, count: exactCount, error } = await query;
+        const { data, error } = await query;
         if (seq !== fetchSeq.current) return;
         if (error) {
           toast.error('Failed to load contacts');
           return;
         }
         contactRows = (data as unknown as Contact[]) ?? [];
-        count = exactCount ?? 0;
+        count = from + contactRows.length + (contactRows.length === PAGE_SIZE ? 1 : 0);
       }
 
       if (seq !== fetchSeq.current) return;
@@ -281,10 +282,9 @@ export default function ContactsPage() {
       }
     } catch (err) {
       console.error('[ContactsPage] fetchContacts error:', err);
+      toast.error('Contacts took too long to load. Refresh and try again.');
     } finally {
-      if (seq === fetchSeq.current) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
   }, [supabase, page, search, selectedTagIds, quickFilter, accountId]);
 
@@ -297,11 +297,10 @@ export default function ContactsPage() {
   }, [fetchTags]);
 
   useEffect(() => {
-    if (authLoading) {
-      setLoading(true);
-      return;
-    }
-    fetchContacts();
+    if (authLoading) return;
+    const watchdog = window.setTimeout(() => setLoading(false), 10000);
+    fetchContacts().finally(() => window.clearTimeout(watchdog));
+    return () => window.clearTimeout(watchdog);
   }, [fetchContacts, accountId, authLoading]);
 
   function openAddForm() {

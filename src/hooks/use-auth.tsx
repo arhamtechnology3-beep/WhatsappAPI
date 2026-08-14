@@ -263,9 +263,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!mounted) return;
       const currentUser = session?.user ?? null;
       setUser(currentUser);
+      if (mounted) setLoading(false);
 
       if (currentUser) {
-        await Promise.all([
+        void Promise.all([
           fetchProfile(currentUser.id),
           fetchWorkspaces(),
         ]);
@@ -275,8 +276,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setActiveWorkspaceId(null);
         setProfileLoading(false);
       }
-
-      if (mounted) setLoading(false);
     });
 
     const failsafe = window.setTimeout(() => {

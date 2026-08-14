@@ -47,6 +47,7 @@ const FILTER_OPTIONS: { label: string; value: InboxFilter }[] = [
 ];
 
 import { setCachedData } from "@/lib/cache/page-cache";
+import { useAuth } from "@/hooks/use-auth";
 
 export function ConversationList({
   activeConversationId,
@@ -55,9 +56,11 @@ export function ConversationList({
   onConversationsLoaded,
   resyncToken = 0,
 }: ConversationListProps) {
+  const { accountId } = useAuth();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [loading, setLoading] = useState(conversations.length === 0);
+  const fetchGen = useRef(0);
 
   const onConversationsLoadedRef = useRef(onConversationsLoaded);
   useEffect(() => {
@@ -65,19 +68,25 @@ export function ConversationList({
   });
 
   useEffect(() => {
+    if (!accountId) {
+      setLoading(true);
+      return;
+    }
+
     const supabase = createClient();
-    let cancelled = false;
+    const gen = ++fetchGen.current;
+    setLoading(true);
 
     (async () => {
       try {
         const { data, error } = await supabase
           .from("conversations")
           .select("*, contact:contacts(*)")
+          .eq("account_id", accountId)
           .order("last_message_at", { ascending: false })
-          .limit(100)
-          .abortSignal(AbortSignal.timeout(15000));
+          .limit(100);
 
-        if (cancelled) return;
+        if (gen !== fetchGen.current) return;
 
         if (error) {
           console.error("Failed to fetch conversations:", {
@@ -93,21 +102,14 @@ export function ConversationList({
         setCachedData("inbox_conversations", list);
         onConversationsLoadedRef.current(list);
       } catch (err) {
-        if (!cancelled) {
+        if (gen === fetchGen.current) {
           console.error("Failed to fetch conversations:", err);
         }
       } finally {
-        if (!cancelled) setLoading(false);
+        if (gen === fetchGen.current) setLoading(false);
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
-    // `resyncToken` is included so the parent can force a refetch when
-    // the realtime channel reconnects or the tab regains focus — catches
-    // up on any events sent while the WS was disconnected or throttled.
-  }, [resyncToken]);
+  }, [resyncToken, accountId]);
 
   const filtered = useMemo(() => {
     let result = conversations;

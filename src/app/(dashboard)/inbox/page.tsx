@@ -360,13 +360,19 @@ export default function InboxPage() {
    * missed events. Cheap to fire; the children dedupe on their own.
    */
   useEffect(() => {
+    let armed = false;
+    const arm = window.setTimeout(() => {
+      armed = true;
+    }, 2500);
     const onVisibility = () => {
+      if (!armed) return;
       if (document.visibilityState === "visible") {
         setResyncToken((n) => n + 1);
       }
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
+      window.clearTimeout(arm);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);

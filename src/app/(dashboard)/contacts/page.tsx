@@ -71,7 +71,7 @@ import { getCachedData, setCachedData } from '@/lib/cache/page-cache';
 
 export default function ContactsPage() {
   const supabase = createClient();
-  const { accountId } = useAuth();
+  const { accountId, loading: authLoading } = useAuth();
   const canEdit = useCan('send-messages');
   const canEditSettings = useCan('edit-settings');
 
@@ -79,7 +79,9 @@ export default function ContactsPage() {
   const cachedContactsObj = getCachedData<{ contacts: ContactWithTags[]; count: number }>(cacheKey);
 
   const [contacts, setContacts] = useState<ContactWithTags[]>(cachedContactsObj?.contacts || []);
-  const [loading, setLoading] = useState(!cachedContactsObj || cachedContactsObj.contacts.length === 0);
+  const [loading, setLoading] = useState(
+    authLoading || !accountId || !cachedContactsObj || cachedContactsObj.contacts.length === 0,
+  );
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(cachedContactsObj?.count || 0);
@@ -152,6 +154,7 @@ export default function ContactsPage() {
   }, [supabase]);
 
   const fetchContacts = useCallback(async () => {
+    if (!accountId) return;
     const seq = ++fetchSeq.current;
     setLoading(true);
     // Drop selection on visible data change
@@ -192,9 +195,7 @@ export default function ContactsPage() {
           .order('created_at', { ascending: false })
           .range(from, to);
 
-        if (accountId) {
-          query = query.eq('account_id', accountId);
-        }
+        query = query.eq('account_id', accountId);
 
         if (quickFilter === 'abandoned') {
           query = query.in('shopify_checkouts.status', ['open', 'abandoned_notified']);
@@ -292,10 +293,12 @@ export default function ContactsPage() {
   }, [fetchTags]);
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 3000);
-    fetchContacts().finally(() => clearTimeout(timer));
-    return () => clearTimeout(timer);
-  }, [fetchContacts]);
+    if (!accountId) {
+      setLoading(true);
+      return;
+    }
+    fetchContacts();
+  }, [fetchContacts, accountId]);
 
   function openAddForm() {
     setEditContact(null);

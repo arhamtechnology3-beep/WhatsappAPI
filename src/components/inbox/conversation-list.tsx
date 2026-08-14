@@ -56,7 +56,7 @@ export function ConversationList({
   onConversationsLoaded,
   resyncToken = 0,
 }: ConversationListProps) {
-  const { accountId } = useAuth();
+  const { accountId, loading: authLoading } = useAuth();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [loading, setLoading] = useState(conversations.length === 0);
@@ -68,7 +68,7 @@ export function ConversationList({
   });
 
   useEffect(() => {
-    if (!accountId) {
+    if (authLoading || !accountId) {
       setLoading(true);
       return;
     }
@@ -109,7 +109,7 @@ export function ConversationList({
         if (gen === fetchGen.current) setLoading(false);
       }
     })();
-  }, [resyncToken, accountId]);
+  }, [resyncToken, accountId, authLoading]);
 
   const filtered = useMemo(() => {
     let result = conversations;

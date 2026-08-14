@@ -213,48 +213,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return data.workspace;
   }, [fetchWorkspaces]);
 
-  const init = useCallback(async () => {
+  const signOut = useCallback(async () => {
     const supabase = createClient();
-    try {
-      const {
-        data: { session },
-        error,
-      } = await supabase.auth.getSession();
+    await supabase.auth.signOut();
+    setUser(null);
+    setProfile(null);
+    setWorkspaces([]);
+    setActiveWorkspaceId(null);
+    window.location.href = "/login";
+  }, []);
 
-      if (error) console.error("[AuthProvider] getSession error:", error.message);
+  const refreshProfile = useCallback(async () => {
+    if (!user?.id) return;
+    await Promise.all([
+      fetchProfile(user.id),
+      fetchWorkspaces(),
+    ]);
+  }, [user?.id, fetchProfile, fetchWorkspaces]);
 
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-
-      if (currentUser) {
-        await Promise.all([
-          fetchProfile(currentUser.id),
-          fetchWorkspaces(),
-        ]);
-      } else {
-        setProfileLoading(false);
-      }
-    } catch (err) {
-      console.error("[AuthProvider] init threw:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchProfile, fetchWorkspaces]);
-
+  // Use only onAuthStateChange (including INITIAL_SESSION). Calling
+  // getSession() in parallel steals the navigator lock and hangs every
+  // dashboard query after a hard refresh.
   useEffect(() => {
     let mounted = true;
-
-    const safetyTimer = setTimeout(() => {
-      if (mounted) {
-        setLoading(false);
-        setProfileLoading(false);
-      }
-    }, 3000);
-
-    init().finally(() => {
-      clearTimeout(safetyTimer);
-    });
-
     const supabase = createClient();
     const {
       data: { subscription },
@@ -275,33 +256,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfileLoading(false);
       }
 
-      setLoading(false);
+      if (mounted) setLoading(false);
     });
+
+    const failsafe = window.setTimeout(() => {
+      if (mounted) {
+        setLoading(false);
+        setProfileLoading(false);
+      }
+    }, 8000);
 
     return () => {
       mounted = false;
-      clearTimeout(safetyTimer);
+      window.clearTimeout(failsafe);
       subscription.unsubscribe();
     };
-  }, [init, fetchProfile, fetchWorkspaces]);
-
-  const signOut = useCallback(async () => {
-    const supabase = createClient();
-    await supabase.auth.signOut();
-    setUser(null);
-    setProfile(null);
-    setWorkspaces([]);
-    setActiveWorkspaceId(null);
-    window.location.href = "/login";
-  }, []);
-
-  const refreshProfile = useCallback(async () => {
-    if (!user?.id) return;
-    await Promise.all([
-      fetchProfile(user.id),
-      fetchWorkspaces(),
-    ]);
-  }, [user?.id, fetchProfile, fetchWorkspaces]);
+  }, [fetchProfile, fetchWorkspaces]);
 
   const derived = useMemo(() => {
     const role = accountRole;

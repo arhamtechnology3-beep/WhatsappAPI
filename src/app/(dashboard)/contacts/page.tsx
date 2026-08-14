@@ -153,6 +153,9 @@ export default function ContactsPage() {
     }
   }, [supabase]);
 
+  const tagsMapRef = useRef(tagsMap);
+  tagsMapRef.current = tagsMap;
+
   const fetchContacts = useCallback(async () => {
     if (!accountId) return;
     const seq = ++fetchSeq.current;
@@ -263,7 +266,7 @@ export default function ContactsPage() {
       const enriched: ContactWithTags[] = contactRows.map((c) => ({
         ...c,
         tags: (tagsByContact[c.id] ?? [])
-          .map((tid) => tagsMap[tid])
+          .map((tid) => tagsMapRef.current[tid])
           .filter(Boolean),
         checkout_url: checkoutUrlMap[c.id] || undefined
       }));
@@ -282,7 +285,7 @@ export default function ContactsPage() {
         setLoading(false);
       }
     }
-  }, [supabase, page, search, selectedTagIds, tagsMap, quickFilter, accountId]);
+  }, [supabase, page, search, selectedTagIds, quickFilter, accountId]);
 
   // Load-once-on-mount-ish data fetches. Each setter inside runs
   // inside an async promise completion (Supabase await), not
@@ -293,12 +296,12 @@ export default function ContactsPage() {
   }, [fetchTags]);
 
   useEffect(() => {
-    if (!accountId) {
+    if (authLoading || !accountId) {
       setLoading(true);
       return;
     }
     fetchContacts();
-  }, [fetchContacts, accountId]);
+  }, [fetchContacts, accountId, authLoading]);
 
   function openAddForm() {
     setEditContact(null);

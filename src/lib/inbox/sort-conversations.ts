@@ -6,9 +6,16 @@ function lastMessageTime(c: Conversation): number {
   return Number.isNaN(t) ? 0 : t;
 }
 
-/** Newest `last_message_at` first; threads with no messages go last. */
+/** Inbox only lists threads that have actually sent or received a message. */
+export function hasInboxActivity(c: Conversation): boolean {
+  return Boolean(c.last_message_at);
+}
+
+/** Newest `last_message_at` first. Empty threads are dropped. */
 export function sortConversationsByLastMessage(
   list: Conversation[],
 ): Conversation[] {
-  return [...list].sort((a, b) => lastMessageTime(b) - lastMessageTime(a));
+  return list
+    .filter(hasInboxActivity)
+    .sort((a, b) => lastMessageTime(b) - lastMessageTime(a));
 }

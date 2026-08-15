@@ -83,6 +83,7 @@ export function ConversationList({
         let query = supabase
           .from("conversations")
           .select("*, contact:contacts(*)")
+          .not("last_message_at", "is", null)
           .order("last_message_at", { ascending: false, nullsFirst: false })
           .limit(100);
         if (accountId) {

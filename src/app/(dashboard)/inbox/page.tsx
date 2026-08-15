@@ -135,6 +135,7 @@ export default function InboxPage() {
       }
       if (!data) return;
       const fetched = data as Conversation;
+      if (!fetched.last_message_at) return;
       setConversations((prev) => {
         const existing = prev.find((c) => c.id === fetched.id);
         if (existing) {
@@ -282,10 +283,12 @@ export default function InboxPage() {
         // already have the row — that shouldn't happen normally, but
         // out-of-order delivery would have us prepending a duplicate.
         if (!knownConvIdsRef.current.has(conv.id)) {
-          setConversations((prev) => {
-            if (prev.some((c) => c.id === conv.id)) return prev;
-            return sortConversationsByLastMessage([conv, ...prev]);
-          });
+          if (conv.last_message_at) {
+            setConversations((prev) => {
+              if (prev.some((c) => c.id === conv.id)) return prev;
+              return sortConversationsByLastMessage([conv, ...prev]);
+            });
+          }
           hydrateConversation(conv.id);
         }
       }

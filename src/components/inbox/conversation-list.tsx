@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { sortConversationsByLastMessage } from "@/lib/inbox/sort-conversations";
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -82,7 +83,7 @@ export function ConversationList({
         let query = supabase
           .from("conversations")
           .select("*, contact:contacts(*)")
-          .order("last_message_at", { ascending: false })
+          .order("last_message_at", { ascending: false, nullsFirst: false })
           .limit(100);
         if (accountId) {
           query = query.eq("account_id", accountId);
@@ -101,7 +102,7 @@ export function ConversationList({
           return;
         }
 
-        const list = data ?? [];
+        const list = sortConversationsByLastMessage(data ?? []);
         setCachedData("inbox_conversations", list);
         onConversationsLoadedRef.current(list);
       } catch (err) {
@@ -133,7 +134,7 @@ export function ConversationList({
       });
     }
 
-    return result;
+    return sortConversationsByLastMessage(result);
   }, [conversations, filter, search]);
 
   const handleSearchChange = useCallback(

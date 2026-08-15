@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 const CONTACT_PANEL_STORAGE_KEY = "wacrm:inbox:contact-panel-open";
 
 import { getCachedData, setCachedData } from "@/lib/cache/page-cache";
+import { sortConversationsByLastMessage } from "@/lib/inbox/sort-conversations";
 
 export default function InboxPage() {
   const router = useRouter();
@@ -24,7 +25,9 @@ export default function InboxPage() {
   const deepLinkConvId = searchParams.get("c");
 
   const cachedConvs = getCachedData<Conversation[]>("inbox_conversations");
-  const [conversations, setConversations] = useState<Conversation[]>(cachedConvs || []);
+  const [conversations, setConversations] = useState<Conversation[]>(
+    sortConversationsByLastMessage(cachedConvs || []),
+  );
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
@@ -146,7 +149,7 @@ export default function InboxPage() {
               : c,
           );
         }
-        return [fetched, ...prev];
+        return sortConversationsByLastMessage([fetched, ...prev]);
       });
     } finally {
       hydratingConvIdsRef.current.delete(convId);
@@ -222,18 +225,25 @@ export default function InboxPage() {
         // always read false here.
         if (knownConvIdsRef.current.has(newMsg.conversation_id)) {
           setConversations((prev) =>
-            prev.map((c) =>
-              c.id === newMsg.conversation_id
-                ? {
-                    ...c,
-                    last_message_text: newMsg.content_text ?? "",
-                    last_message_at: newMsg.created_at,
-                    unread_count:
-                      activeConversation?.id === newMsg.conversation_id
-                        ? 0
-                        : c.unread_count + 1,
-                  }
-                : c,
+            sortConversationsByLastMessage(
+              prev.map((c) =>
+                c.id === newMsg.conversation_id
+                  ? {
+                      ...c,
+                      last_message_text:
+                        newMsg.content_text?.trim() ||
+                        c.last_message_text ||
+                        "",
+                      last_message_at: newMsg.created_at,
+                      unread_count:
+                        newMsg.sender_type === "customer"
+                          ? activeConversation?.id === newMsg.conversation_id
+                            ? 0
+                            : c.unread_count + 1
+                          : c.unread_count,
+                    }
+                  : c,
+              ),
             ),
           );
         } else {
@@ -274,7 +284,7 @@ export default function InboxPage() {
         if (!knownConvIdsRef.current.has(conv.id)) {
           setConversations((prev) => {
             if (prev.some((c) => c.id === conv.id)) return prev;
-            return [conv, ...prev];
+            return sortConversationsByLastMessage([conv, ...prev]);
           });
           hydrateConversation(conv.id);
         }
@@ -289,14 +299,16 @@ export default function InboxPage() {
           // UPDATE to round-trip. Non-active convs take the value as-is.
           const isActive = activeConversation?.id === conv.id;
           setConversations((prev) =>
-            prev.map((c) =>
-              c.id === conv.id
-                ? {
-                    ...c,
-                    ...conv,
-                    unread_count: isActive ? 0 : conv.unread_count,
-                  }
-                : c,
+            sortConversationsByLastMessage(
+              prev.map((c) =>
+                c.id === conv.id
+                  ? {
+                      ...c,
+                      ...conv,
+                      unread_count: isActive ? 0 : conv.unread_count,
+                    }
+                  : c,
+              ),
             ),
           );
         } else {
@@ -389,7 +401,7 @@ export default function InboxPage() {
 
   const handleConversationsLoaded = useCallback(
     (loaded: Conversation[]) => {
-      setConversations(loaded);
+      setConversations(sortConversationsByLastMessage(loaded));
       // Resolve a pending deep-link here rather than in an effect — this
       // is an event handler, so the setState calls below are allowed by
       // react-hooks/set-state-in-effect. Runs once per ?c=<id> URL value

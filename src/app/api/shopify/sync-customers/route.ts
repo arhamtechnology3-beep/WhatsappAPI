@@ -1,8 +1,56 @@
 import { NextResponse } from 'next/server'
 import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account'
-import { fetchShopify } from '@/lib/shopify/shopify-client'
-import { findExistingContact } from '@/lib/contacts/dedupe'
-import { normalizePhone } from '@/lib/whatsapp/phone-utils'
+import { fetchShopifyCollection } from '@/lib/shopify/shopify-client'
+import { matchOrCreateShopifyContact } from '@/lib/shopify/shopify-helper'
+
+export const maxDuration = 60
+
+const CUSTOMER_PAGES = 8
+const ORDER_PAGES = 4
+const CHECKOUT_PAGES = 4
+const UPSERT_CONCURRENCY = 8
+
+type ShopifyRecord = Record<string, unknown>
+
+function asString(value: unknown): string | null {
+  if (value == null) return null
+  const s = String(value).trim()
+  return s || null
+}
+
+function personName(
+  first?: unknown,
+  last?: unknown,
+  email?: string | null,
+  fallback?: string
+): string {
+  const name = [asString(first), asString(last)].filter(Boolean).join(' ')
+  if (name) return name
+  if (email) {
+    return email
+      .split('@')[0]
+      .replace(/[._-]+/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+      .trim()
+  }
+  return fallback || 'Shopify Customer'
+}
+
+async function mapPool<T>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T) => Promise<void>
+): Promise<void> {
+  if (items.length === 0) return
+  let index = 0
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (index < items.length) {
+      const current = items[index++]
+      await fn(current)
+    }
+  })
+  await Promise.all(workers)
+}
 
 export async function POST() {
   try {
@@ -11,209 +59,174 @@ export async function POST() {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    let syncedCount = 0
-    const processedPhones = new Set<string>()
-    const processedEmails = new Set<string>()
+    const syncedIds = new Set<string>()
+    const fetchWarnings: string[] = []
 
-    let fetchWarnings: string[] = []
-
-    let shopifyCustomers: any[] = []
+    let shopifyCustomers: ShopifyRecord[] = []
     try {
-      const res = await fetchShopify('/customers.json?limit=250')
-      shopifyCustomers = res.customers || []
+      const res = await fetchShopifyCollection<ShopifyRecord>(
+        '/customers.json?limit=250&order=updated_at+desc',
+        'customers',
+        { maxPages: CUSTOMER_PAGES }
+      )
+      shopifyCustomers = res.items
+      if (res.truncated) {
+        fetchWarnings.push(`customers: synced newest ${res.items.length} (more pages remain)`)
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.warn('[shopify-sync] Failed to fetch /customers.json:', err)
       fetchWarnings.push(`customers: ${msg}`)
     }
 
-    let shopifyOrders: any[] = []
+    let shopifyOrders: ShopifyRecord[] = []
     try {
-      const res = await fetchShopify('/orders.json?status=any&limit=250')
-      shopifyOrders = res.orders || []
+      const res = await fetchShopifyCollection<ShopifyRecord>(
+        '/orders.json?status=any&limit=250&order=updated_at+desc',
+        'orders',
+        { maxPages: ORDER_PAGES }
+      )
+      shopifyOrders = res.items
+      if (res.truncated) {
+        fetchWarnings.push(`orders: synced newest ${res.items.length} (more pages remain)`)
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.warn('[shopify-sync] Failed to fetch /orders.json:', err)
       fetchWarnings.push(`orders: ${msg}`)
     }
 
-    let shopifyCheckouts: any[] = []
+    let shopifyCheckouts: ShopifyRecord[] = []
     try {
-      const res = await fetchShopify('/checkouts.json?limit=250')
-      shopifyCheckouts = res.checkouts || []
+      const since = new Date()
+      since.setUTCDate(since.getUTCDate() - 180)
+      const res = await fetchShopifyCollection<ShopifyRecord>(
+        `/checkouts.json?limit=250&updated_at_min=${encodeURIComponent(since.toISOString())}`,
+        'checkouts',
+        { maxPages: CHECKOUT_PAGES }
+      )
+      shopifyCheckouts = res.items
+      if (res.truncated) {
+        fetchWarnings.push(`checkouts: synced newest ${res.items.length} (more pages remain)`)
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.warn('[shopify-sync] Failed to fetch /checkouts.json:', err)
       fetchWarnings.push(`checkouts: ${msg}`)
     }
 
-    const processContact = async (data: {
-      shopifyCustomerId?: string
-      name: string
+    const recordContact = async (payload: {
+      id?: number | string | null
       email?: string | null
       phone?: string | null
+      first_name?: string | null
+      last_name?: string | null
       company?: string | null
-      createdAt?: string | null
+      marketing_opt_in?: boolean
     }) => {
-      const phone = data.phone ? (normalizePhone(data.phone) || data.phone.trim()) : null
-      const email = data.email ? data.email.trim() : null
-
-      if (!phone && !email) return
-
-      const phoneKey = phone || ''
-      if ((phoneKey && processedPhones.has(phoneKey)) || (email && processedEmails.has(email))) {
-        return
+      if (!payload.phone && !payload.email && !payload.id) return null
+      try {
+        const contact = await matchOrCreateShopifyContact(
+          ctx.supabase,
+          ctx.accountId,
+          ctx.userId,
+          {
+            ...payload,
+            id: payload.id ?? undefined,
+          }
+        )
+        if (contact?.id) syncedIds.add(contact.id)
+        return contact
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error('[shopify-sync] upsert failed:', msg)
+        return null
       }
-
-      let existingId: string | null = null
-
-      if (data.shopifyCustomerId) {
-        const { data: byId } = await ctx.supabase
-          .from('contacts')
-          .select('id')
-          .eq('account_id', ctx.accountId)
-          .eq('shopify_customer_id', String(data.shopifyCustomerId))
-          .maybeSingle()
-
-        if (byId) existingId = byId.id
-      }
-
-      if (!existingId && phone) {
-        const existing = await findExistingContact(ctx.supabase, ctx.accountId, phone)
-        if (existing) existingId = existing.id
-      }
-
-      if (!existingId && email) {
-        const { data: byEmail } = await ctx.supabase
-          .from('contacts')
-          .select('id')
-          .eq('account_id', ctx.accountId)
-          .eq('email', email)
-          .maybeSingle()
-
-        if (byEmail) existingId = byEmail.id
-      }
-
-      const updatePayload: Record<string, unknown> = {
-        updated_at: new Date().toISOString()
-      }
-      if (data.name) updatePayload.name = data.name
-      if (email) updatePayload.email = email
-      if (phone) updatePayload.phone = phone
-      if (data.company) updatePayload.company = data.company
-      if (data.shopifyCustomerId) updatePayload.shopify_customer_id = String(data.shopifyCustomerId)
-
-      if (existingId) {
-        const { error } = await ctx.supabase
-          .from('contacts')
-          .update(updatePayload)
-          .eq('id', existingId)
-        if (error) {
-          console.error('[shopify-sync] update failed:', error.message)
-          return
-        }
-      } else {
-        const { error } = await ctx.supabase
-          .from('contacts')
-          .insert({
-            account_id: ctx.accountId,
-            user_id: ctx.userId,
-            name: data.name,
-            email: email || undefined,
-            phone: phone || '',
-            company: data.company || undefined,
-            shopify_customer_id: data.shopifyCustomerId ? String(data.shopifyCustomerId) : undefined,
-            marketing_opt_in: true,
-            whatsapp_marketing_opt_in: true,
-            created_at: data.createdAt || new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-        if (error) {
-          console.error('[shopify-sync] insert failed:', error.message)
-          return
-        }
-      }
-
-      if (phone) processedPhones.add(phone)
-      if (email) processedEmails.add(email)
-      syncedCount++
     }
 
-    // Process Customers list first
-    for (const sc of shopifyCustomers) {
-      const phone = sc.phone || (sc.default_address && sc.default_address.phone) || null
-      const email = sc.email || null
-      const firstName = (sc.first_name || '').trim()
-      const lastName = (sc.last_name || '').trim()
-      let name = [firstName, lastName].filter(Boolean).join(' ')
-      if (!name && email) {
-        name = email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).trim()
-      }
-      if (!name) name = `Customer #${sc.id}`
-      const company = sc.default_address ? sc.default_address.company || null : null
-
-      await processContact({
-        shopifyCustomerId: sc.id,
-        name,
+    await mapPool(shopifyCustomers, UPSERT_CONCURRENCY, async (sc) => {
+      const addr = (sc.default_address || {}) as ShopifyRecord
+      const email = asString(sc.email)
+      const phone = asString(sc.phone) || asString(addr.phone)
+      await recordContact({
+        id: sc.id as number | string | undefined,
         email,
         phone,
-        company,
-        createdAt: sc.created_at
+        first_name: asString(sc.first_name),
+        last_name: asString(sc.last_name),
+        company: asString(addr.company),
+        marketing_opt_in:
+          sc.accepts_marketing === true ||
+          (sc.sms_marketing_consent as ShopifyRecord | undefined)?.state === 'subscribed',
       })
-    }
+    })
 
-    // Process Orders list (captures guest checkout buyers)
-    for (const o of shopifyOrders) {
-      const c = o.customer || {}
-      const addr = o.shipping_address || o.billing_address || {}
-      const phone = o.phone || addr.phone || c.phone || null
-      const email = o.email || c.email || null
-      const firstName = (c.first_name || addr.first_name || '').trim()
-      const lastName = (c.last_name || addr.last_name || '').trim()
-      let name = [firstName, lastName].filter(Boolean).join(' ')
-      if (!name && email) {
-        name = email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).trim()
-      }
-      if (!name) name = `Customer #${c.id || o.id}`
-      const company = addr.company || c.default_address?.company || null
-
-      await processContact({
-        shopifyCustomerId: c.id,
-        name,
+    await mapPool(shopifyOrders, UPSERT_CONCURRENCY, async (o) => {
+      const c = (o.customer || {}) as ShopifyRecord
+      const addr = ((o.shipping_address || o.billing_address || {}) as ShopifyRecord)
+      const email = asString(o.email) || asString(c.email)
+      const phone = asString(o.phone) || asString(addr.phone) || asString(c.phone)
+      await recordContact({
+        id: c.id as number | string | undefined,
         email,
         phone,
-        company,
-        createdAt: o.created_at
+        first_name: asString(c.first_name) || asString(addr.first_name),
+        last_name: asString(c.last_name) || asString(addr.last_name),
+        company: asString(addr.company),
       })
-    }
+    })
 
-    // Process Checkouts list (captures abandoned cart leads)
-    for (const co of shopifyCheckouts) {
-      const addr = co.shipping_address || co.billing_address || {}
-      const phone = co.phone || addr.phone || null
-      const email = co.email || null
-      const firstName = (addr.first_name || '').trim()
-      const lastName = (addr.last_name || '').trim()
-      let name = [firstName, lastName].filter(Boolean).join(' ')
-      if (!name && email) {
-        name = email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()).trim()
-      }
-      if (!name) name = `Checkout User #${co.id || co.token}`
-      const company = addr.company || null
-
-      await processContact({
-        shopifyCustomerId: co.customer_id,
-        name,
+    await mapPool(shopifyCheckouts, UPSERT_CONCURRENCY, async (co) => {
+      const addr = ((co.shipping_address || co.billing_address || {}) as ShopifyRecord)
+      const customer = (co.customer || {}) as ShopifyRecord
+      const email = asString(co.email) || asString(customer.email)
+      const phone = asString(co.phone) || asString(addr.phone) || asString(customer.phone)
+      const contact = await recordContact({
+        id: (co.customer_id || customer.id) as number | string | undefined,
         email,
         phone,
-        company,
-        createdAt: co.created_at
+        first_name: asString(addr.first_name) || asString(customer.first_name),
+        last_name: asString(addr.last_name) || asString(customer.last_name),
+        company: asString(addr.company),
       })
-    }
+
+      if (!contact?.id) return
+
+      const checkoutId = asString(co.id) || asString(co.token)
+      if (!checkoutId) return
+
+      const isCompleted = Boolean(co.completed_at)
+      const { error: upsertErr } = await ctx.supabase.from('shopify_checkouts').upsert(
+        {
+          account_id: ctx.accountId,
+          shopify_checkout_id: checkoutId,
+          contact_id: contact.id,
+          customer_phone: phone,
+          customer_email: email,
+          customer_name: contact.name || personName(addr.first_name, addr.last_name, email),
+          cart_token: asString(co.cart_token),
+          abandoned_checkout_url: asString(co.abandoned_checkout_url),
+          total_price: parseFloat(String(co.total_price || '0')) || 0,
+          currency: asString(co.currency) || 'INR',
+          line_items: co.line_items || [],
+          status: isCompleted ? 'recovered' : 'open',
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'shopify_checkout_id' }
+      )
+      if (upsertErr) {
+        console.error('[shopify-sync] checkout upsert failed:', upsertErr.message)
+      }
+    })
 
     return NextResponse.json({
       success: true,
-      syncedCount,
+      syncedCount: syncedIds.size,
+      fetched: {
+        customers: shopifyCustomers.length,
+        orders: shopifyOrders.length,
+        checkouts: shopifyCheckouts.length,
+      },
       warnings: fetchWarnings,
     })
   } catch (err: unknown) {

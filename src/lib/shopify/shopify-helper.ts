@@ -10,6 +10,7 @@ export interface ShopifyCustomerPayload {
   phone?: string | null
   first_name?: string | null
   last_name?: string | null
+  company?: string | null
   marketing_opt_in?: boolean
 }
 
@@ -50,35 +51,35 @@ export async function matchOrCreateShopifyContact(
   const rawPhone = customer.phone?.trim() || null
   const phone = rawPhone ? (normalizePhone(rawPhone) || rawPhone) : null
   const name = [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || null
-  const optedIn = customer.marketing_opt_in ?? true
+  const company = customer.company?.trim() || null
+  const optedIn = customer.marketing_opt_in
+  const shopifyCustomerId = customer.id ? String(customer.id) : null
 
   let contact: any = null
 
-  // 1) Match by phone number
-  if (phone) {
+  // 1) Match by Shopify customer id so re-syncs update the same row
+  if (shopifyCustomerId) {
+    const { data } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('account_id', accountId)
+      .eq('shopify_customer_id', shopifyCustomerId)
+      .maybeSingle()
+    contact = data
+  }
+
+  // 2) Match by phone number
+  if (!contact && phone) {
     contact = await findExistingContact(supabase, accountId, phone)
   }
 
-  // 2) Fallback to email
+  // 3) Fallback to email
   if (!contact && email) {
     const { data } = await supabase
       .from('contacts')
       .select('*')
       .eq('account_id', accountId)
       .eq('email', email)
-      .maybeSingle()
-    contact = data
-  }
-
-  const shopifyCustomerId = customer.id ? String(customer.id) : null
-
-  // 2.5) Fallback to shopify_customer_id
-  if (!contact && shopifyCustomerId) {
-    const { data } = await supabase
-      .from('contacts')
-      .select('*')
-      .eq('account_id', accountId)
-      .eq('shopify_customer_id', shopifyCustomerId)
       .maybeSingle()
     contact = data
   }
@@ -100,10 +101,11 @@ export async function matchOrCreateShopifyContact(
         email: email,
         name: name || email || 'Shopify Customer',
         shopify_customer_id: shopifyCustomerId,
-        marketing_opt_in: optedIn,
-        whatsapp_marketing_opt_in: optedIn,
-        marketing_opt_in_source: optedIn ? 'checkout' : null,
-        marketing_opt_in_at: optedIn ? new Date().toISOString() : null,
+        company: company || undefined,
+        marketing_opt_in: optedIn ?? true,
+        whatsapp_marketing_opt_in: optedIn ?? true,
+        marketing_opt_in_source: optedIn === false ? null : 'checkout',
+        marketing_opt_in_at: optedIn === false ? null : new Date().toISOString(),
       })
       .select()
       .single()
@@ -124,24 +126,28 @@ export async function matchOrCreateShopifyContact(
       })
     }
   } else {
-    // 4) Update contact details if missing or now available
-    const updates: any = {}
+    // 4) Refresh profile from the latest Shopify payload so Contacts stays current
+    const updates: any = {
+      updated_at: new Date().toISOString(),
+    }
     if (shopifyCustomerId && contact.shopify_customer_id !== shopifyCustomerId) {
       updates.shopify_customer_id = shopifyCustomerId
     }
-    if (email && !contact.email) {
+    if (email) {
       updates.email = email
     }
-    // Fill in phone if the existing contact has a blank phone but we now have one
-    if (phone && (!contact.phone || contact.phone !== phone)) {
+    if (phone && contact.phone !== phone) {
       updates.phone = phone
     }
-    if (name && (contact.name === 'Shopify Customer' || contact.name === contact.phone || !contact.name)) {
+    if (name && name !== 'Shopify Customer') {
       updates.name = name
+    }
+    if (company) {
+      updates.company = company
     }
 
     let optInLogged = false
-    if (optedIn && !contact.marketing_opt_in) {
+    if (optedIn === true && !contact.marketing_opt_in) {
       updates.marketing_opt_in = true
       updates.whatsapp_marketing_opt_in = true
       updates.marketing_opt_in_source = 'checkout'

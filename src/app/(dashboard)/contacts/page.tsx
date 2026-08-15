@@ -114,7 +114,10 @@ export default function ContactsPage() {
         throw new Error(data.error || 'Failed to sync customers');
       }
       toast.success(`Successfully synced ${data.syncedCount} contacts from Shopify!`);
-      // Reload contact list
+      if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+        toast.warning(data.warnings.join(' · '));
+      }
+      setPage(0);
       fetchSeq.current++;
       fetchContacts();
     } catch (err: unknown) {
@@ -188,13 +191,13 @@ export default function ContactsPage() {
       } else {
         const selectFields =
           quickFilter === 'abandoned'
-            ? 'id, name, phone, email, company, created_at, marketing_opt_in, marketing_opt_out_at, shopify_customer_id, account_id, shopify_checkouts!inner(id, status)'
-            : 'id, name, phone, email, company, created_at, marketing_opt_in, marketing_opt_out_at, shopify_customer_id, account_id';
+            ? 'id, name, phone, email, company, created_at, updated_at, marketing_opt_in, marketing_opt_out_at, shopify_customer_id, account_id, shopify_checkouts!inner(id, status)'
+            : 'id, name, phone, email, company, created_at, updated_at, marketing_opt_in, marketing_opt_out_at, shopify_customer_id, account_id';
 
         let query = supabase
           .from('contacts')
           .select(selectFields)
-          .order('created_at', { ascending: false })
+          .order('updated_at', { ascending: false })
           .range(from, to)
           .abortSignal(abort);
 

@@ -67,7 +67,7 @@ interface ContactWithTags extends Contact {
   checkout_url?: string;
 }
 
-import { getCachedData, setCachedData } from '@/lib/cache/page-cache';
+import { getCachedData, setCachedData, clearCachedData } from '@/lib/cache/page-cache';
 
 export default function ContactsPage() {
   const supabase = createClient();
@@ -117,9 +117,11 @@ export default function ContactsPage() {
       if (Array.isArray(data.warnings) && data.warnings.length > 0) {
         toast.warning(data.warnings.join(' · '));
       }
+      clearCachedData();
+      setQuickFilter('shopify');
       setPage(0);
       fetchSeq.current++;
-      fetchContacts();
+      await fetchContacts();
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Unknown error';
       toast.error('Shopify Sync failed: ' + errMsg);
@@ -714,7 +716,7 @@ export default function ContactsPage() {
               <TableHead className="text-muted-foreground hidden md:table-cell">Tags</TableHead>
               <TableHead className="text-muted-foreground hidden lg:table-cell">Page URL</TableHead>
               <TableHead className="text-muted-foreground hidden md:table-cell">Opt-in Status</TableHead>
-              <TableHead className="text-muted-foreground hidden lg:table-cell">Created</TableHead>
+              <TableHead className="text-muted-foreground hidden lg:table-cell">Updated</TableHead>
               <TableHead className="text-muted-foreground w-12" />
             </TableRow>
           </TableHeader>
@@ -834,7 +836,7 @@ export default function ContactsPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-muted-foreground text-xs hidden lg:table-cell whitespace-nowrap">
-                    {new Date(contact.created_at).toLocaleString('en-US', {
+                    {new Date(contact.updated_at || contact.created_at).toLocaleString('en-US', {
                       month: 'short',
                       day: 'numeric',
                       year: 'numeric',

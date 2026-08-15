@@ -67,13 +67,27 @@ describe("dedupeByPhone", () => {
 });
 
 describe("findExistingContact", () => {
-  // Minimal SupabaseClient stub: resolves the .from().select().eq().like()
-  // chain to a fixed candidate set.
   function stubDb(rows: Array<{ id: string; phone: string }>): SupabaseClient {
-    const builder = {
+    const builder: {
+      _eqVal?: string;
+      select: () => typeof builder;
+      eq: (col: string, val: string) => typeof builder;
+      or: () => Promise<{ data: typeof rows; error: null }>;
+      like: () => Promise<{ data: typeof rows; error: null }>;
+      maybeSingle: () => Promise<{ data: (typeof rows)[0] | null; error: null }>;
+    } = {
       select: () => builder,
-      eq: () => builder,
+      eq: (_col: string, val: string) => {
+        builder._eqVal = val;
+        return builder;
+      },
+      or: () => Promise.resolve({ data: rows, error: null }),
       like: () => Promise.resolve({ data: rows, error: null }),
+      maybeSingle: () => {
+        const match =
+          rows.find((r) => r.phone.replace(/\D/g, "") === builder._eqVal) ?? null;
+        return Promise.resolve({ data: match, error: null });
+      },
     };
     return { from: () => builder } as unknown as SupabaseClient;
   }

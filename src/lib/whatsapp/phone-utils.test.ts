@@ -6,6 +6,7 @@ import {
   phoneVariants,
   phonesMatch,
   sanitizePhoneForMeta,
+  toMetaPhone,
 } from "./phone-utils";
 
 describe("sanitizePhoneForMeta", () => {
@@ -27,6 +28,14 @@ describe("sanitizePhoneForMeta", () => {
   });
 });
 
+describe("toMetaPhone", () => {
+  it("prepends 91 for Indian 10-digit mobiles", () => {
+    expect(toMetaPhone("+91 98203 68269")).toBe("919820368269");
+    expect(toMetaPhone("9820368269")).toBe("919820368269");
+    expect(toMetaPhone("919820368269")).toBe("919820368269");
+  });
+});
+
 describe("normalizePhone", () => {
   it("matches sanitizePhoneForMeta byte-for-byte (shared canonical form)", () => {
     const samples = ["+370 12345", "abc-555-DEF", "", "0044 7000 0000 0000"];
@@ -44,6 +53,11 @@ describe("phonesMatch", () => {
   it("matches across trunk-prefix variants by last-8 fallback", () => {
     // Lithuanian trunk-0 variant. Last 8 digits ("63949836") collide.
     expect(phonesMatch("370063949836", "37063949836")).toBe(true);
+  });
+
+  it("matches Indian 10-digit local against 91-prefixed Meta form", () => {
+    expect(phonesMatch("9820368269", "919820368269")).toBe(true);
+    expect(phonesMatch("+91 98203 68269", "9820368269")).toBe(true);
   });
 
   it("rejects mismatched numbers", () => {

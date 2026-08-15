@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseShopifyLinkRelNext } from './shopify-client'
+import { parseShopifyLinkRelNext, shopifyGidToNumericId } from './shopify-client'
 
 describe('parseShopifyLinkRelNext', () => {
   it('returns the next URL from a Shopify Link header', () => {
@@ -25,5 +25,12 @@ describe('parseShopifyLinkRelNext', () => {
         '<https://store.myshopify.com/admin/api/2025-01/customers.json?page_info=prev>; rel="previous"'
       )
     ).toBeNull()
+  })
+})
+
+describe('shopifyGidToNumericId', () => {
+  it('extracts the numeric id from a Customer GID', () => {
+    expect(shopifyGidToNumericId('gid://shopify/Customer/123456')).toBe('123456')
+    expect(shopifyGidToNumericId(123456)).toBe('123456')
   })
 })

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { findExistingContact } from '@/lib/contacts/dedupe'
-import { normalizePhone } from '@/lib/whatsapp/phone-utils'
+import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
+import { toMetaPhone, normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { SHOPIFY_TEMPLATE_LIBRARY } from './whatsapp-template-library'
 
 
@@ -49,7 +49,7 @@ export async function matchOrCreateShopifyContact(
 ): Promise<any> {
   const email = customer.email?.trim() || null
   const rawPhone = customer.phone?.trim() || null
-  const phone = rawPhone ? (normalizePhone(rawPhone) || rawPhone) : null
+  const phone = rawPhone ? toMetaPhone(rawPhone) || rawPhone.replace(/\D/g, '') : null
   const name = [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || null
   const company = customer.company?.trim() || null
   const optedIn = customer.marketing_opt_in
@@ -111,12 +111,50 @@ export async function matchOrCreateShopifyContact(
       .single()
 
     if (createError) {
-      console.error('[shopify-helper] error creating contact:', createError)
-      throw createError
+      if (isUniqueViolation(createError)) {
+        if (phone) {
+          contact = await findExistingContact(supabase, accountId, phone)
+        }
+        if (!contact && email) {
+          const { data } = await supabase
+            .from('contacts')
+            .select('*')
+            .eq('account_id', accountId)
+            .eq('email', email)
+            .maybeSingle()
+          contact = data
+        }
+      }
+      if (!contact) {
+        console.error('[shopify-helper] error creating contact:', createError)
+        throw createError
+      }
+    } else {
+      contact = newContact
     }
-    contact = newContact
 
-    if (optedIn) {
+    if (!contact) {
+      throw createError || new Error('Failed to create Shopify contact')
+    }
+
+    if (!newContact && shopifyCustomerId) {
+      const { data: updated } = await supabase
+        .from('contacts')
+        .update({
+          shopify_customer_id: shopifyCustomerId,
+          email: email || undefined,
+          phone,
+          name: name || undefined,
+          company: company || undefined,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', contact.id)
+        .select()
+        .single()
+      if (updated) contact = updated
+    }
+
+    if (newContact && optedIn) {
       await supabase.from('opt_in_events').insert({
         account_id: accountId,
         contact_id: contact.id,

@@ -124,6 +124,140 @@ export async function fetchShopifyCollection<T = unknown>(
   return { items, pages, truncated: Boolean(next) }
 }
 
+export async function fetchShopifyGraphql(
+  query: string,
+  variables?: Record<string, unknown>
+): Promise<any> {
+  const { accessToken, cleanDomain, apiVersion } = shopifyCredentials()
+  const url = `https://${cleanDomain}/admin/api/${apiVersion}/graphql.json`
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'X-Shopify-Access-Token': accessToken,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({ query, variables }),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Shopify GraphQL HTTP ${response.status}: ${errorText}`)
+  }
+
+  const json = await response.json()
+  if (Array.isArray(json.errors) && json.errors.length > 0) {
+    throw new Error(`Shopify GraphQL error: ${JSON.stringify(json.errors)}`)
+  }
+  return json.data
+}
+
+export function shopifyGidToNumericId(gid: string | number | null | undefined): string | null {
+  if (gid == null) return null
+  const match = String(gid).match(/(\d+)\s*$/)
+  return match?.[1] ?? null
+}
+
+export interface ShopifyCustomerRecord {
+  id: string
+  email?: string | null
+  phone?: string | null
+  first_name?: string | null
+  last_name?: string | null
+  created_at?: string | null
+  default_address?: { phone?: string | null; company?: string | null } | null
+  accepts_marketing?: boolean
+}
+
+const LATEST_CUSTOMERS_QUERY = /* GraphQL */ `
+  query LatestCustomers($cursor: String) {
+    customers(first: 100, after: $cursor, sortKey: UPDATED_AT, reverse: true) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        id
+        email
+        phone
+        firstName
+        lastName
+        createdAt
+        defaultAddress { phone company }
+      }
+    }
+  }
+`
+
+type GraphqlCustomersData = {
+  customers: {
+    pageInfo: { hasNextPage: boolean; endCursor: string | null }
+    nodes: Array<{
+      id: string
+      email?: string | null
+      phone?: string | null
+      firstName?: string | null
+      lastName?: string | null
+      createdAt?: string | null
+      defaultAddress?: { phone?: string | null; company?: string | null } | null
+    }>
+  }
+}
+
+/**
+ * Newest Shopify customers first. GraphQL is preferred; REST falls back
+ * without a hard dependency on the unofficial `order=` query param.
+ */
+export async function fetchLatestShopifyCustomers(
+  maxPages = 10
+): Promise<ShopifyCollectionPage<ShopifyCustomerRecord>> {
+  try {
+    const items: ShopifyCustomerRecord[] = []
+    let cursor: string | null = null
+    let pages = 0
+    let hasNext = true
+
+    while (hasNext && pages < maxPages) {
+      const data: GraphqlCustomersData = await fetchShopifyGraphql(LATEST_CUSTOMERS_QUERY, { cursor })
+
+      for (const node of data.customers.nodes) {
+        const id = shopifyGidToNumericId(node.id)
+        if (!id) continue
+        items.push({
+          id,
+          email: node.email,
+          phone: node.phone,
+          first_name: node.firstName,
+          last_name: node.lastName,
+          created_at: node.createdAt,
+          default_address: node.defaultAddress,
+        })
+      }
+
+      hasNext = data.customers.pageInfo.hasNextPage
+      cursor = data.customers.pageInfo.endCursor
+      pages++
+    }
+
+    return { items, pages, truncated: hasNext }
+  } catch (err) {
+    console.warn('[shopify-client] GraphQL customers failed, falling back to REST:', err)
+  }
+
+  try {
+    return await fetchShopifyCollection<ShopifyCustomerRecord>(
+      '/customers.json?limit=250&order=updated_at+desc',
+      'customers',
+      { maxPages }
+    )
+  } catch (err) {
+    console.warn('[shopify-client] REST customers order= param failed, using default list:', err)
+    return fetchShopifyCollection<ShopifyCustomerRecord>(
+      '/customers.json?limit=250',
+      'customers',
+      { maxPages }
+    )
+  }
+}
+
 /**
  * Test the connection by fetching shop details.
  */

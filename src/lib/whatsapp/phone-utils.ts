@@ -18,6 +18,24 @@ export function normalizePhone(phone: string): string {
 }
 
 /**
+ * Canonical digits for Meta / Shopify matching.
+ * Indian 10-digit mobiles (start 6–9) get a 91 country code so
+ * "+91 98203 68269", "9820368269", and "919820368269" are the same key.
+ */
+export function toMetaPhone(phone: string): string {
+  let digits = normalizePhone(phone)
+  if (!digits) return ''
+  if (digits.startsWith('00')) digits = digits.slice(2)
+  if (digits.length === 11 && digits.startsWith('0') && /^[6-9]/.test(digits.slice(1))) {
+    return `91${digits.slice(1)}`
+  }
+  if (digits.length === 10 && /^[6-9]/.test(digits)) {
+    return `91${digits}`
+  }
+  return digits
+}
+
+/**
  * Compare two phone numbers accounting for trunk prefix differences.
  * e.g. "370063949836" (with trunk 0) matches "37063949836" (without trunk 0)
  * by comparing the last 8 digits.
@@ -26,6 +44,12 @@ export function phonesMatch(phone1: string, phone2: string): boolean {
   const n1 = normalizePhone(phone1)
   const n2 = normalizePhone(phone2)
   if (n1 === n2) return true
+  const m1 = toMetaPhone(phone1)
+  const m2 = toMetaPhone(phone2)
+  if (m1 && m2 && m1 === m2) return true
+  if (n1.length >= 10 && n2.length >= 10 && n1.slice(-10) === n2.slice(-10)) {
+    return true
+  }
   if (n1.length >= 8 && n2.length >= 8) {
     return n1.slice(-8) === n2.slice(-8)
   }

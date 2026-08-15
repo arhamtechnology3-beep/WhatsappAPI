@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { normalizePhone, phonesMatch } from "@/lib/whatsapp/phone-utils";
+import { normalizePhone, phonesMatch, toMetaPhone } from "@/lib/whatsapp/phone-utils";
 
 /**
  * Contact de-duplication helpers, shared by the WhatsApp webhook, the
@@ -40,13 +40,29 @@ export async function findExistingContact(
   const normalized = normalizePhone(phone);
   if (!normalized) return null;
 
+  const meta = toMetaPhone(phone);
+  const keys = [...new Set([normalized, meta].filter(Boolean))];
+
+  for (const key of keys) {
+    const { data, error } = await db
+      .from("contacts")
+      .select("*")
+      .eq("account_id", accountId)
+      .eq("phone_normalized", key)
+      .maybeSingle();
+    if (!error && data) return data as ExistingContact;
+  }
+
+  const last10 = normalized.length >= 10 ? normalized.slice(-10) : normalized;
   const suffix = normalized.length >= 8 ? normalized.slice(-8) : normalized;
 
   const { data, error } = await db
     .from("contacts")
     .select("*")
     .eq("account_id", accountId)
-    .like("phone", `%${suffix}`);
+    .or(
+      `phone_normalized.eq.${last10},phone_normalized.like.%${last10},phone.like.%${suffix}`,
+    );
 
   if (error || !data) return null;
 

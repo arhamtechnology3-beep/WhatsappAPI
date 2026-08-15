@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account'
-import { fetchShopifyCollection } from '@/lib/shopify/shopify-client'
+import { supabaseAdmin } from '@/lib/automations/admin-client'
+import {
+  fetchLatestShopifyCustomers,
+  fetchShopifyCollection,
+} from '@/lib/shopify/shopify-client'
 import { matchOrCreateShopifyContact } from '@/lib/shopify/shopify-helper'
 
 export const maxDuration = 60
@@ -59,33 +63,39 @@ export async function POST() {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
+    const db = supabaseAdmin()
     const syncedIds = new Set<string>()
     const fetchWarnings: string[] = []
 
     let shopifyCustomers: ShopifyRecord[] = []
     try {
-      const res = await fetchShopifyCollection<ShopifyRecord>(
-        '/customers.json?limit=250&order=updated_at+desc',
-        'customers',
-        { maxPages: CUSTOMER_PAGES }
-      )
-      shopifyCustomers = res.items
+      const res = await fetchLatestShopifyCustomers(CUSTOMER_PAGES)
+      shopifyCustomers = res.items as unknown as ShopifyRecord[]
       if (res.truncated) {
         fetchWarnings.push(`customers: synced newest ${res.items.length} (more pages remain)`)
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      console.warn('[shopify-sync] Failed to fetch /customers.json:', err)
+      console.warn('[shopify-sync] Failed to fetch customers:', err)
       fetchWarnings.push(`customers: ${msg}`)
     }
 
     let shopifyOrders: ShopifyRecord[] = []
     try {
-      const res = await fetchShopifyCollection<ShopifyRecord>(
-        '/orders.json?status=any&limit=250&order=updated_at+desc',
-        'orders',
-        { maxPages: ORDER_PAGES }
-      )
+      let res
+      try {
+        res = await fetchShopifyCollection<ShopifyRecord>(
+          '/orders.json?status=any&limit=250&order=updated_at+desc',
+          'orders',
+          { maxPages: ORDER_PAGES }
+        )
+      } catch {
+        res = await fetchShopifyCollection<ShopifyRecord>(
+          '/orders.json?status=any&limit=250',
+          'orders',
+          { maxPages: ORDER_PAGES }
+        )
+      }
       shopifyOrders = res.items
       if (res.truncated) {
         fetchWarnings.push(`orders: synced newest ${res.items.length} (more pages remain)`)
@@ -127,7 +137,7 @@ export async function POST() {
       if (!payload.phone && !payload.email && !payload.id) return null
       try {
         const contact = await matchOrCreateShopifyContact(
-          ctx.supabase,
+          db,
           ctx.accountId,
           ctx.userId,
           {
@@ -196,7 +206,7 @@ export async function POST() {
       if (!checkoutId) return
 
       const isCompleted = Boolean(co.completed_at)
-      const { error: upsertErr } = await ctx.supabase.from('shopify_checkouts').upsert(
+      const { error: upsertErr } = await db.from('shopify_checkouts').upsert(
         {
           account_id: ctx.accountId,
           shopify_checkout_id: checkoutId,

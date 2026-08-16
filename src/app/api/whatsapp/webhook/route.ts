@@ -2,7 +2,8 @@ import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl, downloadMedia, sendTextMessage } from '@/lib/whatsapp/meta-api'
-import { normalizePhone, toMetaPhone } from '@/lib/whatsapp/phone-utils'
+import { normalizePhone, toMetaPhone, explainMetaSendError } from '@/lib/whatsapp/phone-utils'
+import { wamidLookupKeys } from '@/lib/whatsapp/wamid'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
@@ -424,33 +425,58 @@ async function handleStatusUpdate(status: {
   //    already match the CHECK constraint on messages.status.
   const errorText =
     status.status === 'failed' && Array.isArray(status.errors) && status.errors.length
-      ? status.errors
-          .map((e) => {
-            const code = e.code != null ? `#${e.code} ` : ''
-            return `${code}${e.title || e.message || ''}`.trim()
-          })
-          .filter(Boolean)
-          .join('; ')
+      ? explainMetaSendError(
+          status.errors
+            .map((e) => {
+              const code = e.code != null ? `#${e.code} ` : ''
+              const detail =
+                typeof (e as { error_data?: { details?: string } }).error_data
+                  ?.details === 'string'
+                  ? ` — ${(e as { error_data?: { details?: string } }).error_data!.details}`
+                  : ''
+              return `${code}${e.title || e.message || ''}${detail}`.trim()
+            })
+            .filter(Boolean)
+            .join('; '),
+        )
       : null
 
-  const { error: msgErr } = await supabaseAdmin()
+  const wamidKeys = wamidLookupKeys(status.id)
+  const { data: matched, error: msgErr } = await supabaseAdmin()
     .from('messages')
     .update({
       status: status.status,
       ...(errorText ? { error_message: errorText } : {}),
     })
-    .eq('message_id', status.id)
+    .in('message_id', wamidKeys)
+    .select('id')
 
   if (msgErr && /error_message/.test(msgErr.message)) {
     const retry = await supabaseAdmin()
       .from('messages')
       .update({ status: status.status })
-      .eq('message_id', status.id)
+      .in('message_id', wamidKeys)
+      .select('id')
     if (retry.error) {
       console.error('Error updating message status:', retry.error)
+    } else if (!retry.data?.length) {
+      console.warn(
+        '[webhook] status for unknown wamid (no error_message column retry):',
+        status.id,
+        status.status,
+        status.recipient_id,
+      )
     }
   } else if (msgErr) {
     console.error('Error updating message status:', msgErr)
+  } else if (!matched?.length) {
+    console.warn(
+      '[webhook] status for unknown wamid — inbox will stay on 1 tick:',
+      status.id,
+      status.status,
+      status.recipient_id,
+      status.errors ?? null,
+    )
   }
 
   // 2) Mirror onto broadcast_recipients via whatsapp_message_id
@@ -462,7 +488,7 @@ async function handleStatusUpdate(status: {
   const { data: recipient, error: recFetchErr } = await supabaseAdmin()
     .from('broadcast_recipients')
     .select('id, status')
-    .eq('whatsapp_message_id', status.id)
+    .in('whatsapp_message_id', wamidKeys)
     .maybeSingle()
 
   if (recFetchErr) {

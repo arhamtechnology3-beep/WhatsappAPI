@@ -391,7 +391,7 @@ export function MessageComposer({
       {sessionExpired && (
         <div className="mb-2 flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
           <p className="text-xs text-amber-400">
-            24-hour session expired. Use a template to re-engage.
+            24-hour free-form chat is closed. Templates can still send. 1 tick means WhatsApp has not delivered yet — that is Meta, not this timer.
           </p>
           <Button
             variant="ghost"

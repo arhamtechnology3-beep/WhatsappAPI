@@ -31,7 +31,30 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
-## [2026-08-16 18:45] Fix (WhatsApp) — Meta test-recipient limit looks like a whitelist
+## [2026-08-16 18:55] Fix (Inbox) — 1 tick means sent, not delivered
+
+### Root Cause
+- Templates to new numbers (Naman `919029498911`, Shraddha festival `919702108283`) stayed on a single tick. Graph returned 200 so the CRM stored `sent`. One tick is Meta “accepted”, two ticks is “on their phone”. New / test-restricted numbers often never get a `delivered` webhook; failed webhooks that did not match `wamid.` vs bare id also left the bubble on 1 tick.
+- The yellow “24-hour session expired” bar made this look like our session timer blocked delivery. That bar only disables free-form text.
+
+### Objective & Fixes
+- Match status webhooks on both `wamid.…` and bare ids; persist explained Meta fail codes (`#131026`, `#131030`).
+- Inbox: caption on 1-tick bubbles; clarify the session bar.
+- After deploy: hard-refresh Inbox. Naman should stay 1 tick until they write first or Meta verifies the WABA. Shraddha’s older cart with 2 blue ticks is already delivered; a stuck festival 1 tick is Meta not delivering that marketing send.
+
+### Files Modified
+- `src/lib/whatsapp/wamid.ts`
+- `src/lib/whatsapp/wamid.test.ts`
+- `src/app/api/whatsapp/webhook/route.ts`
+- `src/components/inbox/message-bubble.tsx`
+- `src/components/inbox/message-composer.tsx`
+
+### Live
+- Same PR as the test-recipient work. Migration required: none
+
+---
+
+
 
 ### Root Cause
 - Festival/cart templates failed with a red X until Jesal messaged DivyaPrabha from personal WhatsApp, then the same template delivered. That is Meta Cloud API test-mode / unverified WABA (`#131030` not in allowed list, or `TIER_NOT_SET`), not the 24-hour customer-care window. Approved templates are allowed outside 24h once the WABA is verified and has a messaging tier.

@@ -139,6 +139,7 @@ export function TemplateManager() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isDraftEdit, setIsDraftEdit] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deletingAll, setDeletingAll] = useState(false);
   // Template selected for the confirm-delete dialog. The destructive
   // action goes through this two-step so a slip on the trash icon
   // doesn't take the template off Meta as well as locally.
@@ -360,7 +361,7 @@ export function TemplateManager() {
       if (!res.ok) {
         throw new Error(data?.error || `Delete failed (HTTP ${res.status})`);
       }
-      toast.success('Template deleted');
+      toast.success('Template removed from wacrm');
       setTemplates((prev) => prev.filter((t) => t.id !== target.id));
       setTemplateToDelete(null);
     } catch (err) {
@@ -368,6 +369,31 @@ export function TemplateManager() {
       toast.error(err instanceof Error ? err.message : 'Failed to delete template');
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function deleteAllLocalTemplates() {
+    if (deletingAll || templates.length === 0) return;
+    setDeletingAll(true);
+    try {
+      const res = await fetch('/api/account/clear-templates-automations', {
+        method: 'POST',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to delete templates');
+      }
+      setTemplates([]);
+      toast.success(
+        `Removed ${data.templates ?? 0} template(s) from wacrm` +
+          (data.metaErrors?.length
+            ? '. Meta still owns some copies (token needs WABA permission).'
+            : ''),
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to delete templates');
+    } finally {
+      setDeletingAll(false);
     }
   }
 
@@ -492,6 +518,22 @@ export function TemplateManager() {
         }
         action={
           <div className="flex items-center gap-2">
+            {templates.length > 0 && (
+              <Button
+                variant="outline"
+                onClick={deleteAllLocalTemplates}
+                disabled={deletingAll || syncing}
+                className="border-red-900/60 text-red-400 hover:bg-red-950/30"
+                title="Remove every template from wacrm even if Meta rejects the remote delete"
+              >
+                {deletingAll ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Trash2 className="size-4" />
+                )}
+                {deletingAll ? 'Deleting…' : 'Delete all'}
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={handleSyncFromMeta}
@@ -1106,7 +1148,7 @@ export function TemplateManager() {
             <DialogTitle className="text-popover-foreground">Delete template?</DialogTitle>
             <DialogDescription className="text-muted-foreground">
               {templateToDelete?.meta_template_id
-                ? `"${templateToDelete?.name}" will be deleted from Meta and from wacrm. Active broadcasts using this template will start failing on their next send. This can't be undone.`
+                ? `"${templateToDelete?.name}" will be removed from wacrm. We also try to delete it on Meta; if Meta returns a permission error (#100), the Meta copy may remain, but this list still clears.`
                 : `"${templateToDelete?.name}" will be deleted from wacrm. It was never submitted to Meta, so no remote cleanup is needed.`}
             </DialogDescription>
           </DialogHeader>

@@ -31,6 +31,31 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 10:57] Fix (Templates) — Delete from wacrm even when Meta returns #100
+
+### Root Cause
+- Settings → Templates delete called Meta first. Error `(#100) Need permission on either WhatsApp Business Account or owner/shared business` returned HTTP 502 and **left the local row**, so the list never cleared.
+- Bulk wipe also tried every Meta delete before local delete, so a timeout or a remembered failed `localStorage` key could skip cleanup. Sync from Meta can also re-import Approved templates.
+
+### Objective & Fixes
+- Single-template DELETE always removes the wacrm row; Meta is best-effort.
+- **Delete all** on the Templates tab calls the wipe API (local-first).
+- Retry dashboard wipe (`wacrm_cleared_templates_automations_20260816b`); only mark done after success.
+- Do not click **Sync from Meta** if you want the list empty — that pulls Approved templates back from WABA.
+
+### Files Modified
+- `src/app/api/whatsapp/templates/[id]/route.ts`
+- `src/lib/whatsapp/meta-api.ts`
+- `src/lib/account/clear-templates-automations.ts`
+- `src/app/(dashboard)/dashboard-shell.tsx`
+- `src/components/settings/template-manager.tsx`
+- `changes.md`
+
+### Live
+- Ship on `main` after this PR. Hard-refresh Settings → Templates and use **Delete all** if any rows remain.
+
+---
+
 ## [2026-08-16 10:50] Chore (Templates & Automations) — Delete all existing templates and automations
 
 ### Root Cause

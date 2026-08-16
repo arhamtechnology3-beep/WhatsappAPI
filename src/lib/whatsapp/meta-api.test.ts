@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   INTERACTIVE_LIMITS,
+  isMetaTemplatePermissionError,
   sendInteractiveButtons,
   sendInteractiveList,
 } from "./meta-api";
@@ -265,5 +266,21 @@ describe("sendInteractiveList — validation", () => {
         },
       },
     });
+  });
+});
+
+describe("isMetaTemplatePermissionError", () => {
+  it("detects Meta #100 WABA permission failures", () => {
+    expect(
+      isMetaTemplatePermissionError(
+        "(#100) Need permission on either WhatsApp Business Account or owner/shared business.",
+      ),
+    ).toBe(true);
+  });
+
+  it("is false for unrelated Meta errors", () => {
+    expect(isMetaTemplatePermissionError("(#132012) Format mismatch")).toBe(
+      false,
+    );
   });
 });

@@ -13,8 +13,9 @@ export interface ClearTemplatesAutomationsResult {
 export async function clearTemplatesAndAutomations(
   db: SupabaseClient,
   accountId: string,
-  userId?: string
+  userId?: string // retained for callers; wipe is install-wide
 ): Promise<ClearTemplatesAutomationsResult> {
+  void userId
   const metaErrors: string[] = []
 
   const { data: config } = await db
@@ -26,7 +27,15 @@ export async function clearTemplatesAndAutomations(
   const { data: templates } = await db
     .from('message_templates')
     .select('id, name, meta_template_id')
-    .eq('account_id', accountId)
+
+  // Local delete first so a Meta #100 / timeout cannot leave CRM rows behind.
+  const { data: deletedTemplates, error: tplErr } = await db
+    .from('message_templates')
+    .delete()
+    .neq('id', '00000000-0000-0000-0000-000000000000')
+    .select('id')
+  if (tplErr) throw tplErr
+  const templatesDeleted = deletedTemplates?.length ?? 0
 
   if (config?.waba_id && config.access_token) {
     let accessToken = ''
@@ -39,7 +48,7 @@ export async function clearTemplatesAndAutomations(
     }
     if (accessToken) {
       for (const row of templates ?? []) {
-        if (!row.meta_template_id && !row.name) continue
+        if (!row.name) continue
         try {
           await deleteMessageTemplate({
             wabaId: config.waba_id,
@@ -56,29 +65,13 @@ export async function clearTemplatesAndAutomations(
     }
   }
 
-  const { data: deletedTemplates, error: tplErr } = await db
-    .from('message_templates')
-    .delete()
-    .eq('account_id', accountId)
-    .select('id')
-  if (tplErr) throw tplErr
-  let templatesDeleted = deletedTemplates?.length ?? 0
-  if (userId) {
-    const extra = await db.from('message_templates').delete().eq('user_id', userId).select('id')
-    templatesDeleted += extra.data?.length ?? 0
-  }
-
   const { data: deletedAutomations, error: autoErr } = await db
     .from('automations')
     .delete()
-    .eq('account_id', accountId)
+    .neq('id', '00000000-0000-0000-0000-000000000000')
     .select('id')
   if (autoErr) throw autoErr
-  let automationsDeleted = deletedAutomations?.length ?? 0
-  if (userId) {
-    const extra = await db.from('automations').delete().eq('user_id', userId).select('id')
-    automationsDeleted += extra.data?.length ?? 0
-  }
+  const automationsDeleted = deletedAutomations?.length ?? 0
 
   let shopifyRules = 0
   const { data: deletedRules, error: rulesErr } = await db

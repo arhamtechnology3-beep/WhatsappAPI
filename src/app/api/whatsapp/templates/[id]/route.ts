@@ -4,6 +4,7 @@ import { decrypt } from '@/lib/whatsapp/encryption'
 import {
   deleteMessageTemplate,
   editMessageTemplate,
+  isMetaTemplatePermissionError,
 } from '@/lib/whatsapp/meta-api'
 import {
   validateTemplatePayload,
@@ -282,24 +283,24 @@ export async function DELETE(
         .from('whatsapp_config')
         .select('*')
         .eq('account_id', accountId)
-        .single()
-      if (configError || !config || !config.waba_id) {
-        return NextResponse.json(
-          { error: 'WhatsApp not configured — cannot delete on Meta.' },
-          { status: 400 },
-        )
-      }
-      const accessToken = decrypt(config.access_token)
-      try {
-        await deleteMessageTemplate({
-          wabaId: config.waba_id,
-          accessToken,
-          name: existing.name,
-          metaTemplateId: existing.meta_template_id,
-        })
-      } catch (e) {
-        const message = e instanceof Error ? e.message : 'Meta delete failed.'
-        return NextResponse.json({ error: message }, { status: 502 })
+        .maybeSingle()
+      if (config?.waba_id && config.access_token) {
+        try {
+          const accessToken = decrypt(config.access_token)
+          await deleteMessageTemplate({
+            wabaId: config.waba_id,
+            accessToken,
+            name: existing.name,
+            metaTemplateId: existing.meta_template_id,
+          })
+        } catch (e) {
+          const message = e instanceof Error ? e.message : 'Meta delete failed.'
+          console.warn('[templates] Meta delete skipped:', message)
+          if (!isMetaTemplatePermissionError(message) && !message.includes('404')) {
+            // Still remove locally — the CRM list is what the user is clearing.
+            console.warn('[templates] continuing with local delete after Meta error')
+          }
+        }
       }
     }
 
@@ -310,13 +311,13 @@ export async function DELETE(
     if (delErr) {
       return NextResponse.json(
         {
-          error: `Deleted on Meta but failed to delete locally: ${delErr.message}.`,
+          error: `Failed to delete locally: ${delErr.message}.`,
         },
         { status: 500 },
       )
     }
 
-    return NextResponse.json({ success: true, dry_run: isDryRun() })
+    return NextResponse.json({ success: true, dry_run: isDryRun(), local_only: true })
   } catch (error) {
     console.error('Error deleting template:', error)
     return NextResponse.json(

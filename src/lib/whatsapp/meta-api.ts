@@ -687,6 +687,18 @@ export async function deleteMessageTemplate(
   }
 }
 
+/** Meta #100 / WABA sharing — we can still drop the local CRM row. */
+export function isMetaTemplatePermissionError(message: string): boolean {
+  const m = message.toLowerCase()
+  return (
+    m.includes('#100') ||
+    m.includes('error code 100') ||
+    m.includes('need permission') ||
+    m.includes('whatsapp business account') ||
+    m.includes('owner/shared business')
+  )
+}
+
 // ============================================================
 // Reactions
 // ============================================================

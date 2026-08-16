@@ -31,7 +31,7 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (loading || !user || !accountRole || !canSendMessages(accountRole)) return;
-    const key = "wacrm_cleared_templates_automations_20260816";
+    const key = "wacrm_cleared_templates_automations_20260816b";
     try {
       if (window.localStorage.getItem(key)) return;
     } catch {
@@ -42,12 +42,12 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       .then(async (res) => {
         const data = await res.json().catch(() => ({}));
         if (cancelled) return;
+        if (!res.ok || !data.success) return;
         try {
           window.localStorage.setItem(key, "1");
         } catch {
           // private mode
         }
-        if (!res.ok || !data.success) return;
         const n =
           (data.templates ?? 0) +
           (data.automations ?? 0) +

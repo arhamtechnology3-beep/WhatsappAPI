@@ -18,17 +18,17 @@ Pre-configured **DivyaPrabha Foods** recipes (Farm Didi-style Hinglish, image he
 
 ## Live automations
 
-| Name | Category | Delay | Body vars | Buttons |
+| Name | Category | Meta | Delay | Trigger |
 |---|---|---|---|---|
-| `wacrm_browse_abandoned_v2` | MARKETING | 90 min | `{{1}}` name, `{{2}}` product | Order Now (product URL), Shop From WhatsApp |
-| `wacrm_cart_abandoned_v4` | MARKETING | 20 min | `{{1}}` name, `{{2}}` items | Complete Purchase (checkout), Shop From WhatsApp |
-| `wacrm_cart_reminder_step2_v2` | MARKETING | 180 min | `{{1}}` name, `{{2}}` items | Complete Purchase, Shop Bestsellers |
-| `wacrm_cart_reminder_step3_v2` | MARKETING | 24 h | `{{1}}` name, `{{2}}` items, `{{3}}` discount code | Complete Purchase, Shop From WhatsApp |
-| `wacrm_cod_confirmation_v2` | UTILITY | immediate | name, order #, total | Quick replies: Yes, confirm order / Cancel order |
-| `wacrm_order_confirmed_v2` | UTILITY | immediate | name, order #, total | Track Order, Shop From WhatsApp |
-| `wacrm_order_shipped_v2` | UTILITY | immediate | name, order # | Track Order, Shop From WhatsApp |
-| `wacrm_order_delivered_v2` | UTILITY | immediate (Shopify fulfilled) | name, order # | Rate Your Order, Shop From WhatsApp |
-| `wacrm_festival_broadcast_v2` | MARKETING | manual Broadcasts | `{{1}}` name | Shop Now, Shop From WhatsApp |
+| `wacrm_browse_abandoned_v2` | MARKETING | Approved | 90 min | Browse drip |
+| `wacrm_cart_abandoned_v4` | MARKETING | Approved | 20 min | Cart drip step 1 |
+| `wacrm_cart_reminder_step2_v2` | MARKETING | Approved | 180 min | Cart drip step 2 |
+| `wacrm_cart_reminder_step3_v2` | MARKETING | Approved | 24 h | Cart drip step 3 |
+| `wacrm_cod_confirmation_v2` | UTILITY | Approved | immediate | COD order |
+| `wacrm_order_confirmed_v2` | UTILITY | Approved | immediate | Prepaid order |
+| `wacrm_order_shipped_v2` | UTILITY | Approved | immediate | Shipped |
+| `wacrm_order_delivered_v2` | UTILITY | Approved | immediate | Delivered |
+| `wacrm_festival_broadcast_v2` | MARKETING | Approved | manual | Broadcasts |
 
 ### Cart #1 body (example)
 

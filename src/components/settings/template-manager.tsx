@@ -314,9 +314,12 @@ export function TemplateManager() {
         throw new Error(data?.error || `Sync failed (HTTP ${res.status})`);
       }
       toast.success(
-        `Synced ${data.total} template${data.total === 1 ? '' : 's'} from Meta` +
-          (data.inserted || data.updated
-            ? ` (${data.inserted} new, ${data.updated} updated)`
+        `Synced from Meta` +
+          (data.updated
+            ? ` — ${data.updated} existing template${data.updated === 1 ? '' : 's'} updated`
+            : ' — no existing wacrm templates to refresh') +
+          (data.skipped
+            ? `. ${data.skipped} Meta template${data.skipped === 1 ? '' : 's'} left out (deleted or catalog-only).`
             : ''),
       );
       if (Array.isArray(data.errors) && data.errors.length > 0) {
@@ -514,7 +517,7 @@ export function TemplateManager() {
       <SettingsPanelHead
         title="Message templates"
         description={
-          'Create templates and submit them to Meta for approval. Use "Sync from Meta" to pull templates approved elsewhere.'
+          'Create templates and submit them to Meta for approval. Sync from Meta only refreshes templates already in this list — it will not re-import ones you deleted.'
         }
         action={
           <div className="flex items-center gap-2">
@@ -538,7 +541,7 @@ export function TemplateManager() {
               variant="outline"
               onClick={handleSyncFromMeta}
               disabled={syncing}
-              title="Pull approved templates from your Meta WhatsApp Business Account"
+              title="Refresh status of templates already in wacrm. Does not re-import deleted templates."
             >
               <RefreshCw className={`size-4 ${syncing ? 'animate-spin' : ''}`} />
               {syncing ? 'Syncing…' : 'Sync from Meta'}

@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { normalizeStatus } from '@/lib/whatsapp/template-status-normalize'
+import {
+  isSkippedMetaCatalogTemplate,
+  shouldImportNewMetaTemplate,
+} from '@/lib/whatsapp/template-sync-policy'
 import type { TemplateButton, TemplateSampleValues } from '@/types'
 
 /**
@@ -15,19 +19,14 @@ import type { TemplateButton, TemplateSampleValues } from '@/types'
  *
  * Locally-created templates (no Meta counterpart) are NOT deleted —
  * they remain visible so the user can notice drift and clean up.
+ *
+ * Templates that are not already in wacrm are NOT inserted. Syncing
+ * used to re-import the full WABA catalog (including deleted Shopify
+ * recipes) every time someone clicked the button.
  */
 
 const META_API_VERSION = 'v21.0'
 const META_API_BASE = `https://graph.facebook.com/${META_API_VERSION}`
-
-function isIrrelevantTemplate(name: string): boolean {
-  const lowerName = name.toLowerCase()
-  return (
-    lowerName.startsWith('jaspers_') ||
-    lowerName.startsWith('sample_') ||
-    lowerName === 'hello_world'
-  )
-}
 
 interface MetaButton {
   type: string
@@ -229,10 +228,12 @@ export async function POST() {
 
     let inserted = 0
     let updated = 0
+    let skipped = 0
     const errors: { name: string; language: string; message: string }[] = []
 
     for (const t of metaTemplates) {
-      if (isIrrelevantTemplate(t.name)) {
+      if (isSkippedMetaCatalogTemplate(t.name)) {
+        skipped++
         continue
       }
       const body = (t.components ?? []).find((c) => c.type === 'BODY')
@@ -319,7 +320,7 @@ export async function POST() {
             .eq('account_id', accountId)
             .eq('template_name', t.name)
         }
-      } else {
+      } else if (shouldImportNewMetaTemplate()) {
         const { error: insErr } = await supabase
           .from('message_templates')
           .insert(row)
@@ -331,7 +332,6 @@ export async function POST() {
           })
         } else {
           inserted++
-          // Propagate status change to sequence steps and rules
           const mappedApprovalStatus = row.status === 'APPROVED' ? 'approved' :
                                        row.status === 'REJECTED' ? 'rejected' :
                                        row.status === 'PENDING' ? 'pending' : 'not_submitted'
@@ -346,6 +346,8 @@ export async function POST() {
             .eq('account_id', accountId)
             .eq('template_name', t.name)
         }
+      } else {
+        skipped++
       }
     }
 
@@ -354,6 +356,7 @@ export async function POST() {
       total: metaTemplates.length,
       inserted,
       updated,
+      skipped,
       errors,
       truncated: pageCount >= PAGE_CAP && nextUrl !== null,
     })

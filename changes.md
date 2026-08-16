@@ -31,6 +31,28 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 11:05] Fix (Templates) — Sync from Meta must not re-import deleted templates
+
+### Root Cause
+- Settings → Templates **Sync from Meta** listed every Approved HSM on the WABA and **INSERTed** missing names. After Delete all, clicking Sync brought `wacrm_*` and `3p_direct_integration_test_template` back.
+
+### Objective & Fixes
+- Sync only **updates** rows that already exist in wacrm. It does not insert catalog-only templates.
+- Skip Shopify recipe names (`wacrm_*`), Meta samples, and `3p_direct_integration_test_template`.
+- After deploy: hard-refresh Templates, Delete all if needed, then Sync — the old list must stay empty.
+
+### Files Modified
+- `src/lib/whatsapp/template-sync-policy.ts`
+- `src/lib/whatsapp/template-sync-policy.test.ts`
+- `src/app/api/whatsapp/templates/sync/route.ts`
+- `src/components/settings/template-manager.tsx`
+- `changes.md`
+
+### Live
+- Ship on `main` after this PR. No migration.
+
+---
+
 ## [2026-08-16 10:57] Fix (Templates) — Delete from wacrm even when Meta returns #100
 
 ### Root Cause

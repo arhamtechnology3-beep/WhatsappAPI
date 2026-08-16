@@ -31,6 +31,29 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 12:15] Fix (Templates) — Utility Track Order Invalid parameter
+
+### Root Cause
+- Order confirmed/shipped used a dynamic URL button `https://divyaprabhafoods.com/{{1}}` plus suffix `account/orders`. Meta returns **Invalid parameter** for that pattern on Utility templates (body already has {{1}} for the name).
+
+### Objective & Fixes
+- Track Order is a static URL: `https://divyaprabhafoods.com/account/orders` (no suffix field).
+- Toasts include Meta `error_user_msg` when present.
+- You can submit the open modal now: change Track Order URL to that static link and clear the suffix.
+
+### Files Modified
+- `src/lib/shopify/whatsapp-template-library.ts`
+- `src/lib/shopify/whatsapp-template-library.test.ts`
+- `src/lib/whatsapp/meta-api.ts`
+- `src/lib/whatsapp/meta-app-id.test.ts`
+- `docs/whatsapp-template-setup.md`
+- `changes.md`
+
+### Live
+- Ship on `main` after this PR. No migration.
+
+---
+
 ## [2026-08-16 12:00] Fix (Templates) — Unsupported post request on template submit
 
 ### Root Cause

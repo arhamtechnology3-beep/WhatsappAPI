@@ -56,7 +56,21 @@ describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
     )
   })
 
-  it('uses a default header image that is not the 404 share.jpg path', () => {
+  it('uses a static Track Order URL on Utility templates (no {{1}})', () => {
+    for (const name of [
+      'wacrm_order_confirmed_v1',
+      'wacrm_order_shipped_v1',
+    ]) {
+      const recipe = SHOPIFY_TEMPLATE_LIBRARY.find((r) => r.template_name === name)!
+      const track = recipe.buttons.find((b) => b.type === 'URL' && b.text === 'Track Order')
+      expect(track && track.type === 'URL' && track.url).toBe(
+        'https://divyaprabhafoods.com/account/orders',
+      )
+      expect(track && track.type === 'URL' && track.url).not.toMatch(/\{\{/)
+    }
+  })
+
+  it('uses a live PNG as the default header image', () => {
     expect(defaultHeaderImageUrl()).toBe(DEFAULT_HEADER_IMAGE_URL)
     expect(DEFAULT_HEADER_IMAGE_URL).not.toMatch(/share\.jpg/)
     expect(DEFAULT_HEADER_IMAGE_URL).toMatch(/\.png|\.jpe?g/i)
@@ -83,5 +97,15 @@ describe('buildRecipeButtonParams', () => {
     })
     expect(params[0]).toBe('checkouts/cn/xyz')
     expect(params[1]).toBeUndefined()
+  })
+
+  it('sends no URL suffix for static Track Order buttons', () => {
+    const recipe = SHOPIFY_TEMPLATE_LIBRARY.find(
+      (r) => r.template_name === 'wacrm_order_confirmed_v1',
+    )!
+    const params = buildRecipeButtonParams(recipe, {
+      tracking_url: 'https://divyaprabhafoods.com/account/orders',
+    })
+    expect(params).toEqual({})
   })
 })

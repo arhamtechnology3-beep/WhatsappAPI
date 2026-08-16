@@ -141,8 +141,7 @@ const shopBestsellers = (): TemplateButton => ({
 const trackOrder = (): TemplateButton => ({
   type: 'URL',
   text: 'Track Order',
-  url: dynamicStorefrontUrl(),
-  example: 'account/orders',
+  url: `${storefrontBaseUrl()}/account/orders`,
 })
 
 const shopNow = (): TemplateButton => ({
@@ -253,7 +252,7 @@ Hum packing shuru kar rahe hain — tracking alag message mein aayegi.
     header_type: 'image',
     footer_text: 'DivyaPrabha Foods',
     buttons: [trackOrder(), shopFromWhatsApp()],
-    button_url_sources: ['tracking_url', null],
+    button_url_sources: [null, null],
     sample_values: { body: ['Jesal', '1001', '599.00'] },
   },
   {
@@ -271,7 +270,7 @@ Hum packing shuru kar rahe hain — tracking alag message mein aayegi.
     header_type: 'image',
     footer_text: 'DivyaPrabha Foods',
     buttons: [trackOrder(), shopFromWhatsApp()],
-    button_url_sources: ['tracking_url', null],
+    button_url_sources: [null, null],
     sample_values: { body: ['Jesal', '1001'] },
   },
   {

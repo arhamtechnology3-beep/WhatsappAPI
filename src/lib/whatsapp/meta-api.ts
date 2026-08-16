@@ -37,8 +37,14 @@ async function throwMetaError(response: Response, fallback: string): Promise<nev
     console.error('[throwMetaError] Full Meta API Error:', JSON.stringify(data, null, 2))
     if (data.error?.message) {
       message = data.error.message
+      if (data.error.error_user_msg) {
+        message = `${data.error.error_user_msg} (${data.error.message})`
+      }
       if (data.error.error_data?.details) {
         message += ` - ${data.error.error_data.details}`
+      }
+      if (typeof data.error.code === 'number') {
+        message += ` [#${data.error.code}]`
       }
     }
   } catch {
@@ -70,6 +76,13 @@ export async function resolveMetaAppIdForToken(
 }
 
 export function explainUnsupportedMetaObjectError(message: string): string {
+  if (/Invalid parameter/i.test(message)) {
+    return (
+      `${message} — For Utility templates, Track Order cannot use https://divyaprabhafoods.com/{{1}}. ` +
+      `Use a full static URL such as https://divyaprabhafoods.com/account/orders (no {{1}} in the button). ` +
+      `Leave the URL suffix field empty.`
+    )
+  }
   if (
     !/Unsupported post request|does not exist|missing permissions|does not support this operation/i.test(
       message,

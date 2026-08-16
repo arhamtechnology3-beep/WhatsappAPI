@@ -14,7 +14,13 @@ describe("explainUnsupportedMetaObjectError", () => {
     expect(out).toMatch(/WABA/);
   });
 
-  it("leaves unrelated errors unchanged", () => {
+  it("rewrites Invalid parameter for Utility dynamic URL buttons", () => {
+    const out = explainUnsupportedMetaObjectError("Invalid parameter");
+    expect(out).toMatch(/account\/orders/);
+    expect(out).toMatch(/static URL/);
+  });
+
+  it("leaves other errors unchanged", () => {
     expect(explainUnsupportedMetaObjectError("Header image URL returned 404.")).toBe(
       "Header image URL returned 404.",
     );

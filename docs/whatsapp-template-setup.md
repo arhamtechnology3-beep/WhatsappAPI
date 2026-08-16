@@ -10,7 +10,7 @@ Pre-configured **DivyaPrabha Foods** recipes (Farm Didi-style Hinglish, image he
 2. Open each draft → **Submit for Approval**, **or** paste the same name/body/buttons into [WhatsApp Manager](https://business.facebook.com/wa/manage/message-templates/).
 3. Template **names must match exactly** (e.g. `wacrm_cart_abandoned_v1`). Language: `en_US`.
 4. Storefront buttons: `https://divyaprabhafoods.com/` and collection `https://divyaprabhafoods.com/collections/all-products` (never `*.myshopify.com`). Marketing offers: Buy 2 x 250g pickles FREE shipping, 10% OFF on ₹749+, FREE shipping above ₹599 — no 3% prepaid.
-5. Do **not** put raw URLs in the body — checkout / product / tracking live on buttons (`https://divyaprabhafoods.com/{{1}}`).
+5. Do **not** put raw URLs in the body. Marketing checkout/product buttons use `https://divyaprabhafoods.com/{{1}}`. Utility **Track Order** must be a static URL `https://divyaprabhafoods.com/account/orders` (no `{{1}}`, empty suffix) — Meta returns **Invalid parameter** otherwise.
 6. After Meta approves, on **Settings → Shopify Store** mark the matching rule/sequence **Approved & Active**.
 7. **Sync from Meta** only refreshes templates already in wacrm. It will not re-import deleted `wacrm_*` names.
 

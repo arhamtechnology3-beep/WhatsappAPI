@@ -7,6 +7,11 @@ import {
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils'
 import { supabaseAdmin } from './admin-client'
+import {
+  buildRecipeButtonParams,
+  defaultHeaderImageUrl,
+  recipeByName,
+} from '@/lib/shopify/whatsapp-template-library'
 
 // ------------------------------------------------------------
 // Automation-side Meta sender.
@@ -41,6 +46,11 @@ interface SendTemplateArgs {
   templateName: string
   language?: string
   params?: string[]
+  buttonUrls?: {
+    checkout_url?: string
+    product_url?: string
+    tracking_url?: string
+  }
 }
 
 export async function engineSendText(args: SendTextArgs): Promise<{ whatsapp_message_id: string }> {
@@ -148,8 +158,37 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
 
       if (input.templateName === 'wacrm_cod_confirmation_v1') {
         messageParams.buttonParams = {
-          '0': 'confirm_cod',
-          '1': 'cancel_cod',
+          0: 'confirm_cod',
+          1: 'cancel_cod',
+        }
+      } else {
+        const recipe = recipeByName(input.templateName)
+        if (recipe) {
+          const { data: checkout } = await db
+            .from('shopify_checkouts')
+            .select('abandoned_checkout_url, line_items')
+            .eq('contact_id', input.contactId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          const { data: order } = await db
+            .from('shopify_orders')
+            .select('tracking_url, line_items')
+            .eq('contact_id', input.contactId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          messageParams.buttonParams = buildRecipeButtonParams(recipe, {
+            checkout_url:
+              input.buttonUrls?.checkout_url ||
+              checkout?.abandoned_checkout_url ||
+              undefined,
+            product_url: input.buttonUrls?.product_url,
+            tracking_url:
+              input.buttonUrls?.tracking_url ||
+              order?.tracking_url ||
+              undefined,
+          })
         }
       }
 
@@ -188,7 +227,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         messageParams.headerMediaUrl =
           resolvedImageUrl ||
           templateRow.header_media_url ||
-          undefined
+          defaultHeaderImageUrl()
       }
 
       const r = await sendTemplateMessage({

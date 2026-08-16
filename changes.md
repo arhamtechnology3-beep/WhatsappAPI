@@ -31,6 +31,35 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 11:20] Feat (Templates & Automations) — Farm Didi-style Shopify recipes
+
+### Root Cause
+- Lifecycle templates were English body-only with checkout URLs in the body. Cart drip stop treated any later order on the contact as conversion, so a second cart could be cancelled.
+
+### Objective & Fixes
+- Rewrote `wacrm_*` recipes in Hinglish (image header, two CTA buttons, no raw URLs in body). Timings: browse 90m, cart 20m / 180m / 24h.
+- **Install recipes** on Settings → Templates upserts DRAFT rows only.
+- Send path fills product image (Shopify featured image, else `WHATSAPP_DEFAULT_HEADER_IMAGE_URL`) and URL-button suffixes.
+- Cart drip stops only when **that** checkout is recovered (`cart_token`). Browse stops on later cart or order.
+- Festival draft `wacrm_festival_broadcast_v1` for Broadcasts. No carousel / Shiprocket in this change.
+- After deploy: Install recipes → submit to Meta → activate Shopify sequences. Do not Sync-from-Meta to reimport old bodies.
+
+### Files Modified
+- `src/lib/shopify/whatsapp-template-library.ts`
+- `src/lib/shopify/install-template-recipes.ts`
+- `src/app/api/whatsapp/templates/install-recipes/route.ts`
+- `src/lib/automations/meta-send.ts`
+- `src/app/api/shopify/cron/sequences/route.ts`
+- `src/app/api/webhooks/shopify/orders-create/route.ts`
+- `src/components/settings/template-manager.tsx`
+- `docs/whatsapp-template-setup.md`
+- `changes.md`
+
+### Live
+- Ship on `main` after this PR. No migration.
+
+---
+
 ## [2026-08-16 11:05] Fix (Templates) — Sync from Meta must not re-import deleted templates
 
 ### Root Cause

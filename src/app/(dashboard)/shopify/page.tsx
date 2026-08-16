@@ -678,12 +678,13 @@ export default function ShopifyDashboardPage() {
 const DEFAULT_SAMPLE_VALUES: Record<string, string[]> = {
   wacrm_cod_confirmation_v1: ['Jesal Patel', '1234', '1499'],
   wacrm_order_confirmed_v1: ['Jesal Patel', '1234', '1499'],
-  wacrm_cart_abandoned_v1: ['Jesal Patel', 'Organic Jam Combo', 'Divyaprabha Foods', 'https://divyaprabhafoods.com/checkout'],
-  wacrm_cart_reminder_step2_v1: ['Jesal Patel', 'Organic Jam Combo', '1499'],
-  wacrm_cart_reminder_step3_v1: ['Jesal Patel', 'Organic Jam Combo', 'https://divyaprabhafoods.com/checkout', 'WELCOME10'],
-  wacrm_browse_abandoned_v1: ['Jesal Patel', 'Organic Jam Combo', '1499', 'https://divyaprabhafoods.com/checkout'],
-  wacrm_order_shipped_v1: ['Jesal Patel', '1234', 'https://track.com/12345'],
+  wacrm_cart_abandoned_v1: ['Jesal Patel', 'Nani Trial Pack'],
+  wacrm_cart_reminder_step2_v1: ['Jesal Patel', 'Mango pickle'],
+  wacrm_cart_reminder_step3_v1: ['Jesal Patel', 'Nani Trial Pack', 'WELCOME10'],
+  wacrm_browse_abandoned_v1: ['Jesal Patel', 'Homemade Mango Pickle'],
+  wacrm_order_shipped_v1: ['Jesal Patel', '1234'],
   wacrm_order_delivered_v1: ['Jesal Patel', '1234'],
+  wacrm_festival_broadcast_v1: ['Jesal Patel'],
 }
 
 function getAutoSampleValues(templateName: string, varCount: number): string[] {
@@ -1890,7 +1891,7 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
                               .insert({
                                 sequence_id: sequences[0].id,
                                 step_order: nextOrder,
-                                delay_minutes_from_previous_step: nextOrder === 1 ? 30 : nextOrder === 2 ? 1440 : 2880,
+                                delay_minutes_from_previous_step: nextOrder === 1 ? 20 : nextOrder === 2 ? 180 : 1440,
                                 template_name: nextOrder === 1 ? 'wacrm_cart_abandoned_v1' : nextOrder === 2 ? 'wacrm_cart_reminder_step2_v1' : 'wacrm_cart_reminder_step3_v1',
                                 meta_approval_status: 'approved',
                                 is_active: true

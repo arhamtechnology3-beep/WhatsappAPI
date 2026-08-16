@@ -140,6 +140,7 @@ export function TemplateManager() {
   const [isDraftEdit, setIsDraftEdit] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [installingRecipes, setInstallingRecipes] = useState(false);
   // Template selected for the confirm-delete dialog. The destructive
   // action goes through this two-step so a slip on the trash icon
   // doesn't take the template off Meta as well as locally.
@@ -375,6 +376,32 @@ export function TemplateManager() {
     }
   }
 
+  async function installRecipes() {
+    if (installingRecipes) return;
+    setInstallingRecipes(true);
+    try {
+      const res = await fetch('/api/whatsapp/templates/install-recipes', {
+        method: 'POST',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to install recipes');
+      }
+      if (user) await fetchTemplates(user.id);
+      toast.success(
+        `Installed ${data.inserted ?? 0} draft template(s)` +
+          (data.skipped ? ` (${data.skipped} already present)` : '') +
+          '. Submit each to Meta for approval.',
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to install recipes',
+      );
+    } finally {
+      setInstallingRecipes(false);
+    }
+  }
+
   async function deleteAllLocalTemplates() {
     if (deletingAll || templates.length === 0) return;
     setDeletingAll(true);
@@ -517,10 +544,23 @@ export function TemplateManager() {
       <SettingsPanelHead
         title="Message templates"
         description={
-          'Create templates and submit them to Meta for approval. Sync from Meta only refreshes templates already in this list — it will not re-import ones you deleted.'
+          'Create templates and submit them to Meta for approval. Install recipes adds the Shopify lifecycle drafts. Sync from Meta only refreshes templates already in this list.'
         }
         action={
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={installRecipes}
+              disabled={installingRecipes || syncing || deletingAll}
+              title="Add DivyaPrabha Farm Didi-style Shopify recipes as local drafts"
+            >
+              {installingRecipes ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Plus className="size-4" />
+              )}
+              {installingRecipes ? 'Installing…' : 'Install recipes'}
+            </Button>
             {templates.length > 0 && (
               <Button
                 variant="outline"
@@ -559,7 +599,7 @@ export function TemplateManager() {
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <p className="text-muted-foreground text-sm">No templates yet.</p>
             <p className="text-muted-foreground text-xs mt-1">
-              Create your first message template to get started.
+              Use Install recipes for Shopify lifecycle drafts, or New Template.
             </p>
           </CardContent>
         </Card>

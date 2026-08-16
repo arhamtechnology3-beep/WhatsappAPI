@@ -3,6 +3,10 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
 import { createShopifyDiscountCode } from '@/lib/shopify/discount-generator'
 import { authorizeCron } from '@/lib/cron/auth'
+import {
+  shouldStopBrowseDrip,
+  shouldStopCartDrip,
+} from '@/lib/shopify/recovery-conversion'
 
 export async function GET(request: Request) {
   const denied = authorizeCron(request)
@@ -41,35 +45,38 @@ export async function GET(request: Request) {
           continue
         }
 
-        // 3) CONVERSION CHECK
+        // 3) CONVERSION CHECK — cart drips follow the linked checkout only
         let isConverted = false
+        const triggerType = sequence.trigger_type as string
 
-        if (tracking.shopify_checkout_id) {
-          // Check if checkout was recovered
+        if (triggerType === 'cart_abandoned' && tracking.shopify_checkout_id) {
           const { data: checkout } = await supabase
             .from('shopify_checkouts')
             .select('status')
             .eq('id', tracking.shopify_checkout_id)
             .maybeSingle()
-
-          if (checkout && checkout.status === 'recovered') {
-            isConverted = true
-          }
-        }
-
-        // Verify if any order was placed by this contact since tracking began
-        if (!isConverted) {
-          const { data: order } = await supabase
-            .from('shopify_orders')
-            .select('id')
-            .eq('contact_id', tracking.contact_id)
-            .gte('created_at', tracking.created_at)
-            .limit(1)
-            .maybeSingle()
-
-          if (order) {
-            isConverted = true
-          }
+          isConverted = shouldStopCartDrip(checkout?.status)
+        } else if (triggerType === 'browse_abandoned') {
+          const [{ data: laterCheckout }, { data: laterOrder }] = await Promise.all([
+            supabase
+              .from('shopify_checkouts')
+              .select('id')
+              .eq('contact_id', tracking.contact_id)
+              .gte('created_at', tracking.created_at)
+              .limit(1)
+              .maybeSingle(),
+            supabase
+              .from('shopify_orders')
+              .select('id')
+              .eq('contact_id', tracking.contact_id)
+              .gte('created_at', tracking.created_at)
+              .limit(1)
+              .maybeSingle(),
+          ])
+          isConverted = shouldStopBrowseDrip({
+            addedToCartAfterStart: !!laterCheckout,
+            orderedAfterStart: !!laterOrder,
+          })
         }
 
         if (isConverted) {
@@ -186,15 +193,12 @@ export async function GET(request: Request) {
 
           if (tn === 'wacrm_cart_abandoned_v3') {
             templateParams = [customerName, productName, dynamicOffer]
-          } else if (tn.includes('cart_abandoned') || tn.includes('cart_reminder_step2')) {
-            // wacrm_cart_abandoned_v1: {{customer_name}}, {{product_name}}, {{store_name}}, {{checkout_url}}
-            templateParams = [customerName, productName, storeName, checkoutUrl]
           } else if (tn.includes('cart_reminder_step3')) {
-            // wacrm_cart_reminder_step3_v1: {{customer_name}}, {{product_name}}, {{checkout_url}}, {{discount_code}}
-            templateParams = [customerName, productName, checkoutUrl, discountCode || 'WELCOME10']
+            templateParams = [customerName, productName, discountCode || 'WELCOME10']
+          } else if (tn.includes('cart_abandoned') || tn.includes('cart_reminder_step2')) {
+            templateParams = [customerName, productName]
           } else if (tn.includes('browse_abandoned')) {
-            // wacrm_browse_abandoned_v1: {{customer_name}}, {{product_name}}, {{total_price}}, {{product_url}}
-            templateParams = [customerName, productName, totalPrice, productUrl]
+            templateParams = [customerName, productName]
           }
           if (templateParams.length > 0) {
             console.warn(
@@ -243,6 +247,10 @@ export async function GET(request: Request) {
               contactId: tracking.contact_id,
               templateName: step.template_name,
               params: templateParams,
+              buttonUrls: {
+                checkout_url: checkoutUrl || undefined,
+                product_url: productUrl || undefined,
+              },
             })
             messagesSent++
           } catch (sendErr) {

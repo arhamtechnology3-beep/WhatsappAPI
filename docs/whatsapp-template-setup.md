@@ -1,125 +1,59 @@
 # WhatsApp Template Setup Guide
 
-This document lists the pre-configured templates that you need to submit for approval in Meta's **WhatsApp Manager** in order to activate automated notifications from your Shopify storefront.
+Pre-configured **DivyaPrabha Foods** recipes (Farm Didi-style Hinglish, image header, two CTA buttons). Install drafts in wacrm, then submit them to Meta.
 
 ---
 
-## 🚀 How to Submit Templates
+## How to submit
 
-1. Go to **[WhatsApp Manager Template Section](https://business.facebook.com/wa/manage/message-templates/)**.
-2. Click **Create Template**.
-3. Choose the appropriate **Category** and **Language** (English) for each recipe below.
-4. Set the template name **exactly** as shown (e.g. `wacrm_cart_abandoned_v1`).
-5. Copy the **Body Text** and paste it into the template body editor.
-6. When adding variables (e.g. `{{1}}`), add sample values matching the mapping fields listed below (Meta requires samples for variables before approval).
-7. Submit the template.
-8. Once Meta approves (usually within 1–5 minutes), go to **Settings** -> **Shopify Store** in **wacrm**, locate the template, and click **Mark Approved & Activate**!
-
----
-
-## 📋 Template Recipes
-
-### 1. Checkout Abandoned (cart_abandoned - Step 1)
-- **Template Name**: `wacrm_cart_abandoned_v1`
-- **Category**: `MARKETING`
-- **Language**: `en`
-- **Body Text**:
-  ```text
-  Hi {{1}}, you left {{2}} in your cart at {{3}}. Complete your order here: {{4}}
-  ```
-- **Variable Mappings**:
-  - `{{1}}` &rarr; `Customer First Name` (e.g., `John`)
-  - `{{2}}` &rarr; `Product Name` (e.g., `Organic Honey`)
-  - `{{3}}` &rarr; `Store Name` (e.g., `Divyaprabha Foods`)
-  - `{{4}}` &rarr; `Checkout Recovery URL` (e.g., `https://shopify.com/.../checkouts/...`)
+1. In wacrm go to **Settings → Templates** and click **Install recipes**. That creates local **DRAFT** rows only (it does not re-seed on every page load).
+2. Open each draft → **Submit for Approval**, **or** paste the same name/body/buttons into [WhatsApp Manager](https://business.facebook.com/wa/manage/message-templates/).
+3. Template **names must match exactly** (e.g. `wacrm_cart_abandoned_v1`). Language: `en_US`.
+4. Header: **IMAGE**. wacrm fills the product photo at send time from Shopify; a brand banner is the fallback (`WHATSAPP_DEFAULT_HEADER_IMAGE_URL`).
+5. Do **not** put raw URLs in the body — checkout / product / tracking live on buttons (`https://your-store/{{1}}`).
+6. After Meta approves, on **Settings → Shopify Store** mark the matching rule/sequence **Approved & Active**.
+7. **Sync from Meta** only refreshes templates already in wacrm. It will not re-import deleted `wacrm_*` names.
 
 ---
 
-### 2. Cart Recovery Drip (cart_abandoned - Step 2)
-- **Template Name**: `wacrm_cart_reminder_step2_v1`
-- **Category**: `MARKETING`
-- **Language**: `en`
-- **Body Text**:
-  ```text
-  Hi {{1}}, still thinking it over? {{2}} is waiting for you at ₹{{3}}. Reply STOP to stop these updates.
-  ```
-- **Variable Mappings**:
-  - `{{1}}` &rarr; `Customer First Name` (e.g., `John`)
-  - `{{2}}` &rarr; `Product Name` (e.g., `Organic Honey`)
-  - `{{3}}` &rarr; `Total Price` (e.g., `450.00`)
+## Live automations
+
+| Name | Category | Delay | Body vars | Buttons |
+|---|---|---|---|---|
+| `wacrm_browse_abandoned_v1` | MARKETING | 90 min | `{{1}}` name, `{{2}}` product | Order Now (product URL), Shop From WhatsApp |
+| `wacrm_cart_abandoned_v1` | MARKETING | 20 min | `{{1}}` name, `{{2}}` items | Complete Purchase (checkout), Shop From WhatsApp |
+| `wacrm_cart_reminder_step2_v1` | MARKETING | 180 min | `{{1}}` name, `{{2}}` items | Complete Purchase, Shop Bestsellers |
+| `wacrm_cart_reminder_step3_v1` | MARKETING | 24 h | `{{1}}` name, `{{2}}` items, `{{3}}` discount code | Complete Purchase, Shop From WhatsApp |
+| `wacrm_cod_confirmation_v1` | UTILITY | immediate | name, order #, total | Quick replies: Yes, confirm order / Cancel order |
+| `wacrm_order_confirmed_v1` | UTILITY | immediate | name, order #, total | Track Order, Shop From WhatsApp |
+| `wacrm_order_shipped_v1` | UTILITY | immediate | name, order # | Track Order, Shop From WhatsApp |
+| `wacrm_order_delivered_v1` | UTILITY | immediate (Shopify fulfilled) | name, order # | Rate Your Order, Shop From WhatsApp |
+| `wacrm_festival_broadcast_v1` | MARKETING | manual Broadcasts | `{{1}}` name | Shop Now, Shop From WhatsApp |
+
+### Cart #1 body (example)
+
+```text
+{{1}}, aapka cart wait kar raha hai 🛒
+{{2}} — abhi bhi available hai!
+
+✅ Handmade, no chemical preservatives
+✅ COD available | Free shipping above ₹499
+✅ 3% OFF on prepaid
+
+Complete purchase se order confirm karo.
+```
+
+Full copy lives in `src/lib/shopify/whatsapp-template-library.ts`.
 
 ---
 
-### 3. Cart Recovery Drip (cart_abandoned - Step 3 - Final)
-- **Template Name**: `wacrm_cart_reminder_step3_v1`
-- **Category**: `MARKETING`
-- **Language**: `en`
-- **Body Text**:
-  ```text
-  Hi {{1}}, here's 10% off to help you decide: use code {{4}} on {{2}}, valid 24 hours. Complete your order: {{3}}. Reply STOP to stop these updates.
-  ```
-- **Variable Mappings**:
-  - `{{1}}` &rarr; `Customer First Name` (e.g., `John`)
-  - `{{2}}` &rarr; `Product Name` (e.g., `Organic Honey`)
-  - `{{3}}` &rarr; `Checkout Recovery URL` (e.g., `https://shopify.com/.../checkouts/...`)
-  - `{{4}}` &rarr; `Discount Code` (e.g., `WACRM10-ABC1`)
+## Stop rules
+
+- Cart drip stops when **that checkout** is recovered (`cart_token` match on `orders/create`). A later order from the same customer does **not** cancel a different open cart.
+- Browse drip stops if the contact adds to cart or places an order after the browse session.
 
 ---
 
-### 4. Browse Abandoned (browse_abandoned - Step 1)
-- **Template Name**: `wacrm_browse_abandoned_v1`
-- **Category**: `MARKETING`
-- **Language**: `en`
-- **Body Text**:
-  ```text
-  Hi {{1}}, still interested in {{2}}? It's ₹{{3}}. Check it out: {{4}}. Reply STOP to stop these updates.
-  ```
-- **Variable Mappings**:
-  - `{{1}}` &rarr; `Customer First Name` (e.g., `John`)
-  - `{{2}}` &rarr; `Product Name` (e.g., `Organic Honey`)
-  - `{{3}}` &rarr; `Price` (e.g., `450.00`)
-  - `{{4}}` &rarr; `Product URL` (e.g., `https://divyaprabhafoods.com/products/honey`)
+## Not in this version
 
----
-
-### 5. Order Confirmed (order_created)
-- **Template Name**: `wacrm_order_confirmed_v1`
-- **Category**: `UTILITY`
-- **Language**: `en`
-- **Body Text**:
-  ```text
-  Hi {{1}}, your order #{{2}} of ₹{{3}} is confirmed! We'll notify you when it ships.
-  ```
-- **Variable Mappings**:
-  - `{{1}}` &rarr; `Customer First Name` (e.g., `John`)
-  - `{{2}}` &rarr; `Order Number` (e.g., `1001`)
-  - `{{3}}` &rarr; `Total Price` (e.g., `450.00`)
-
----
-
-### 6. Order Shipped (order_fulfilled)
-- **Template Name**: `wacrm_order_shipped_v1`
-- **Category**: `UTILITY`
-- **Language**: `en`
-- **Body Text**:
-  ```text
-  Hi {{1}}, your order #{{2}} has shipped! Track it here: {{3}}
-  ```
-- **Variable Mappings**:
-  - `{{1}}` &rarr; `Customer First Name` (e.g., `John`)
-  - `{{2}}` &rarr; `Order Number` (e.g., `1001`)
-  - `{{3}}` &rarr; `Tracking URL` (e.g., `https://courier.com/track/...`)
-
----
-
-### 7. Order Delivered (order_delivered)
-- **Template Name**: `wacrm_order_delivered_v1`
-- **Category**: `UTILITY`
-- **Language**: `en`
-- **Body Text**:
-  ```text
-  Hi {{1}}, your order #{{2}} was delivered. We hope you love it! Reply to this message if you need anything.
-  ```
-- **Variable Mappings**:
-  - `{{1}}` &rarr; `Customer First Name` (e.g., `John`)
-  - `{{2}}` &rarr; `Order Number` (e.g., `1001`)
+Carousel / catalog cards, Shiprocket OFD–Delivered–NDR, back-in-stock, price-drop, replenishment, and VIP winback are not wired yet.

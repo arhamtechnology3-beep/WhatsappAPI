@@ -26,25 +26,8 @@ export async function GET(request: Request) {
 
     if (openCheckouts && openCheckouts.length > 0) {
       for (const checkout of openCheckouts) {
-        // Double check safety: verify no order actually exists for this checkout
-        const { data: matchingOrder } = await supabase
-          .from('shopify_orders')
-          .select('id')
-          .eq('contact_id', checkout.contact_id)
-          .gte('created_at', checkout.created_at)
-          .limit(1)
-          .maybeSingle()
-
-        if (matchingOrder) {
-          // Checkout was recovered but not webhook-synced correctly; mark recovered and skip
-          await supabase
-            .from('shopify_checkouts')
-            .update({ status: 'recovered', updated_at: new Date().toISOString() })
-            .eq('id', checkout.id)
-          continue
-        }
-
-        // Queue the WhatsApp template send job checking rules
+        // Do not treat "any later order for this contact" as recovery of
+        // this checkout — that would stop a different live cart.
         const contact: any = checkout.contacts
         const customerFirstName = contact?.name?.split(' ')[0] || 'Customer'
         

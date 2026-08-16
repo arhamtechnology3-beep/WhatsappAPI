@@ -69,7 +69,6 @@ export async function POST(request: Request) {
 
     // Try to find matching checkout to recover
     let dealId = null
-    let checkoutId = null
 
     if (cartToken) {
       const { data: checkout } = await supabase
@@ -79,7 +78,6 @@ export async function POST(request: Request) {
         .maybeSingle()
 
       if (checkout) {
-        checkoutId = checkout.id
         dealId = checkout.deal_id
 
         // Mark checkout as recovered
@@ -90,27 +88,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // If no deal found via cart token, look for any open checkout for the same contact
-    if (!dealId && contact.id) {
-      const { data: checkout } = await supabase
-        .from('shopify_checkouts')
-        .select('id, deal_id')
-        .eq('contact_id', contact.id)
-        .eq('status', 'open')
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (checkout) {
-        checkoutId = checkout.id
-        dealId = checkout.deal_id
-
-        await supabase
-          .from('shopify_checkouts')
-          .update({ status: 'recovered', updated_at: new Date().toISOString() })
-          .eq('id', checkout.id)
-      }
-    }
+    // If no deal found via cart token, do not recover a different open
+    // checkout for this contact — that would kill an unrelated cart drip.
 
     if (dealId) {
       // Move checkout deal to Cart Recovered stage

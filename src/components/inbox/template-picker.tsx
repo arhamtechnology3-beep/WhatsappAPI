@@ -294,22 +294,16 @@ export function TemplatePicker({
     } else if (tn === "wacrm_cart_abandoned_v1" || tn.includes("cart_abandoned")) {
       if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
       if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.productName;
-      if (slots.bodyVars.length >= 3) initialParams[2] = storeContext.storeName;
-      if (slots.bodyVars.length >= 4) initialParams[3] = storeContext.checkoutUrl;
     } else if (tn.includes("cart_reminder_step2")) {
       if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
       if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.productName;
-      if (slots.bodyVars.length >= 3) initialParams[2] = storeContext.totalPrice;
     } else if (tn.includes("cart_reminder_step3")) {
       if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
       if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.productName;
-      if (slots.bodyVars.length >= 3) initialParams[2] = storeContext.checkoutUrl;
-      if (slots.bodyVars.length >= 4) initialParams[3] = storeContext.discountCode;
+      if (slots.bodyVars.length >= 3) initialParams[2] = storeContext.discountCode;
     } else if (tn.includes("browse_abandoned")) {
       if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
       if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.productName;
-      if (slots.bodyVars.length >= 3) initialParams[2] = storeContext.totalPrice;
-      if (slots.bodyVars.length >= 4) initialParams[3] = storeContext.checkoutUrl;
     } else if (tn.includes("order_confirmed")) {
       if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
       if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.orderNumber;
@@ -317,13 +311,12 @@ export function TemplatePicker({
     } else if (tn.includes("order_shipped")) {
       if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
       if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.orderNumber;
-      if (slots.bodyVars.length >= 3) initialParams[2] = storeContext.trackingUrl;
     } else if (tn.includes("order_delivered")) {
       if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
       if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.orderNumber;
     } else if (tn.includes("cod_confirmation")) {
       if (slots.bodyVars.length >= 1) initialParams[0] = storeContext.customerFirstName;
-      if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.productName;
+      if (slots.bodyVars.length >= 2) initialParams[1] = storeContext.orderNumber;
       if (slots.bodyVars.length >= 3) initialParams[2] = storeContext.totalPrice;
     } else {
       // 2. Intelligent Context-Aware Resolver for any template

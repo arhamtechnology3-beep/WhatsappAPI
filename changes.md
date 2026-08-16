@@ -31,6 +31,32 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 14:05] Feat (Templates) — WhatsApp-style image + CTA preview in Settings and picker
+
+### Root Cause
+- Settings template cards and the inbox template picker only printed body text. Header image and URL/quick-reply buttons were already on the row (or the Farm Didi recipe) but never rendered.
+- Meta sync stores `header_handle` for IMAGE headers, not a public `header_media_url`, so a card with no fallback looks like a text-only template.
+
+### Objective & Fixes
+- Shared `WhatsAppTemplatePreview`: header PNG, interpolated body, footer, CTA rows (same layout the customer sees).
+- Settings → Templates cards and the Inbox “Templates” picker use it. Inbox bubbles reuse the same chrome.
+- Sync fills a missing IMAGE `header_media_url` with the live DivyaPrabha PNG so previews and sends have a fetchable link.
+- Inbox delivery/URL-suffix fix from the previous commit on this branch is still required on live (merge this PR, run `047`, hard-refresh).
+
+### Files Modified
+- `src/components/whatsapp/whatsapp-template-preview.tsx`
+- `src/components/settings/template-manager.tsx`
+- `src/components/inbox/template-picker.tsx`
+- `src/components/inbox/message-bubble.tsx`
+- `src/app/api/whatsapp/templates/sync/route.ts`
+- `changes.md`
+
+### Live
+- PR pending.
+- Migration required: `supabase/migrations/047_message_template_payload.sql` (from earlier commit on this branch).
+
+---
+
 ## [2026-08-16 13:41] Fix (Inbox) — template bubbles show image + CTAs; send URL suffix correctly
 
 ### Root Cause

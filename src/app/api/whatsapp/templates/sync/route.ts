@@ -7,6 +7,7 @@ import {
   shouldImportNewMetaTemplate,
 } from '@/lib/whatsapp/template-sync-policy'
 import { propagateTemplateApproval } from '@/lib/shopify/automation-bindings'
+import { defaultHeaderImageUrl } from '@/lib/shopify/whatsapp-template-library'
 import type { TemplateButton, TemplateSampleValues } from '@/types'
 
 /**
@@ -254,31 +255,9 @@ export async function POST() {
           ? headerFormat.toLowerCase()
           : null
 
-      const row = {
-        // Account tenancy + user audit, same split as the submit
-        // route. account_id is NOT NULL on message_templates
-        // post-017, so an INSERT without it errors.
-        account_id: accountId,
-        user_id: user.id,
-        name: t.name,
-        category: normalizeCategory(t.category),
-        language: t.language,
-        header_type: headerType,
-        header_content: header?.text ?? null,
-        header_handle: header?.example?.header_handle?.[0] ?? null,
-        body_text: body?.text ?? '',
-        footer_text: footer?.text ?? null,
-        buttons: parsedButtons.length ? parsedButtons : null,
-        sample_values: sampleValues,
-        status: normalizeStatus(t.status),
-        meta_template_id: t.id,
-        quality_score: normalizeQualityScore(t.quality_score),
-        updated_at: new Date().toISOString(),
-      }
-
       const { data: existing, error: lookupErr } = await supabase
         .from('message_templates')
-        .select('id')
+        .select('id, header_media_url')
         .eq('account_id', accountId)
         .eq('name', t.name)
         .eq('language', t.language)
@@ -291,6 +270,31 @@ export async function POST() {
           message: lookupErr.message,
         })
         continue
+      }
+
+      const row = {
+        // Account tenancy + user audit, same split as the submit
+        // route. account_id is NOT NULL on message_templates
+        // post-017, so an INSERT without it errors.
+        account_id: accountId,
+        user_id: user.id,
+        name: t.name,
+        category: normalizeCategory(t.category),
+        language: t.language,
+        header_type: headerType,
+        header_content: header?.text ?? null,
+        header_handle: header?.example?.header_handle?.[0] ?? null,
+        header_media_url:
+          existing?.header_media_url ||
+          (headerType === 'image' ? defaultHeaderImageUrl() : null),
+        body_text: body?.text ?? '',
+        footer_text: footer?.text ?? null,
+        buttons: parsedButtons.length ? parsedButtons : null,
+        sample_values: sampleValues,
+        status: normalizeStatus(t.status),
+        meta_template_id: t.id,
+        quality_score: normalizeQualityScore(t.quality_score),
+        updated_at: new Date().toISOString(),
       }
 
       if (existing?.id) {

@@ -23,6 +23,10 @@ import {
 } from "lucide-react";
 import { extractVariableIndices } from "@/lib/whatsapp/template-validators";
 import {
+  WhatsAppTemplatePreview,
+  fillTemplatePlaceholders,
+} from "@/components/whatsapp/whatsapp-template-preview";
+import {
   COLLECTION_ALL_PRODUCTS_PATH,
   defaultHeaderImageUrl,
   urlButtonParamFromAbsolute,
@@ -41,14 +45,6 @@ interface TemplatePickerProps {
   onSelect: (template: MessageTemplate, values: TemplateSendValues) => void;
   contactName?: string | null;
   contactId?: string | null;
-}
-
-function renderBodyPreview(body: string, params: string[]): string {
-  return body.replace(/\{\{(\d+)\}\}/g, (_, raw) => {
-    const idx = Number(raw) - 1;
-    const value = params[idx];
-    return value && value.trim().length > 0 ? value : `{{${raw}}}`;
-  });
 }
 
 interface UrlButtonSlot {
@@ -451,7 +447,7 @@ export function TemplatePicker({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="border-border bg-popover sm:max-w-lg">
+      <DialogContent className="border-border bg-popover sm:max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-popover-foreground">
             <LayoutTemplate className="h-4 w-4 text-primary" />
@@ -501,9 +497,7 @@ export function TemplatePicker({
                           </span>
                         )}
                       </div>
-                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                        {t.body_text}
-                      </p>
+                      <WhatsAppTemplatePreview template={t} compact className="mt-2" />
                     </div>
                     <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
                   </div>
@@ -513,16 +507,21 @@ export function TemplatePicker({
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="rounded-md border border-border bg-background/50 p-3">
-              <p className="mb-1 text-xs text-muted-foreground">Preview</p>
-              <p className="whitespace-pre-wrap text-sm text-popover-foreground">
-                {renderBodyPreview(selected.body_text, params)}
+            <div>
+              <p className="mb-1 text-xs text-muted-foreground">
+                How it looks to the customer
               </p>
-              {selected.footer_text && (
-                <p className="mt-2 text-xs italic text-muted-foreground">
-                  {selected.footer_text}
-                </p>
-              )}
+              <WhatsAppTemplatePreview
+                template={selected}
+                bodyText={fillTemplatePlaceholders(selected.body_text, params)}
+                headerText={headerText || undefined}
+                headerMediaUrl={
+                  selected.header_media_url ||
+                  (selected.header_type === "image"
+                    ? defaultHeaderImageUrl()
+                    : undefined)
+                }
+              />
             </div>
             {slots && slots.headerVarCount > 0 && (
               <div className="space-y-1">

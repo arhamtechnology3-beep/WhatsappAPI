@@ -47,6 +47,7 @@ import type {
   TemplateSampleValues,
 } from '@/types';
 import { templateStatusConfig } from '@/lib/template-status';
+import { WhatsAppTemplatePreview } from '@/components/whatsapp/whatsapp-template-preview';
 import {
   extractVariableIndices,
   TEMPLATE_LIMITS,
@@ -647,14 +648,6 @@ export function TemplateManager() {
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {template.body_text}
-                    </p>
-                    {template.footer_text && (
-                      <p className="text-xs text-muted-foreground italic">
-                        {template.footer_text}
-                      </p>
-                    )}
                     {(template.rejection_reason || template.submission_error) && (
                       <div className="flex items-start gap-1.5 text-xs text-red-400 bg-red-950/20 border border-red-900/40 rounded px-2 py-1.5">
                         <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
@@ -663,6 +656,7 @@ export function TemplateManager() {
                         </span>
                       </div>
                     )}
+                    <WhatsAppTemplatePreview template={template} compact />
                   </div>
                   <div className="flex items-center gap-1 shrink-0 ml-2">
                     {(statusKey === 'APPROVED' || statusKey === 'DRAFT') && (

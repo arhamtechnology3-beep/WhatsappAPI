@@ -89,6 +89,12 @@ export function ConversationList({
         if (accountId) {
           query = query.eq("account_id", accountId);
         }
+        const { error: mergeErr } = await supabase.rpc(
+          "merge_duplicate_conversations",
+        );
+        if (mergeErr) {
+          console.warn("conversation merge skipped:", mergeErr.message);
+        }
         const { data, error } = await query;
 
         if (gen !== fetchGen.current) return;

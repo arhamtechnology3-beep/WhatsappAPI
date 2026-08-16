@@ -21,6 +21,7 @@ import {
 } from '@/lib/rate-limit'
 import type { MessageTemplate } from '@/types'
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
+import { findOrCreateConversation as ensureConversation } from '@/lib/inbox/find-or-create-conversation'
 
 export async function POST(request: Request) {
   try {
@@ -178,19 +179,28 @@ export async function POST(request: Request) {
         )
       }
 
-      const resolved = await findOrCreateConversation(
-        supabase,
+      const resolvedId = await ensureConversation(supabase, {
         accountId,
-        user.id,
-        contact_id
-      )
+        userId: user.id,
+        contactId: contact_id,
+      })
+      if (!resolvedId) {
+        return NextResponse.json(
+          { error: 'Failed to open a conversation for this contact' },
+          { status: 500 }
+        )
+      }
+      const { data: resolved } = await supabase
+        .from('conversations')
+        .select('*, contact:contacts(*)')
+        .eq('id', resolvedId.id)
+        .maybeSingle()
       if (!resolved) {
         return NextResponse.json(
           { error: 'Failed to open a conversation for this contact' },
           { status: 500 }
         )
       }
-      // The embed may not round-trip on insert; pin the contact we verified.
       conversation = { ...resolved, contact: resolved.contact ?? contactRow }
     }
 
@@ -503,44 +513,3 @@ export async function POST(request: Request) {
   }
 }
 
-type SendSupabase = Awaited<ReturnType<typeof createClient>>
-
-/**
- * Return the contact's conversation in this account, creating one if it
- * doesn't exist yet. Mirrors the webhook's find-or-create so an
- * inbound-then-outbound (or outbound-first) sequence converges on a single
- * thread per contact. Runs under the caller's RLS — the conversations_insert
- * policy requires account agent membership, which the caller already is.
- */
-async function findOrCreateConversation(
-  supabase: SendSupabase,
-  accountId: string,
-  userId: string,
-  contactId: string,
-) {
-  const { data: existing } = await supabase
-    .from('conversations')
-    .select('*, contact:contacts(*)')
-    .eq('account_id', accountId)
-    .eq('contact_id', contactId)
-    .maybeSingle()
-
-  if (existing) return existing
-
-  const { data: created, error } = await supabase
-    .from('conversations')
-    .insert({
-      account_id: accountId,
-      user_id: userId,
-      contact_id: contactId,
-    })
-    .select('*, contact:contacts(*)')
-    .single()
-
-  if (error) {
-    console.error('Error creating conversation for contact send:', error.message)
-    return null
-  }
-
-  return created
-}

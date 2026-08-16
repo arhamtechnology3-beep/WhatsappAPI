@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
 import { enqueueShopifyNotification, initializeCheckoutRecoverySequence, moveDealToStageName } from '@/lib/shopify/shopify-helper'
 import { authorizeCron } from '@/lib/cron/auth'
+import { findOrCreateConversation } from '@/lib/inbox/find-or-create-conversation'
 
 export async function GET(request: Request) {
   const denied = authorizeCron(request)
@@ -109,28 +110,13 @@ export async function GET(request: Request) {
           const ownerUserId = account?.owner_user_id || job.account_id
 
           // Find or create conversation
-          let { data: conv } = await supabase
-            .from('conversations')
-            .select('id')
-            .eq('account_id', job.account_id)
-            .eq('contact_id', job.contact_id)
-            .maybeSingle()
-
+          const conv = await findOrCreateConversation(supabase, {
+            accountId: job.account_id,
+            userId: ownerUserId,
+            contactId: job.contact_id,
+          })
           if (!conv) {
-            const { data: newConv, error: convError } = await supabase
-              .from('conversations')
-              .insert({
-                account_id: job.account_id,
-                user_id: ownerUserId,
-                contact_id: job.contact_id,
-              })
-              .select('id')
-              .single()
-
-            if (convError || !newConv) {
-              throw new Error('Failed to resolve conversation: ' + (convError?.message || 'unknown error'))
-            }
-            conv = newConv
+            throw new Error('Failed to resolve conversation')
           }
 
           // Send template message via Meta WhatsApp API

@@ -14,6 +14,7 @@ import {
 import { fetchShopify } from '@/lib/shopify/shopify-client'
 import { moveDealToStageName } from '@/lib/shopify/shopify-helper'
 import { classifyReferral } from '@/lib/whatsapp/referral-parser'
+import { findOrCreateConversation as ensureConversation } from '@/lib/inbox/find-or-create-conversation'
 
 // The `after()` callback in POST runs within this route's max duration.
 // Inbound processing can fan out to per-media Meta verification calls, so
@@ -1365,34 +1366,20 @@ async function findOrCreateConversation(
   configOwnerUserId: string,
   contactId: string,
 ) {
-  // Look for existing conversation in this account
-  const { data: existing, error: findError } = await supabaseAdmin()
+  const row = await ensureConversation(supabaseAdmin(), {
+    accountId,
+    userId: configOwnerUserId,
+    contactId,
+  })
+  if (!row) return null
+  const { data, error } = await supabaseAdmin()
     .from('conversations')
     .select('*')
-    .eq('account_id', accountId)
-    .eq('contact_id', contactId)
-    .single()
-
-  if (!findError && existing) {
-    return existing
-  }
-
-  // Create new conversation. Same tenancy + audit split as
-  // findOrCreateContact above.
-  const { data: newConv, error: createError } = await supabaseAdmin()
-    .from('conversations')
-    .insert({
-      account_id: accountId,
-      user_id: configOwnerUserId,
-      contact_id: contactId,
-    })
-    .select()
-    .single()
-
-  if (createError) {
-    console.error('Error creating conversation:', createError)
+    .eq('id', row.id)
+    .maybeSingle()
+  if (error) {
+    console.error('Error loading conversation:', error)
     return null
   }
-
-  return newConv
+  return data
 }

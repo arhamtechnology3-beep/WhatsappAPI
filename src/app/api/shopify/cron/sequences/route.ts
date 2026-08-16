@@ -4,6 +4,7 @@ import { engineSendTemplate } from '@/lib/automations/meta-send'
 import { createShopifyDiscountCode } from '@/lib/shopify/discount-generator'
 import { authorizeCron } from '@/lib/cron/auth'
 import { sequenceStepSendDecision } from '@/lib/shopify/automation-bindings'
+import { findOrCreateConversation } from '@/lib/inbox/find-or-create-conversation'
 
 export async function GET(request: Request) {
   const denied = authorizeCron(request)
@@ -217,25 +218,11 @@ export async function GET(request: Request) {
         const ownerUserId = account?.owner_user_id || tracking.account_id
 
         // Resolve conversation
-        let { data: conv } = await supabase
-          .from('conversations')
-          .select('id')
-          .eq('account_id', tracking.account_id)
-          .eq('contact_id', tracking.contact_id)
-          .maybeSingle()
-
-        if (!conv) {
-          const { data: newConv } = await supabase
-            .from('conversations')
-            .insert({
-              account_id: tracking.account_id,
-              user_id: ownerUserId,
-              contact_id: tracking.contact_id,
-            })
-            .select('id')
-            .single()
-          conv = newConv
-        }
+        const conv = await findOrCreateConversation(supabase, {
+          accountId: tracking.account_id,
+          userId: ownerUserId,
+          contactId: tracking.contact_id,
+        })
 
         if (conv) {
           try {

@@ -31,7 +31,33 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
-## [2026-08-16 13:20] Docs (Templates) — All nine DivyaPrabha recipes Meta-approved
+## [2026-08-16 13:32] Fix (Inbox) — one conversation thread per contact
+
+### Root Cause
+- Contact merge re-pointed several conversation rows onto the same contact. Shopify automations then used `.maybeSingle()` / `.single()`, which fails when more than one thread exists, so each cart/COD send inserted another inbox row for the same phone (Jesal Panchal, Naman Domadia).
+
+### Objective & Fixes
+- Merge extra threads (move messages onto the newest one) and UNIQUE `(account_id, contact_id)`.
+- Shared find-or-create for webhook, send, Shopify cron, and nudge.
+- Inbox load and align-automations call `merge_duplicate_conversations`.
+
+### Files Modified
+- `supabase/migrations/046_one_conversation_per_contact.sql`
+- `src/lib/inbox/find-or-create-conversation.ts`
+- `src/app/api/whatsapp/webhook/route.ts`
+- `src/app/api/whatsapp/send/route.ts`
+- `src/app/api/shopify/cron/route.ts`
+- `src/app/api/shopify/cron/sequences/route.ts`
+- `src/app/api/shopify/checkout/nudge/route.ts`
+- `src/components/inbox/conversation-list.tsx`
+- `changes.md`
+
+### Live
+- Apply migration `046_one_conversation_per_contact.sql` in Supabase, then hard-refresh Inbox. No other migration.
+
+---
+
+
 
 ### Root Cause
 - Submit/name/header issues are resolved. Jesal confirmed Settings → Templates shows every Farm Didi recipe as **Approved** (en_US).

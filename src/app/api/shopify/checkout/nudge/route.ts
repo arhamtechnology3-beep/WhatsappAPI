@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
 import { moveDealToStageName } from '@/lib/shopify/shopify-helper'
 import { canonicalRecipeName, recipeByName } from '@/lib/shopify/whatsapp-template-library'
+import { findOrCreateConversation } from '@/lib/inbox/find-or-create-conversation'
 
 export async function POST(request: Request) {
   try {
@@ -63,28 +64,13 @@ export async function POST(request: Request) {
     )
 
     // 3. Find or create conversation for the contact
-    let { data: conv } = await supabase
-      .from('conversations')
-      .select('id')
-      .eq('account_id', accountId)
-      .eq('contact_id', checkout.contact_id)
-      .maybeSingle()
-
+    const conv = await findOrCreateConversation(supabase, {
+      accountId,
+      userId: user.id,
+      contactId: checkout.contact_id,
+    })
     if (!conv) {
-      const { data: newConv, error: convError } = await supabase
-        .from('conversations')
-        .insert({
-          account_id: accountId,
-          user_id: user.id,
-          contact_id: checkout.contact_id,
-        })
-        .select('id')
-        .single()
-
-      if (convError || !newConv) {
-        return NextResponse.json({ error: 'Failed to create conversation: ' + (convError?.message || '') }, { status: 500 })
-      }
-      conv = newConv
+      return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500 })
     }
 
     // 4. Map the parameters for the template

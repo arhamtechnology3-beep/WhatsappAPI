@@ -64,11 +64,12 @@ export function dynamicStorefrontUrl(): string {
   return `${storefrontBaseUrl()}/{{1}}`
 }
 
+/** Public JPEG/PNG that currently 200s on the live store (share.jpg / Gor_Keri.jpg 404). */
+export const DEFAULT_HEADER_IMAGE_URL =
+  'https://divyaprabhafoods.com/cdn/shop/files/WhatsApp_Image_2025-04-12_at_4.37.20_PM.png?v=1744459199'
+
 export function defaultHeaderImageUrl(): string {
-  return (
-    process.env.WHATSAPP_DEFAULT_HEADER_IMAGE_URL ||
-    `${storefrontBaseUrl()}/cdn/shop/files/share.jpg`
-  )
+  return process.env.WHATSAPP_DEFAULT_HEADER_IMAGE_URL || DEFAULT_HEADER_IMAGE_URL
 }
 
 /** Path+query for a Meta URL button registered as `https://store/{{1}}`. */

@@ -31,6 +31,26 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 11:50] Fix (Templates) — Header image URL 404
+
+### Root Cause
+- Default header was `…/cdn/shop/files/share.jpg`, which Shopify CDN returns 404. Submit failed: "Header image URL returned 404. It must be publicly reachable."
+
+### Objective & Fixes
+- Use a live store PNG: `WhatsApp_Image_2025-04-12_at_4.37.20_PM.png` (HTTP 200, image/png).
+- After deploy: Install recipes to refresh DRAFT headers, or paste that URL into the Header field and Submit.
+
+### Files Modified
+- `src/lib/shopify/whatsapp-template-library.ts`
+- `src/lib/shopify/whatsapp-template-library.test.ts`
+- `src/components/inbox/message-thread.tsx`
+- `changes.md`
+
+### Live
+- Ship on `main` after this PR. No migration.
+
+---
+
 ## [2026-08-16 11:45] Fix (Templates) — Live offers and divyaprabhafoods.com URLs
 
 ### Root Cause

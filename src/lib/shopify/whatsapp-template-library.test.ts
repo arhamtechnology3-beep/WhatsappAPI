@@ -3,6 +3,8 @@ import {
   SHOPIFY_TEMPLATE_LIBRARY,
   assertRecipeMetaSafe,
   buildRecipeButtonParams,
+  DEFAULT_HEADER_IMAGE_URL,
+  defaultHeaderImageUrl,
   urlButtonParamFromAbsolute,
 } from './whatsapp-template-library'
 
@@ -52,6 +54,12 @@ describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
     expect(shopNow && shopNow.type === 'URL' && shopNow.url).toContain(
       'collections/all-products',
     )
+  })
+
+  it('uses a default header image that is not the 404 share.jpg path', () => {
+    expect(defaultHeaderImageUrl()).toBe(DEFAULT_HEADER_IMAGE_URL)
+    expect(DEFAULT_HEADER_IMAGE_URL).not.toMatch(/share\.jpg/)
+    expect(DEFAULT_HEADER_IMAGE_URL).toMatch(/\.png|\.jpe?g/i)
   })
 })
 

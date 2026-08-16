@@ -623,7 +623,7 @@ export function MessageThread({
             template_message_params: {
               body: values.body,
               headerText: values.headerText,
-              headerMediaUrl: values.headerMediaUrl || template.header_media_url || (template.header_type === 'image' ? 'https://divyaprabhafoods.com/cdn/shop/files/Gor_Keri.jpg' : undefined),
+              headerMediaUrl: values.headerMediaUrl || template.header_media_url || (template.header_type === 'image' ? 'https://divyaprabhafoods.com/cdn/shop/files/WhatsApp_Image_2025-04-12_at_4.37.20_PM.png?v=1744459199' : undefined),
               buttonParams: values.buttonParams,
             },
             template_params: values.body,

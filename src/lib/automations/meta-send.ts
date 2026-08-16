@@ -243,6 +243,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         params: input.params,
         template: templateRow || undefined,
         messageParams,
+        wabaId: config.waba_id || undefined,
       })
       return r.messageId
     }

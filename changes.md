@@ -31,6 +31,29 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 18:20] Fix (Templates) — do not block Meta send on header image upload
+
+### Root Cause
+- Every inbox template send first fetched the Shopify PNG and uploaded it to WhatsApp `/media`. On Hostinger that call can hang or fail, so Graph never got the message. Festival (static CTAs) still failed after the retry deploy — same phone that received templates yesterday.
+- If Meta paused the template after the failed burst, we never said so in the inbox.
+
+### Objective & Fixes
+- Send **body variables first** (no header `{ link }`, no URL-button suffix). WhatsApp still shows the approved image + buttons from the template.
+- Look up the live Meta row (`APPROVED` vs `PAUSED`) and use Meta's language (`en` / `en_US`).
+- Timeouts on Meta calls. Show the Graph error on the failed bubble.
+
+### Files Modified
+- `src/lib/whatsapp/meta-api.ts`
+- `src/app/api/whatsapp/send/route.ts`
+- `src/lib/automations/meta-send.ts`
+- `src/components/inbox/message-bubble.tsx`
+- `changes.md`
+
+### Live
+- Push to `main`. No new SQL.
+
+---
+
 ## [2026-08-16 14:22] Fix (Templates) — restore template delivery (retry simpler Meta payload)
 
 ### Root Cause

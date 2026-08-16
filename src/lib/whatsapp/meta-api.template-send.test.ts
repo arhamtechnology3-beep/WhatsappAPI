@@ -52,7 +52,7 @@ describe('sendTemplateMessage retries', () => {
     vi.unstubAllGlobals()
   })
 
-  it('retries without the IMAGE header when Meta rejects it', async () => {
+  it('sends body-only first so Meta can use the approved header sample', async () => {
     const { sendTemplateMessage } = await import('./meta-api')
     const template: MessageTemplate = {
       id: '1',
@@ -77,8 +77,8 @@ describe('sendTemplateMessage retries', () => {
     })
 
     expect(result.messageId).toBe('wamid.OK')
-    expect(posted.length).toBeGreaterThan(1)
-    const last = posted[posted.length - 1]?.body as {
+    expect(posted).toHaveLength(1)
+    const last = posted[0]?.body as {
       template: { language: { code: string }; components: Array<{ type: string }> }
     }
     expect(last.template.language.code).toBe('en_US')

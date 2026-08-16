@@ -459,7 +459,9 @@ export async function uploadWhatsAppMediaFromUrl(args: {
   sourceUrl: string
 }): Promise<string | null> {
   try {
-    const fileRes = await fetch(args.sourceUrl)
+    const fileRes = await fetch(args.sourceUrl, {
+      signal: AbortSignal.timeout(8000),
+    })
     if (!fileRes.ok) return null
     const mime = (fileRes.headers.get('content-type') || 'image/png')
       .split(';')[0]
@@ -474,12 +476,41 @@ export async function uploadWhatsAppMediaFromUrl(args: {
       method: 'POST',
       headers: { Authorization: `Bearer ${args.accessToken}` },
       body: form,
+      signal: AbortSignal.timeout(12000),
     })
     if (!res.ok) return null
     const data = (await res.json()) as { id?: string }
     return data.id ? String(data.id) : null
   } catch {
     return null
+  }
+}
+
+export async function lookupMetaTemplateByName(args: {
+  wabaId: string
+  accessToken: string
+  name: string
+}): Promise<Array<{ name: string; language: string; status: string }>> {
+  try {
+    const url =
+      `${META_API_BASE}/${args.wabaId}/message_templates` +
+      `?name=${encodeURIComponent(args.name)}&fields=name,language,status&limit=10`
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${args.accessToken}` },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return []
+    const data = (await res.json()) as {
+      data?: Array<{ name?: string; language?: string; status?: string }>
+    }
+    if (!Array.isArray(data.data)) return []
+    return data.data.map((t) => ({
+      name: String(t.name || args.name),
+      language: String(t.language || ''),
+      status: String(t.status || '').toUpperCase(),
+    }))
+  } catch {
+    return []
   }
 }
 
@@ -512,6 +543,8 @@ export interface SendTemplateMessageArgs {
   messageParams?: SendTimeParams
   /** Meta's message_id of the message being replied to. */
   contextMessageId?: string
+  /** WABA id — used to read the live Meta language + status before send. */
+  wabaId?: string
 }
 
 /**
@@ -537,45 +570,55 @@ export async function sendTemplateMessage(
     template,
     messageParams,
     contextMessageId,
+    wabaId,
   } = args
 
-  const language = normalizeWhatsAppLanguage(
-    template?.language || args.language || 'en_US',
+  const metaRows =
+    wabaId
+      ? await lookupMetaTemplateByName({
+          wabaId,
+          accessToken,
+          name: templateName,
+        })
+      : []
+
+  const approved = metaRows.filter((t) => t.status === 'APPROVED')
+  const paused = metaRows.filter(
+    (t) => t.status === 'PAUSED' || t.status === 'DISABLED',
   )
+  if (metaRows.length > 0 && approved.length === 0) {
+    const st = paused[0]?.status || metaRows[0]?.status || 'UNKNOWN'
+    throw new Error(
+      `Template "${templateName}" is ${st} on Meta — it cannot be sent. In WhatsApp Manager → Message templates, restore/unpause it, then retry.`,
+    )
+  }
+
+  const languages = [
+    ...approved.map((t) => t.language),
+    template?.language,
+    args.language,
+    'en_US',
+    'en',
+  ]
+    .map((c) => normalizeWhatsAppLanguage(c))
+    .filter((c, i, all) => c && all.indexOf(c) === i)
 
   const bodyValues = messageParams?.body ?? params
-  let headerMediaId = messageParams?.headerMediaId
   const headerLink = messageParams?.headerMediaUrl || template?.header_media_url
-  const headerKind = template?.header_type?.toLowerCase()
-  if (
-    !headerMediaId &&
-    headerLink &&
-    (headerKind === 'image' || headerKind === 'video' || headerKind === 'document')
-  ) {
-    headerMediaId =
-      (await uploadWhatsAppMediaFromUrl({
-        phoneNumberId,
-        accessToken,
-        sourceUrl: headerLink,
-      })) || undefined
-  }
 
   const base: SendTimeParams = {
     body: bodyValues,
     headerText: messageParams?.headerText,
-    headerMediaUrl: headerMediaId ? undefined : headerLink,
-    headerMediaId,
+    headerMediaUrl: headerLink,
+    headerMediaId: messageParams?.headerMediaId,
     buttonParams: messageParams?.buttonParams,
   }
 
-  // Full payload first (image + CTAs). If Meta rejects the extra
-  // components, strip them — body-only is how these templates delivered
-  // before the header/button send path. Static CTAs still appear from
-  // the approved template definition.
-  const attempts: SendTimeParams[] = template
+  // Body-only first. Fetching Shopify PNGs / uploading media before the
+  // Graph send hung Hostinger and never reached Meta. The approved
+  // template already has its image + static CTAs on WhatsApp.
+  const payloads: SendTimeParams[] = template
     ? [
-        base,
-        { ...base, omitButtons: true },
         {
           ...base,
           omitButtons: true,
@@ -583,31 +626,35 @@ export async function sendTemplateMessage(
           headerMediaId: undefined,
           headerMediaUrl: undefined,
         },
+        { ...base, omitButtons: true },
+        base,
       ]
     : [base]
 
   let lastError: Error | null = null
-  for (const attempt of attempts) {
-    try {
-      return await postTemplateSend({
-        phoneNumberId,
-        accessToken,
-        to,
-        templateName,
-        language,
-        template,
-        bodyValues,
-        messageParams: attempt,
-        contextMessageId,
-      })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      if (/#131030|not in allowed list/i.test(message)) throw err
-      lastError = err instanceof Error ? err : new Error(message)
-      console.warn(
-        `[sendTemplateMessage] ${templateName} attempt failed, retrying simpler payload:`,
-        message,
-      )
+  for (const language of languages) {
+    for (const payload of payloads) {
+      try {
+        return await postTemplateSend({
+          phoneNumberId,
+          accessToken,
+          to,
+          templateName,
+          language,
+          template,
+          bodyValues,
+          messageParams: payload,
+          contextMessageId,
+        })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        if (/#131030|not in allowed list/i.test(message)) throw err
+        lastError = err instanceof Error ? err : new Error(message)
+        console.warn(
+          `[sendTemplateMessage] ${templateName} (${language}) failed, retrying:`,
+          message,
+        )
+      }
     }
   }
   throw lastError ?? new Error('Template send failed')
@@ -665,6 +712,7 @@ async function postTemplateSend(args: {
       Authorization: `Bearer ${args.accessToken}`,
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(20000),
   })
   if (!response.ok) {
     await throwMetaError(response, `Meta API error: ${response.status}`)

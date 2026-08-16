@@ -408,10 +408,9 @@ export async function POST(request: Request) {
             templateRow?.language || template_language || 'en_US',
           template: templateRow ?? undefined,
           messageParams: resolvedMessageParams,
-          // Legacy body-only fallback — only consulted when
-          // messageParams.body isn't set.
           params: template_params || [],
           contextMessageId,
+          wabaId: config.waba_id || undefined,
         })
         return result.messageId
       }

@@ -47,7 +47,6 @@ import type {
   TemplateSampleValues,
 } from '@/types';
 import { templateStatusConfig } from '@/lib/template-status';
-import { SHOPIFY_TEMPLATE_LIBRARY } from '@/lib/shopify/whatsapp-template-library';
 import {
   extractVariableIndices,
   TEMPLATE_LIMITS,
@@ -195,74 +194,6 @@ export function TemplateManager() {
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
       if (error) throw error;
-
-      // Seed default templates if they are missing in the database
-      const existingNames = new Set((data || []).map((t) => t.name));
-      const missingRecipes = SHOPIFY_TEMPLATE_LIBRARY.filter(
-        (recipe) => !existingNames.has(recipe.template_name)
-      );
-
-      // Check if any existing drafts have different copywriting
-      const draftRecipesToUpdate = (data || []).filter((t) => {
-        const recipe = SHOPIFY_TEMPLATE_LIBRARY.find((r) => r.template_name === t.name)
-        return recipe && t.status === 'DRAFT' && t.body_text !== recipe.body
-      });
-
-      if (missingRecipes.length > 0 || draftRecipesToUpdate.length > 0) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('account_id')
-          .eq('user_id', userId)
-          .maybeSingle();
-        const accountId = profile?.account_id;
-
-        if (accountId) {
-          const insertRows = [
-            ...missingRecipes.map((recipe) => ({
-              account_id: accountId,
-              user_id: userId,
-              name: recipe.template_name,
-              body_text: recipe.body,
-              status: 'DRAFT',
-              category: recipe.category === 'UTILITY' ? 'Utility' : 'Marketing',
-              language: recipe.language,
-              header_type: 'image',
-              header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800',
-            })),
-            ...draftRecipesToUpdate.map((t) => {
-              const recipe = SHOPIFY_TEMPLATE_LIBRARY.find((r) => r.template_name === t.name)!
-              return {
-                account_id: accountId,
-                user_id: userId,
-                name: recipe.template_name,
-                body_text: recipe.body,
-                status: 'DRAFT',
-                category: recipe.category === 'UTILITY' ? 'Utility' : 'Marketing',
-                language: recipe.language,
-                header_type: 'image',
-                header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800',
-              }
-            })
-          ];
-
-          const { error: insertErr } = await supabase
-            .from('message_templates')
-            .upsert(insertRows, { onConflict: 'user_id,name,language' });
-
-          if (!insertErr) {
-            // Re-fetch templates to include drafts
-            const { data: refetched, error: refetchErr } = await supabase
-              .from('message_templates')
-              .select('*')
-              .eq('user_id', userId)
-              .order('created_at', { ascending: false });
-            if (refetchErr) throw refetchErr;
-            setTemplates(refetched || []);
-            return;
-          }
-        }
-      }
-
       setTemplates(data || []);
     } catch (err) {
       console.error('Failed to fetch templates:', err);

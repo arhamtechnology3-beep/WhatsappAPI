@@ -283,168 +283,28 @@ export default function ShopifyDashboardPage() {
       if (logsErr) throw logsErr
       setWebhookLogs(logsData || [])
 
-      // 4. Fetch custom template texts from local DB table message_templates
-      // Fallback/merge with default Shopify WhatsApp templates library
-      const defaultTemplates: CustomTemplate[] = [
-        {
-          name: 'wacrm_cart_abandoned_v1',
-          body_text: "Hey {{1}}! 😉\n\nStill thinking about {{2}}? We saw you checking it out and saved it in your cart at {{3}}! Grab it now before it sells out.\n\n✅ Fresh & hygienically packed\n✅ Chemical preservative free\n✅ Free shipping on orders above ₹499\n\n👉 Click below to complete your checkout in 1-click:\n{{4}}\n\nHappy shopping! 🛍️",
-          status: 'DRAFT',
-          category: 'Marketing',
-          language: 'en_US',
-          header_type: 'image',
-          header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
-        },
-        {
-          name: 'wacrm_cart_reminder_step2_v1',
-          body_text: "Hey {{1}}! 🤔\n\nStill thinking about {{2}}? Your cart is waiting for you! Order today at only ₹{{3}} and experience authentic dadi-nani ka swad!\n\n✅ Hygienic packaging\n✅ Real ingredients, no preservatives\n✅ Cash on Delivery (COD) available\n\nReply STOP to opt out.",
-          status: 'DRAFT',
-          category: 'Marketing',
-          language: 'en_US',
-          header_type: 'image',
-          header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
-        },
-        {
-          name: 'wacrm_cart_reminder_step3_v1',
-          body_text: "Hey {{1}}! 🎁\n\nStill thinking about {{2}}? Complete your order here: {{3}} and use code {{4}} for a special 10% OFF!\n\n✅ Handmade by local women\n✅ Guaranteed premium quality\n✅ Super fast doorstep delivery\n\nReply STOP to opt out.",
-          status: 'DRAFT',
-          category: 'Marketing',
-          language: 'en_US',
-          header_type: 'image',
-          header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
-        },
-        {
-          name: 'wacrm_browse_abandoned_v1',
-          body_text: "Hey {{1}}! 👀\n\nWe saw you checking out {{2}} at only ₹{{3}}. It's one of our best-sellers!\n\n✅ Handcrafted with care & love\n✅ Hygienic glass bottle packaging\n✅ Cash on Delivery (COD) available\n\n👉 Grab yours here before it's gone:\n{{4}}\n\nReply STOP to opt out.",
-          status: 'DRAFT',
-          category: 'Marketing',
-          language: 'en_US',
-          header_type: 'image',
-          header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
-        },
-        {
-          name: 'wacrm_order_confirmed_v1',
-          body_text: "Hey {{1}}! Woohoo! 🎉 Your order #{{2}} of ₹{{3}} is confirmed!\n\nWe are preparing your fresh treats with lots of love. We'll send you tracking details as soon as it ships! 🚚✨\n\n✅ Handcrafted with care\n✅ Preservative free\n✅ Fast doorstep delivery\n\nThank you for supporting handcrafted food! ❤️",
-          status: 'DRAFT',
-          category: 'Utility',
-          language: 'en_US',
-          header_type: 'image',
-          header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
-        },
-        {
-          name: 'wacrm_order_shipped_v1',
-          body_text: "Great news, {{1}}! 🚚\n\nYour order #{{2}} from DivyaPrabha Foods is on its way to you!\n\n✅ Freshness sealed\n✅ Contactless delivery\n✅ Safe transit tracking\n\n👉 Track your package here:\n{{3}} 🎉",
-          status: 'DRAFT',
-          category: 'Utility',
-          language: 'en_US',
-          header_type: 'image',
-          header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
-        },
-        {
-          name: 'wacrm_order_delivered_v1',
-          body_text: "Hey {{1}}! Delivered! 🎁\n\nYour DivyaPrabha Foods order #{{2}} has been successfully delivered! We hope you absolutely love it.\n\n✅ Freshness & taste guaranteed\n✅ 100% natural ingredients\n\nReply here if you need any help! ❤️",
-          status: 'DRAFT',
-          category: 'Utility',
-          language: 'en_US',
-          header_type: 'image',
-          header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
-        },
-        {
-          name: 'wacrm_cod_confirmation_v1',
-          body_text: "Hey {{1}}! 😍 Your order #{{2}} of ₹{{3}} from DivyaPrabha Foods is almost ready to ship.\n\nSince you chose Cash on Delivery, please confirm below to lock in fast shipping! 🚀\n\n✅ Fresh & hygienically packed\n✅ 100% natural ingredients\n\n👇 Click 'Yes, confirm order' below to ship it today!",
-          status: 'DRAFT',
-          category: 'Utility',
-          language: 'en_US',
-          header_type: 'image',
-          header_media_url: 'https://images.unsplash.com/photo-1607349913338-fca6f7fc42d0?w=800'
-        }
-      ]
-
+      // 4. Fetch custom template texts from local DB (do not auto-seed)
       const mapping: Record<string, CustomTemplate> = {}
-      defaultTemplates.forEach((t) => {
-        mapping[t.name] = t
-      })
+
 
       if (user) {
         const { data: msgTemplates } = await supabase
           .from('message_templates')
           .select('name, body_text, status, category, language, header_type, header_media_url')
           .eq('user_id', user.id)
-        
-        // Seed default templates if they are missing in the database
-        const existingNames = new Set((msgTemplates || []).map((t) => t.name))
-        const missingTemplates = defaultTemplates.filter((dt) => !existingNames.has(dt.name))
 
-        // Detect if any existing draft templates contain the old copywriting
-        const draftTemplatesToUpdate = (msgTemplates || []).filter((t) => {
-          const dt = defaultTemplates.find((dt) => dt.name === t.name)
-          return dt && t.status === 'DRAFT' && t.body_text !== dt.body_text
-        })
-
-        if ((missingTemplates.length > 0 || draftTemplatesToUpdate.length > 0) && accountId) {
-          const insertRows = [
-            ...missingTemplates.map((dt) => ({
-              account_id: accountId,
-              user_id: user.id,
-              name: dt.name,
-              body_text: dt.body_text,
-              status: 'DRAFT',
-              category: dt.category || 'Marketing',
-              language: dt.language || 'en',
-              header_type: dt.header_type || null,
-              header_media_url: dt.header_media_url || null
-            })),
-            ...draftTemplatesToUpdate.map((t) => {
-              const dt = defaultTemplates.find((dt) => dt.name === t.name)!
-              return {
-                account_id: accountId,
-                user_id: user.id,
-                name: dt.name,
-                body_text: dt.body_text,
-                status: 'DRAFT',
-                category: dt.category || 'Marketing',
-                language: dt.language || 'en',
-                header_type: dt.header_type || null,
-                header_media_url: dt.header_media_url || null
-              }
-            })
-          ]
-
-          await supabase.from('message_templates').upsert(insertRows, { onConflict: 'user_id,name,language' })
-
-          // Re-fetch templates
-          const { data: refetchedTemplates } = await supabase
-            .from('message_templates')
-            .select('name, body_text, status, category, language, header_type, header_media_url')
-            .eq('user_id', user.id)
-
-          if (refetchedTemplates) {
-            refetchedTemplates.forEach((t) => {
-              mapping[t.name] = {
-                name: t.name,
-                body_text: t.body_text,
-                status: t.status,
-                category: t.category || 'Marketing',
-                language: t.language || 'en_US',
-                header_type: t.header_type || undefined,
-                header_media_url: t.header_media_url || undefined
-              }
-            })
-          }
-        } else {
-          if (msgTemplates) {
-            msgTemplates.forEach((t) => {
-              mapping[t.name] = {
-                name: t.name,
-                body_text: t.body_text,
-                status: t.status,
-                category: t.category || 'Marketing',
-                language: t.language || 'en_US',
-                header_type: t.header_type || undefined,
-                header_media_url: t.header_media_url || undefined
-              }
-            })
-          }
+        if (msgTemplates) {
+          msgTemplates.forEach((t) => {
+            mapping[t.name] = {
+              name: t.name,
+              body_text: t.body_text,
+              status: t.status,
+              category: t.category || 'Marketing',
+              language: t.language || 'en_US',
+              header_type: t.header_type || undefined,
+              header_media_url: t.header_media_url || undefined
+            }
+          })
         }
       }
 

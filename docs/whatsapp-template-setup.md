@@ -1,17 +1,17 @@
 # WhatsApp Template Setup Guide
 
-Pre-configured **DivyaPrabha Foods** recipes (Farm Didi-style Hinglish, image header, two CTA buttons). Install drafts in wacrm, then submit them to Meta.
+Pre-configured **DivyaPrabha Foods** recipes (Farm Didi-style Hinglish, image header, two CTA buttons). All nine names below are **Meta Approved** (en_US) as of 2026-08-16.
 
 ---
 
 ## How to submit
 
-1. In wacrm go to **Settings → Templates** and click **Install recipes**. That creates missing drafts (cart abandoned is `wacrm_cart_abandoned_v4` because v1–v3 already exist on Meta). It remaps Shopify automations and drops leftover failed drafts. Leave **Pending** templates alone.
-2. Submit only drafts that are not already Pending. Do not resubmit a name Meta already has.
-3. Template **names must match exactly** (e.g. `wacrm_cart_abandoned_v4`). Language: `en_US`.
+1. In wacrm go to **Settings → Templates** and click **Install recipes** only if a draft is missing. Cart abandoned is `wacrm_cart_abandoned_v4` (v1–v3 already existed on Meta).
+2. Do not resubmit an Approved name. Meta will not recreate the same name + English (US).
+3. Template **names must match exactly**. Language: `en_US`.
 4. Storefront buttons: `https://divyaprabhafoods.com/` and collection `https://divyaprabhafoods.com/collections/all-products` (never `*.myshopify.com`). Marketing offers: Buy 2 x 250g pickles FREE shipping, 10% OFF on ₹749+, FREE shipping above ₹599 — no 3% prepaid.
 5. Do **not** put raw URLs in the body. Marketing checkout/product buttons use `https://divyaprabhafoods.com/{{1}}`. Utility **Track Order** must be a static URL `https://divyaprabhafoods.com/account/orders` (no `{{1}}`, empty suffix) — Meta returns **Invalid parameter** otherwise.
-6. Opening **Settings → Templates** or **Shopify Store** aligns automations to these names and copies Meta status (Approved sends; Pending waits). Festival `wacrm_festival_broadcast_v2` is for Broadcasts, not a Shopify trigger.
+6. Opening **Settings → Templates** or **Shopify Store** aligns automations to these names and copies Meta **Approved** onto rules/steps. Festival `wacrm_festival_broadcast_v2` is for Broadcasts, not a Shopify trigger.
 7. **Sync from Meta** only refreshes templates already in wacrm. It will not re-import deleted `wacrm_*` names.
 
 ---

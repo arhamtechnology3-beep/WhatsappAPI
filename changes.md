@@ -31,6 +31,38 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 13:20] Docs (Templates) — All nine DivyaPrabha recipes Meta-approved
+
+### Root Cause
+- Submit/name/header issues are resolved. Jesal confirmed Settings → Templates shows every Farm Didi recipe as **Approved** (en_US).
+
+### Objective & Fixes
+- Record live Meta status and the Shopify trigger each name is bound to. Hard-refresh Templates once after deploy so align copies APPROVED onto rules/steps.
+
+| Template | Category | Trigger |
+|---|---|---|
+| `wacrm_cart_abandoned_v4` | Marketing | Cart drip step 1 (20 min) |
+| `wacrm_cart_reminder_step2_v2` | Marketing | Cart drip step 2 (3 h) |
+| `wacrm_cart_reminder_step3_v2` | Marketing | Cart drip step 3 (24 h) |
+| `wacrm_browse_abandoned_v2` | Marketing | Browse drip (90 min) |
+| `wacrm_cod_confirmation_v2` | Utility | COD `orders/create` |
+| `wacrm_order_confirmed_v2` | Utility | Prepaid `orders/create` |
+| `wacrm_order_shipped_v2` | Utility | Fulfilled / shipped |
+| `wacrm_order_delivered_v2` | Utility | Delivered |
+| `wacrm_festival_broadcast_v2` | Marketing | Broadcasts only (manual) |
+
+- Offers in marketing copy: Buy 2 × 250g pickles FREE shipping, 10% OFF on ₹749+, FREE shipping above ₹599. Storefront `https://divyaprabhafoods.com/`. Collection `https://divyaprabhafoods.com/collections/all-products`. Track Order `https://divyaprabhafoods.com/account/orders` (static).
+- Browse and cart steps 2–3 still need WhatsApp marketing opt-in. Cart drip stops on that checkout only.
+
+### Files Modified
+- `changes.md`
+- `docs/whatsapp-template-setup.md`
+
+### Live
+- Templates approved in Meta on `whatsapp.arhamtechnology.com` (2026-08-16). Code on `main`: align automations `7565d7c` (#25). No migration.
+
+---
+
 ## [2026-08-16 12:42] Fix (Automations) — align Shopify triggers to approved templates
 
 ### Root Cause
@@ -59,10 +91,11 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 - `changes.md`
 
 ### Live
-- Ship on `main` after this PR. No migration. Hard-refresh Settings → Templates once.
+- `main` `7565d7c` / [PR #25](https://github.com/arhamtechnology3-beep/WhatsappAPI/pull/25). No migration.
 
 ---
 
+## [2026-08-16 12:32] Fix (Templates) — cart abandoned v4 (v2 already on Meta)
 
 ### Root Cause
 - Other `*_v2` templates were new and went Pending. `wacrm_cart_abandoned_v2` (and historically v3) already existed on the WABA, so Meta #100 duplicate name.
@@ -80,10 +113,11 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 - `changes.md`
 
 ### Live
-- Ship on `main` after this PR. No migration.
+- `main` `fc0d857` / [PR #24](https://github.com/arhamtechnology3-beep/WhatsappAPI/pull/24). No migration.
 
 ---
 
+## [2026-08-16 12:25] Fix (Templates) — Meta name already exists; ship *_v2
 
 ### Root Cause
 - Submitting `wacrm_*_v1` failed with Meta #100: English (US) already exists, or category UTILITY vs existing MARKETING.
@@ -106,7 +140,7 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 - `changes.md`
 
 ### Live
-- Ship on `main` after this PR. No migration.
+- `main` `8983ca4` / [PR #23](https://github.com/arhamtechnology3-beep/WhatsappAPI/pull/23). No migration.
 
 ---
 
@@ -129,7 +163,7 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 - `changes.md`
 
 ### Live
-- Ship on `main` after this PR. No migration.
+- `main` `2aec601` / [PR #22](https://github.com/arhamtechnology3-beep/WhatsappAPI/pull/22). No migration.
 
 ---
 
@@ -150,7 +184,7 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 - `changes.md`
 
 ### Live
-- Ship on `main` after this PR. No migration.
+- `main` `03cb063` / [PR #21](https://github.com/arhamtechnology3-beep/WhatsappAPI/pull/21). No migration.
 
 ---
 
@@ -170,7 +204,7 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 - `changes.md`
 
 ### Live
-- Ship on `main` after this PR. No migration.
+- `main` `c0bcb0d` / [PR #20](https://github.com/arhamtechnology3-beep/WhatsappAPI/pull/20). No migration.
 
 ---
 
@@ -191,7 +225,7 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 - `changes.md`
 
 ### Live
-- Ship on `main` after this PR. No migration.
+- `main` `600c6ca` / [PR #19](https://github.com/arhamtechnology3-beep/WhatsappAPI/pull/19). No migration.
 
 ---
 
@@ -213,7 +247,7 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 - `changes.md`
 
 ### Live
-- Ship on `main` after this PR. No migration.
+- `main` `b68f038` / [PR #18](https://github.com/arhamtechnology3-beep/WhatsappAPI/pull/18). No migration.
 
 ---
 
@@ -242,7 +276,7 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 - `changes.md`
 
 ### Live
-- Ship on `main` after this PR. No migration.
+- `main` `eea857c` / [PR #17](https://github.com/arhamtechnology3-beep/WhatsappAPI/pull/17). No migration.
 
 ---
 

@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server'
 import { getCurrentAccount, toErrorResponse } from '@/lib/auth/account'
 import { fetchShopify } from '@/lib/shopify/shopify-client'
+import {
+  searchShopifyCustomers,
+  pickPreferredShopifyCustomer,
+  type ShopifyCustomerHit,
+} from '@/lib/shopify/shopify-customer-lookup'
 
 interface ShopifyCustomer {
   id: number | string
@@ -66,54 +71,39 @@ export async function GET(request: Request) {
     }
 
     let customer: ShopifyCustomer | null = null
+    const matches: ShopifyCustomerHit[] = []
     const customerId = contact.shopify_customer_id
 
-    // 2) Fetch customer by ID if cached
     if (customerId) {
       try {
         const customerRes = await fetchShopify(`/customers/${customerId}.json`)
-        customer = customerRes.customer as ShopifyCustomer
+        if (customerRes.customer) {
+          customer = customerRes.customer as ShopifyCustomer
+          matches.push(customerRes.customer as ShopifyCustomerHit)
+        }
       } catch (e) {
         console.warn(`[shopify-customer] Failed to fetch customer by ID ${customerId}:`, e)
       }
     }
 
-    // 3) Fallback search by phone number (if not found by ID)
-    if (!customer && contact.phone) {
-      try {
-        const cleanPhone = contact.phone.trim()
-        // Try exact phone search
-        let searchRes = await fetchShopify(`/customers/search.json?query=phone:${encodeURIComponent(cleanPhone)}`)
-        if (searchRes.customers && searchRes.customers.length > 0) {
-          customer = searchRes.customers[0] as ShopifyCustomer
-        } else if (cleanPhone.startsWith('+')) {
-          // Try search without the leading '+' symbol
-          const rawPhone = cleanPhone.replace('+', '')
-          searchRes = await fetchShopify(`/customers/search.json?query=phone:${encodeURIComponent(rawPhone)}`)
-          if (searchRes.customers && searchRes.customers.length > 0) {
-            customer = searchRes.customers[0] as ShopifyCustomer
-          }
-        }
-      } catch (e) {
-        console.warn(`[shopify-customer] Failed to search customer by phone ${contact.phone}:`, e)
+    const searched = await searchShopifyCustomers({
+      phone: contact.phone,
+      email: contact.email,
+    })
+    for (const row of searched) {
+      if (!matches.some((m) => String(m.id) === String(row.id))) {
+        matches.push(row)
       }
     }
-
-    // 4) Fallback search by email (if not found by ID or phone)
-    if (!customer && contact.email) {
-      try {
-        const cleanEmail = contact.email.trim()
-        const searchRes = await fetchShopify(`/customers/search.json?query=email:${encodeURIComponent(cleanEmail)}`)
-        if (searchRes.customers && searchRes.customers.length > 0) {
-          customer = searchRes.customers[0] as ShopifyCustomer
-        }
-      } catch (e) {
-        console.warn(`[shopify-customer] Failed to search customer by email ${contact.email}:`, e)
-      }
+    const preferred = pickPreferredShopifyCustomer(matches)
+    if (preferred) {
+      customer = {
+        ...(customer || {}),
+        ...preferred,
+      } as ShopifyCustomer
     }
 
-    // 5) If customer was found and ID is not cached, update the database
-    if (customer && !contact.shopify_customer_id) {
+    if (customer && String(contact.shopify_customer_id || '') !== String(customer.id)) {
       try {
         await ctx.supabase
           .from('contacts')
@@ -124,16 +114,18 @@ export async function GET(request: Request) {
       }
     }
 
-    // 6) Retrieve orders for the customer
-    let orders: ShopifyOrder[] = []
-    if (customer) {
+    const orderById = new Map<string, ShopifyOrder>()
+    for (const hit of matches.length ? matches : customer ? [customer] : []) {
       try {
-        const ordersRes = await fetchShopify(`/customers/${customer.id}/orders.json`)
-        orders = (ordersRes.orders || []) as ShopifyOrder[]
+        const ordersRes = await fetchShopify(`/customers/${hit.id}/orders.json?status=any`)
+        for (const o of (ordersRes.orders || []) as ShopifyOrder[]) {
+          orderById.set(String(o.id), o)
+        }
       } catch (e) {
-        console.error(`[shopify-customer] Failed to fetch orders for Shopify customer ID ${customer.id}:`, e)
+        console.error(`[shopify-customer] Failed to fetch orders for Shopify customer ID ${hit.id}:`, e)
       }
     }
+    const orders = [...orderById.values()]
 
     return NextResponse.json({
       success: true,
@@ -143,7 +135,7 @@ export async function GET(request: Request) {
         last_name: customer.last_name,
         email: customer.email,
         phone: customer.phone,
-        orders_count: customer.orders_count,
+        orders_count: orders.length || customer.orders_count,
         total_spent: customer.total_spent,
         currency: customer.currency,
         default_address: customer.default_address,

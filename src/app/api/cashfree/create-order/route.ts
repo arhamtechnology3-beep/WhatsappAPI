@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { fetchShopify } from '@/lib/shopify/shopify-client'
+import { findOrCreateShopifyAdminCustomer } from '@/lib/shopify/shopify-customer-lookup'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { getShopifyAccountContext } from '@/lib/shopify/shopify-helper'
 import { getCashfreeClient } from '@/lib/cashfree/cashfree-client'
@@ -91,48 +92,14 @@ export async function POST(request: Request) {
       }
     }
 
-    // 2) Find or create Shopify customer so email & phone are saved on the profile
-    let shopifyCustomerId: number | null = null
+    let shopifyCustomerId: number | string | null = null
     try {
-      if (phone) {
-        const cleanPhone = phone.trim()
-        let searchRes = await fetchShopify(`/customers/search.json?query=phone:${encodeURIComponent(cleanPhone)}&limit=1`)
-        if (searchRes.customers && searchRes.customers.length > 0) {
-          shopifyCustomerId = searchRes.customers[0].id
-          const updatePayload: any = {
-            customer: { first_name: firstName, last_name: lastName }
-          }
-          if (email) updatePayload.customer.email = email
-          await fetchShopify(`/customers/${shopifyCustomerId}.json`, {
-            method: 'PUT',
-            body: JSON.stringify(updatePayload)
-          }).catch(() => {})
-        }
-      }
-      if (!shopifyCustomerId && email) {
-        const searchRes = await fetchShopify(`/customers/search.json?query=email:${encodeURIComponent(email.trim())}&limit=1`)
-        if (searchRes.customers && searchRes.customers.length > 0) {
-          shopifyCustomerId = searchRes.customers[0].id
-        }
-      }
-      if (!shopifyCustomerId) {
-        const createPayload: any = {
-          customer: {
-            first_name: firstName,
-            last_name: lastName,
-            phone: phone || undefined,
-            email: email || undefined,
-            verified_email: !!email,
-          }
-        }
-        const createRes = await fetchShopify('/customers.json', {
-          method: 'POST',
-          body: JSON.stringify(createPayload)
-        })
-        if (createRes && createRes.customer) {
-          shopifyCustomerId = createRes.customer.id
-        }
-      }
+      shopifyCustomerId = await findOrCreateShopifyAdminCustomer({
+        phone,
+        email,
+        firstName,
+        lastName,
+      })
     } catch (customerErr) {
       console.warn('[cashfree-create-order] Customer find/create failed (non-fatal):', customerErr)
     }

@@ -1347,8 +1347,15 @@ async function findOrCreateContact(
   )
 
   if (existingContact) {
-    // Update name if it changed
-    if (name && name !== existingContact.name) {
+    const shopifyLinked = Boolean(existingContact.shopify_customer_id)
+    const canTakeWhatsAppName =
+      name &&
+      name !== existingContact.name &&
+      !shopifyLinked &&
+      (!existingContact.name ||
+        existingContact.name === existingContact.phone ||
+        existingContact.name === 'Shopify Customer')
+    if (canTakeWhatsAppName) {
       await supabaseAdmin()
         .from('contacts')
         .update({ name, updated_at: new Date().toISOString() })

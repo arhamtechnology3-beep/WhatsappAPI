@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
+  RECIPE_NAME_RENAMES,
   SHOPIFY_TEMPLATE_LIBRARY,
   recipeToDraftInsert,
 } from './whatsapp-template-library'
@@ -9,6 +10,8 @@ export interface InstallRecipesResult {
   skipped: number
   updated: number
   delaysUpdated: number
+  namesRemapped: number
+  staleDraftsRemoved: number
 }
 
 export async function installShopifyTemplateRecipes(
@@ -69,6 +72,26 @@ export async function installShopifyTemplateRecipes(
     .eq('account_id', accountId)
   const seqIds = (seqs ?? []).map((s) => s.id)
 
+  let namesRemapped = 0
+  for (const [from, to] of Object.entries(RECIPE_NAME_RENAMES)) {
+    const { data: rules } = await db
+      .from('shopify_automation_rules')
+      .update({ template_name: to })
+      .eq('account_id', accountId)
+      .eq('template_name', from)
+      .select('id')
+    namesRemapped += rules?.length ?? 0
+    if (seqIds.length > 0) {
+      const { data: steps } = await db
+        .from('shopify_automation_sequence_steps')
+        .update({ template_name: to })
+        .eq('template_name', from)
+        .in('sequence_id', seqIds)
+        .select('id')
+      namesRemapped += steps?.length ?? 0
+    }
+  }
+
   let delaysUpdated = 0
   if (seqIds.length > 0) {
     for (const recipe of SHOPIFY_TEMPLATE_LIBRARY) {
@@ -86,5 +109,25 @@ export async function installShopifyTemplateRecipes(
     }
   }
 
-  return { inserted, skipped, updated, delaysUpdated }
+  let staleDraftsRemoved = 0
+  const staleNames = Object.keys(RECIPE_NAME_RENAMES)
+  if (staleNames.length > 0) {
+    const { data: removed } = await db
+      .from('message_templates')
+      .delete()
+      .eq('account_id', accountId)
+      .in('name', staleNames)
+      .in('status', ['DRAFT', 'REJECTED'])
+      .select('id')
+    staleDraftsRemoved = removed?.length ?? 0
+  }
+
+  return {
+    inserted,
+    skipped,
+    updated,
+    delaysUpdated,
+    namesRemapped,
+    staleDraftsRemoved,
+  }
 }

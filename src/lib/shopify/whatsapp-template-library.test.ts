@@ -3,8 +3,10 @@ import {
   SHOPIFY_TEMPLATE_LIBRARY,
   assertRecipeMetaSafe,
   buildRecipeButtonParams,
+  canonicalRecipeName,
   DEFAULT_HEADER_IMAGE_URL,
   defaultHeaderImageUrl,
+  recipeByName,
   urlButtonParamFromAbsolute,
 } from './whatsapp-template-library'
 
@@ -22,15 +24,15 @@ describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
     const names = SHOPIFY_TEMPLATE_LIBRARY.map((r) => r.template_name)
     expect(names).toEqual(
       expect.arrayContaining([
-        'wacrm_cart_abandoned_v1',
-        'wacrm_cart_reminder_step2_v1',
-        'wacrm_cart_reminder_step3_v1',
-        'wacrm_browse_abandoned_v1',
-        'wacrm_order_confirmed_v1',
-        'wacrm_order_shipped_v1',
-        'wacrm_order_delivered_v1',
-        'wacrm_cod_confirmation_v1',
-        'wacrm_festival_broadcast_v1',
+        'wacrm_cart_abandoned_v2',
+        'wacrm_cart_reminder_step2_v2',
+        'wacrm_cart_reminder_step3_v2',
+        'wacrm_browse_abandoned_v2',
+        'wacrm_order_confirmed_v2',
+        'wacrm_order_shipped_v2',
+        'wacrm_order_delivered_v2',
+        'wacrm_cod_confirmation_v2',
+        'wacrm_festival_broadcast_v2',
       ]),
     )
   })
@@ -48,7 +50,7 @@ describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
       }
     }
     const festival = SHOPIFY_TEMPLATE_LIBRARY.find(
-      (r) => r.template_name === 'wacrm_festival_broadcast_v1',
+      (r) => r.template_name === 'wacrm_festival_broadcast_v2',
     )!
     const shopNow = festival.buttons.find((b) => b.type === 'URL' && b.text === 'Shop Now')
     expect(shopNow && shopNow.type === 'URL' && shopNow.url).toContain(
@@ -58,8 +60,8 @@ describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
 
   it('uses a static Track Order URL on Utility templates (no {{1}})', () => {
     for (const name of [
-      'wacrm_order_confirmed_v1',
-      'wacrm_order_shipped_v1',
+      'wacrm_order_confirmed_v2',
+      'wacrm_order_shipped_v2',
     ]) {
       const recipe = SHOPIFY_TEMPLATE_LIBRARY.find((r) => r.template_name === name)!
       const track = recipe.buttons.find((b) => b.type === 'URL' && b.text === 'Track Order')
@@ -90,7 +92,7 @@ describe('urlButtonParamFromAbsolute', () => {
 describe('buildRecipeButtonParams', () => {
   it('fills Complete Purchase from checkout_url', () => {
     const recipe = SHOPIFY_TEMPLATE_LIBRARY.find(
-      (r) => r.template_name === 'wacrm_cart_abandoned_v1',
+      (r) => r.template_name === 'wacrm_cart_abandoned_v2',
     )!
     const params = buildRecipeButtonParams(recipe, {
       checkout_url: 'https://divyaprabhafoods.com/checkouts/cn/xyz',
@@ -101,11 +103,20 @@ describe('buildRecipeButtonParams', () => {
 
   it('sends no URL suffix for static Track Order buttons', () => {
     const recipe = SHOPIFY_TEMPLATE_LIBRARY.find(
-      (r) => r.template_name === 'wacrm_order_confirmed_v1',
+      (r) => r.template_name === 'wacrm_order_confirmed_v2',
     )!
     const params = buildRecipeButtonParams(recipe, {
       tracking_url: 'https://divyaprabhafoods.com/account/orders',
     })
     expect(params).toEqual({})
+  })
+
+  it('resolves v1 automation names to the v2 recipe', () => {
+    expect(canonicalRecipeName('wacrm_order_confirmed_v1')).toBe(
+      'wacrm_order_confirmed_v2',
+    )
+    expect(recipeByName('wacrm_cod_confirmation_v1')?.template_name).toBe(
+      'wacrm_cod_confirmation_v2',
+    )
   })
 })

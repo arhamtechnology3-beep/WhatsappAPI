@@ -4,6 +4,26 @@ import { extractVariableIndices } from '@/lib/whatsapp/template-validators'
 /** Meta language for wacrm Shopify templates. Must match the approved Graph locale. */
 export const WACRM_TEMPLATE_LANGUAGE = 'en_US'
 
+/**
+ * v1 names already exist on the live WABA (en_US). Meta rejects recreate
+ * and rejects category changes. Recipes ship as *_v2; Install recipes remaps automations.
+ */
+export const RECIPE_NAME_RENAMES: Readonly<Record<string, string>> = {
+  wacrm_cart_abandoned_v1: 'wacrm_cart_abandoned_v2',
+  wacrm_cart_reminder_step2_v1: 'wacrm_cart_reminder_step2_v2',
+  wacrm_cart_reminder_step3_v1: 'wacrm_cart_reminder_step3_v2',
+  wacrm_browse_abandoned_v1: 'wacrm_browse_abandoned_v2',
+  wacrm_order_confirmed_v1: 'wacrm_order_confirmed_v2',
+  wacrm_order_shipped_v1: 'wacrm_order_shipped_v2',
+  wacrm_order_delivered_v1: 'wacrm_order_delivered_v2',
+  wacrm_cod_confirmation_v1: 'wacrm_cod_confirmation_v2',
+  wacrm_festival_broadcast_v1: 'wacrm_festival_broadcast_v2',
+}
+
+export function canonicalRecipeName(name: string): string {
+  return RECIPE_NAME_RENAMES[name] ?? name
+}
+
 export type ShopifyRecipeTrigger =
   | 'cart_abandoned'
   | 'cart_abandoned_step2'
@@ -153,7 +173,7 @@ const shopNow = (): TemplateButton => ({
 export const SHOPIFY_TEMPLATE_LIBRARY: readonly ShopifyTemplateRecipe[] = [
   {
     trigger_type: 'cart_abandoned',
-    template_name: 'wacrm_cart_abandoned_v1',
+    template_name: 'wacrm_cart_abandoned_v2',
     category: 'MARKETING',
     language: WACRM_TEMPLATE_LANGUAGE,
     body: `Namaste {{1}}! Aapka cart wait kar raha hai 🛒
@@ -174,7 +194,7 @@ Complete purchase se order confirm karo.`,
   },
   {
     trigger_type: 'cart_abandoned_step2',
-    template_name: 'wacrm_cart_reminder_step2_v1',
+    template_name: 'wacrm_cart_reminder_step2_v2',
     category: 'MARKETING',
     language: WACRM_TEMPLATE_LANGUAGE,
     body: `Jaldi karo {{1}}! 🔥
@@ -195,7 +215,7 @@ Order confirm karo — cart abhi saved hai.`,
   },
   {
     trigger_type: 'cart_abandoned_step3',
-    template_name: 'wacrm_cart_reminder_step3_v1',
+    template_name: 'wacrm_cart_reminder_step3_v2',
     category: 'MARKETING',
     language: WACRM_TEMPLATE_LANGUAGE,
     body: `Namaste {{1}}! Code {{3}} se abhi milega extra OFF! 🎁
@@ -216,7 +236,7 @@ Complete purchase pe code apply ho jayega.`,
   },
   {
     trigger_type: 'browse_abandoned',
-    template_name: 'wacrm_browse_abandoned_v1',
+    template_name: 'wacrm_browse_abandoned_v2',
     category: 'MARKETING',
     language: WACRM_TEMPLATE_LANGUAGE,
     body: `Abhi bhi soch rahe ho {{2}} ke baare mein, {{1}}? 🤔
@@ -236,7 +256,7 @@ Try karo aur khud decide karo!`,
   },
   {
     trigger_type: 'order_created',
-    template_name: 'wacrm_order_confirmed_v1',
+    template_name: 'wacrm_order_confirmed_v2',
     category: 'UTILITY',
     language: WACRM_TEMPLATE_LANGUAGE,
     body: `Dhanyawad {{1}}! 🙏
@@ -257,7 +277,7 @@ Hum packing shuru kar rahe hain — tracking alag message mein aayegi.
   },
   {
     trigger_type: 'order_fulfilled',
-    template_name: 'wacrm_order_shipped_v1',
+    template_name: 'wacrm_order_shipped_v2',
     category: 'UTILITY',
     language: WACRM_TEMPLATE_LANGUAGE,
     body: `Aapka order #{{2}} ship ho gaya hai, {{1}}! 🚚
@@ -275,7 +295,7 @@ Hum packing shuru kar rahe hain — tracking alag message mein aayegi.
   },
   {
     trigger_type: 'order_delivered',
-    template_name: 'wacrm_order_delivered_v1',
+    template_name: 'wacrm_order_delivered_v2',
     category: 'UTILITY',
     language: WACRM_TEMPLATE_LANGUAGE,
     body: `Namaste {{1}}! Aapka order #{{2}} pahunch gaya! 🥭❤️
@@ -301,7 +321,7 @@ Fridge zaroori nahi — dry jar, sookhe chamach se nikalein, swad mahino tak rah
   },
   {
     trigger_type: 'order_created',
-    template_name: 'wacrm_cod_confirmation_v1',
+    template_name: 'wacrm_cod_confirmation_v2',
     category: 'UTILITY',
     language: WACRM_TEMPLATE_LANGUAGE,
     body: `Namaste {{1}}! Aapka COD order #{{2}} of ₹{{3}} almost ready hai 😍
@@ -325,7 +345,7 @@ Neeche Yes dabayein — Cancel se order ruk jayega.`,
   },
   {
     trigger_type: 'broadcast',
-    template_name: 'wacrm_festival_broadcast_v1',
+    template_name: 'wacrm_festival_broadcast_v2',
     category: 'MARKETING',
     language: WACRM_TEMPLATE_LANGUAGE,
     body: `Namaste {{1}}! Festival ka swad ghar le aao! 🎁
@@ -349,7 +369,10 @@ Shop Now se all products dekho.`,
 export function recipeByName(
   name: string,
 ): ShopifyTemplateRecipe | undefined {
-  return SHOPIFY_TEMPLATE_LIBRARY.find((r) => r.template_name === name)
+  const canonical = canonicalRecipeName(name)
+  return SHOPIFY_TEMPLATE_LIBRARY.find(
+    (r) => r.template_name === name || r.template_name === canonical,
+  )
 }
 
 export function recipeToDraftInsert(

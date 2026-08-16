@@ -180,7 +180,7 @@ export default function ShopifyDashboardPage() {
   const [customTemplates, setCustomTemplates] = useState<Record<string, CustomTemplate>>({})
   const [templatesList, setTemplatesList] = useState<CustomTemplate[]>([])
   const [templatesSearchQuery, setTemplatesSearchQuery] = useState('')
-  const [selectedTemplateName, setSelectedTemplateName] = useState<string>('wacrm_cod_confirmation_v1')
+  const [selectedTemplateName, setSelectedTemplateName] = useState<string>('wacrm_cod_confirmation_v2')
 
   // Broadcasts list state
   const [broadcastsList, setBroadcastsList] = useState<Broadcast[]>([])
@@ -552,21 +552,21 @@ export default function ShopifyDashboardPage() {
     const cfg = {
       cod: {
         trigger_type: 'cod_confirmation',
-        template_name: 'wacrm_cod_confirmation_v1',
+        template_name: 'wacrm_cod_confirmation_v2',
         is_active: codActive,
         delay_minutes: delayToMinutes(codDelay),
         mapping: ['customer_name', 'order_number', 'total_price'],
       },
       prepaid: {
         trigger_type: 'order_created',
-        template_name: 'wacrm_order_confirmed_v1',
+        template_name: 'wacrm_order_confirmed_v2',
         is_active: prepaidActive,
         delay_minutes: delayToMinutes(prepaidDelay),
         mapping: ['customer_name', 'order_number', 'total_price'],
       },
       fulfilled: {
         trigger_type: 'order_fulfilled',
-        template_name: 'wacrm_order_shipped_v1',
+        template_name: 'wacrm_order_shipped_v2',
         is_active: fulfilledActive,
         delay_minutes: delayToMinutes(fulfilledDelay),
         mapping: ['customer_name', 'order_number', 'tracking_url'],
@@ -676,15 +676,15 @@ export default function ShopifyDashboardPage() {
   }
 
 const DEFAULT_SAMPLE_VALUES: Record<string, string[]> = {
-  wacrm_cod_confirmation_v1: ['Jesal Patel', '1234', '1499'],
-  wacrm_order_confirmed_v1: ['Jesal Patel', '1234', '1499'],
-  wacrm_cart_abandoned_v1: ['Jesal Patel', 'Nani Trial Pack'],
-  wacrm_cart_reminder_step2_v1: ['Jesal Patel', 'Mango pickle'],
-  wacrm_cart_reminder_step3_v1: ['Jesal Patel', 'Nani Trial Pack', 'WELCOME10'],
-  wacrm_browse_abandoned_v1: ['Jesal Patel', 'Homemade Mango Pickle'],
-  wacrm_order_shipped_v1: ['Jesal Patel', '1234'],
-  wacrm_order_delivered_v1: ['Jesal Patel', '1234'],
-  wacrm_festival_broadcast_v1: ['Jesal Patel'],
+  wacrm_cod_confirmation_v2: ['Jesal Patel', '1234', '1499'],
+  wacrm_order_confirmed_v2: ['Jesal Patel', '1234', '1499'],
+  wacrm_cart_abandoned_v2: ['Jesal Patel', 'Nani Trial Pack'],
+  wacrm_cart_reminder_step2_v2: ['Jesal Patel', 'Mango pickle'],
+  wacrm_cart_reminder_step3_v2: ['Jesal Patel', 'Nani Trial Pack', 'WELCOME10'],
+  wacrm_browse_abandoned_v2: ['Jesal Patel', 'Homemade Mango Pickle'],
+  wacrm_order_shipped_v2: ['Jesal Patel', '1234'],
+  wacrm_order_delivered_v2: ['Jesal Patel', '1234'],
+  wacrm_festival_broadcast_v2: ['Jesal Patel'],
 }
 
 function getAutoSampleValues(templateName: string, varCount: number): string[] {
@@ -705,7 +705,7 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
       const language = templateRec?.language || 'en'
       
       let buttons: any[] | undefined = undefined
-      if (editingTemplateName === 'wacrm_cod_confirmation_v1') {
+      if (editingTemplateName === 'wacrm_cod_confirmation_v2') {
         buttons = [
           { type: 'QUICK_REPLY', text: 'Yes, confirm order' },
           { type: 'QUICK_REPLY', text: 'Cancel order' }
@@ -779,17 +779,17 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
 
   const getSelectedPreviewText = () => {
     if (phonePreviewTab === 'COD') {
-      const customBody = customTemplates['wacrm_cod_confirmation_v1']?.body_text
+      const customBody = customTemplates['wacrm_cod_confirmation_v2']?.body_text
       return customBody
         ? customBody.replace(/\{\{1\}\}/g, 'Jesal Patel').replace(/\{\{2\}\}/g, '1234').replace(/\{\{3\}\}/g, '₹1,499')
         : "Hi Jesal Patel, please confirm your Cash on Delivery order #1234 of ₹1,499 by clicking the button below."
     } else if (phonePreviewTab === 'Prepaid') {
-      const customBody = customTemplates['wacrm_order_confirmed_v1']?.body_text
+      const customBody = customTemplates['wacrm_order_confirmed_v2']?.body_text
       return customBody
         ? customBody.replace(/\{\{1\}\}/g, 'Jesal Patel').replace(/\{\{2\}\}/g, '1234').replace(/\{\{3\}\}/g, '₹1,499')
         : "Hi Jesal Patel, your order #1234 of ₹1,499 is confirmed! We'll notify you when it ships."
     } else {
-      const customBody = customTemplates['wacrm_cart_abandoned_v1']?.body_text
+      const customBody = customTemplates['wacrm_cart_abandoned_v2']?.body_text
       return customBody
         ? customBody.replace(/\{\{1\}\}/g, 'Jesal Patel').replace(/\{\{2\}\}/g, 'Organic Jam Combo').replace(/\{\{3\}\}/g, 'Divyaprabha Foods').replace(/\{\{4\}\}/g, 'https://divyaprabhafoods.com/checkout')
         : "Hi Jesal Patel, you left Organic Jam Combo in your cart at Divyaprabha Foods. Complete your order here: https://divyaprabhafoods.com/checkout"
@@ -798,17 +798,17 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
 
   const getSequenceStepPreviewText = (stepOrder: number) => {
     if (stepOrder === 1) {
-      const customBody = customTemplates['wacrm_cart_abandoned_v1']?.body_text
+      const customBody = customTemplates['wacrm_cart_abandoned_v2']?.body_text
       return customBody
         ? customBody.replace(/\{\{1\}\}/g, 'Jesal Patel').replace(/\{\{2\}\}/g, 'Organic Jam Combo').replace(/\{\{3\}\}/g, 'Divyaprabha Foods').replace(/\{\{4\}\}/g, 'https://divyaprabhafoods.com/checkout')
         : "Hi Jesal Patel, you left Organic Jam Combo in your cart at Divyaprabha Foods. Complete your order here: https://divyaprabhafoods.com/checkout"
     } else if (stepOrder === 2) {
-      const customBody = customTemplates['wacrm_cart_reminder_step2_v1']?.body_text
+      const customBody = customTemplates['wacrm_cart_reminder_step2_v2']?.body_text
       return customBody
         ? customBody.replace(/\{\{1\}\}/g, 'Jesal Patel').replace(/\{\{2\}\}/g, 'Organic Jam Combo').replace(/\{\{3\}\}/g, '₹1,499')
         : "Hi Jesal Patel, still thinking it over? Organic Jam Combo is waiting for you at ₹1,499. Reply STOP to stop these updates."
     } else {
-      const customBody = customTemplates['wacrm_cart_reminder_step3_v1']?.body_text
+      const customBody = customTemplates['wacrm_cart_reminder_step3_v2']?.body_text
       return customBody
         ? customBody.replace(/\{\{1\}\}/g, 'Jesal Patel').replace(/\{\{2\}\}/g, 'Organic Jam Combo').replace(/\{\{3\}\}/g, 'https://divyaprabhafoods.com/checkout').replace(/\{\{4\}\}/g, 'WELCOME10')
         : "Hi Jesal Patel, here's 10% off to help you decide: use code WELCOME10 on Organic Jam Combo, valid 24 hours. Complete your order: https://divyaprabhafoods.com/checkout. Reply STOP to stop these updates."
@@ -1678,13 +1678,13 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
                         <span className="font-semibold text-muted-foreground">TEMPLATE</span>
                         <div className="flex items-center gap-2">
                           <Badge className="bg-muted text-foreground border border-border font-mono text-[10px] px-2.5 py-1">
-                            wacrm_cod_confirmation_v1
+                            wacrm_cod_confirmation_v2
                           </Badge>
                           <Button
                             variant="outline"
                             size="sm"
                             className="h-7 text-[10px] border-border text-foreground hover:bg-muted px-2.5"
-                            onClick={() => openEditor('wacrm_cod_confirmation_v1', SHOPIFY_TEMPLATE_LIBRARY.find(t => t.template_name === 'wacrm_cod_confirmation_v1')?.body || '', 0)}
+                            onClick={() => openEditor('wacrm_cod_confirmation_v2', SHOPIFY_TEMPLATE_LIBRARY.find(t => t.template_name === 'wacrm_cod_confirmation_v2')?.body || '', 0)}
                           >
                             Change &rarr;
                           </Button>
@@ -1768,13 +1768,13 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
                         <span className="font-semibold text-muted-foreground">TEMPLATE</span>
                         <div className="flex items-center gap-2">
                           <Badge className="bg-muted text-foreground border border-border font-mono text-[10px] px-2.5 py-1">
-                            wacrm_order_confirmed_v1
+                            wacrm_order_confirmed_v2
                           </Badge>
                           <Button
                             variant="outline"
                             size="sm"
                             className="h-7 text-[10px] border-border text-foreground hover:bg-muted px-2.5"
-                            onClick={() => openEditor('wacrm_order_confirmed_v1', SHOPIFY_TEMPLATE_LIBRARY.find(t => t.template_name === 'wacrm_order_confirmed_v1')?.body || '', 0)}
+                            onClick={() => openEditor('wacrm_order_confirmed_v2', SHOPIFY_TEMPLATE_LIBRARY.find(t => t.template_name === 'wacrm_order_confirmed_v2')?.body || '', 0)}
                           >
                             Change &rarr;
                           </Button>
@@ -1829,13 +1829,13 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
                         <span className="font-semibold text-muted-foreground">TEMPLATE</span>
                         <div className="flex items-center gap-2">
                           <Badge className="bg-muted text-foreground border border-border font-mono text-[10px] px-2.5 py-1">
-                            wacrm_order_shipped_v1
+                            wacrm_order_shipped_v2
                           </Badge>
                           <Button
                             variant="outline"
                             size="sm"
                             className="h-7 text-[10px] border-border text-foreground hover:bg-muted px-2.5"
-                            onClick={() => openEditor('wacrm_order_shipped_v1', SHOPIFY_TEMPLATE_LIBRARY.find(t => t.template_name === 'wacrm_order_shipped_v1')?.body || '', 0)}
+                            onClick={() => openEditor('wacrm_order_shipped_v2', SHOPIFY_TEMPLATE_LIBRARY.find(t => t.template_name === 'wacrm_order_shipped_v2')?.body || '', 0)}
                           >
                             Change &rarr;
                           </Button>
@@ -1892,7 +1892,7 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
                                 sequence_id: sequences[0].id,
                                 step_order: nextOrder,
                                 delay_minutes_from_previous_step: nextOrder === 1 ? 20 : nextOrder === 2 ? 180 : 1440,
-                                template_name: nextOrder === 1 ? 'wacrm_cart_abandoned_v1' : nextOrder === 2 ? 'wacrm_cart_reminder_step2_v1' : 'wacrm_cart_reminder_step3_v1',
+                                template_name: nextOrder === 1 ? 'wacrm_cart_abandoned_v2' : nextOrder === 2 ? 'wacrm_cart_reminder_step2_v2' : 'wacrm_cart_reminder_step3_v2',
                                 meta_approval_status: 'approved',
                                 is_active: true
                               })

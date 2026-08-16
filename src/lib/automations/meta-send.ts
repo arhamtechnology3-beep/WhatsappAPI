@@ -156,7 +156,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         body: input.params,
       }
 
-      if (input.templateName === 'wacrm_cod_confirmation_v1') {
+      if (/^wacrm_cod_confirmation/.test(input.templateName)) {
         messageParams.buttonParams = {
           0: 'confirm_cod',
           1: 'cancel_cod',

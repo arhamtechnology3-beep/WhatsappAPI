@@ -391,7 +391,8 @@ export function TemplateManager() {
       toast.success(
         `Recipes ready: ${data.inserted ?? 0} new, ${data.updated ?? 0} drafts updated` +
           (data.skipped ? `, ${data.skipped} already submitted` : '') +
-          '. Submit each draft to Meta.',
+          (data.namesRemapped ? `, ${data.namesRemapped} automations pointed at *_v2` : '') +
+          '. Submit each *_v2 draft to Meta (do not resubmit the old names).',
       );
     } catch (err) {
       toast.error(

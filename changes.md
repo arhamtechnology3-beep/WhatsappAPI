@@ -31,6 +31,33 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 12:25] Fix (Templates) — Meta name already exists; ship *_v2
+
+### Root Cause
+- Submitting `wacrm_*_v1` failed with Meta #100: English (US) already exists, or category UTILITY vs existing MARKETING.
+- Our toast appended a Track Order URL hint onto every "Invalid parameter", which hid the real error.
+
+### Objective & Fixes
+- Recipes and automations use `*_v2` names. Install recipes inserts those drafts, remaps rules/steps from v1, deletes leftover v1 DRAFT/REJECTED rows.
+- Toasts explain duplicate-name and category-lock errors. Bare Invalid parameter still mentions static Track Order.
+- After deploy: Install recipes, then Submit only the v2 drafts (close the old v1 modal).
+
+### Files Modified
+- `src/lib/shopify/whatsapp-template-library.ts`
+- `src/lib/shopify/install-template-recipes.ts`
+- `src/lib/whatsapp/meta-api.ts`
+- `src/components/settings/template-manager.tsx`
+- `src/components/settings/shopify-settings.tsx`
+- `src/app/(dashboard)/shopify/page.tsx`
+- `src/lib/automations/meta-send.ts`
+- `docs/whatsapp-template-setup.md`
+- `changes.md`
+
+### Live
+- Ship on `main` after this PR. No migration.
+
+---
+
 ## [2026-08-16 12:15] Fix (Templates) — Utility Track Order Invalid parameter
 
 ### Root Cause

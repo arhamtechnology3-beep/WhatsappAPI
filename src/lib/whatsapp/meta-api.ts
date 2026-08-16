@@ -75,22 +75,50 @@ export async function resolveMetaAppIdForToken(
   )
 }
 
+function stripStaleTrackOrderAdvice(message: string): string {
+  return message
+    .replace(
+      /\s*[—-]\s*For Utility templates, Track Order cannot use[\s\S]*$/i,
+      '',
+    )
+    .trim()
+}
+
 export function explainUnsupportedMetaObjectError(message: string): string {
-  if (/Invalid parameter/i.test(message)) {
+  const text = stripStaleTrackOrderAdvice(message)
+
+  if (/already .+ content for this template/i.test(text)) {
     return (
-      `${message} — For Utility templates, Track Order cannot use https://divyaprabhafoods.com/{{1}}. ` +
-      `Use a full static URL such as https://divyaprabhafoods.com/account/orders (no {{1}} in the button). ` +
-      `Leave the URL suffix field empty.`
+      `${text} — This name + English (US) already exists on the WhatsApp account. ` +
+      `Meta will not recreate it. Close the modal, click Install recipes (adds *_v2 drafts), ` +
+      `then Submit those new names. Or delete the old template in WhatsApp Manager first.`
+    )
+  }
+  if (/category .+ doesn'?t match|already associated with this template/i.test(text)) {
+    return (
+      `${text} — Meta locked this template name to another category; category cannot be changed. ` +
+      `Submit a new name (Install recipes creates *_v2 as UTILITY/MARKETING as designed).`
+    )
+  }
+  const core = text
+    .replace(/\s*\(Invalid parameter\)/i, '')
+    .replace(/\s*\[#\d+\]/g, '')
+    .trim()
+  if (/^Invalid parameter$/i.test(core)) {
+    return (
+      `${text} — If this is a Utility Track Order button, use a full static URL ` +
+      `https://divyaprabhafoods.com/account/orders (no {{1}}) and leave the suffix empty. ` +
+      `If Meta says the name already exists, Install recipes and submit the *_v2 drafts instead.`
     )
   }
   if (
     !/Unsupported post request|does not exist|missing permissions|does not support this operation/i.test(
-      message,
+      text,
     )
   ) {
-    return message
+    return text
   }
-  const id = message.match(/Object with ID ['"]?(\d+)/i)?.[1]
+  const id = text.match(/Object with ID ['"]?(\d+)/i)?.[1]
   return (
     `Meta rejected ID ${id ?? '(unknown)'}: this WhatsApp token cannot use that object. ` +
     `Fix Hostinger META_APP_ID (must be the Facebook App ID for this token, not a Page or WABA ID) ` +

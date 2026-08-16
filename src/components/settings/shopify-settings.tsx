@@ -160,9 +160,9 @@ export function ShopifySettings() {
       // Auto-seed default rules if empty
       if (!rulesData || rulesData.length === 0) {
         const defaultRules = [
-          { account_id: accountId, trigger_type: 'order_created', template_name: 'wacrm_order_confirmed_v1', template_variable_mapping: ['customer_name', 'order_number', 'total_price'], delay_minutes: 0, meta_approval_status: 'not_submitted', is_active: true },
-          { account_id: accountId, trigger_type: 'order_fulfilled', template_name: 'wacrm_order_shipped_v1', template_variable_mapping: ['customer_name', 'order_number'], delay_minutes: 0, meta_approval_status: 'not_submitted', is_active: true },
-          { account_id: accountId, trigger_type: 'order_delivered', template_name: 'wacrm_order_delivered_v1', template_variable_mapping: ['customer_name', 'order_number'], delay_minutes: 0, meta_approval_status: 'not_submitted', is_active: true },
+          { account_id: accountId, trigger_type: 'order_created', template_name: 'wacrm_order_confirmed_v2', template_variable_mapping: ['customer_name', 'order_number', 'total_price'], delay_minutes: 0, meta_approval_status: 'not_submitted', is_active: true },
+          { account_id: accountId, trigger_type: 'order_fulfilled', template_name: 'wacrm_order_shipped_v2', template_variable_mapping: ['customer_name', 'order_number'], delay_minutes: 0, meta_approval_status: 'not_submitted', is_active: true },
+          { account_id: accountId, trigger_type: 'order_delivered', template_name: 'wacrm_order_delivered_v2', template_variable_mapping: ['customer_name', 'order_number'], delay_minutes: 0, meta_approval_status: 'not_submitted', is_active: true },
         ]
         const { data: seededRules } = await supabase
           .from('shopify_automation_rules')
@@ -192,9 +192,9 @@ export function ShopifySettings() {
 
         if (cartSeq) {
           await supabase.from('shopify_automation_sequence_steps').insert([
-            { sequence_id: cartSeq.id, step_order: 1, delay_minutes_from_previous_step: 20, template_name: 'wacrm_cart_abandoned_v1', template_variable_mapping: ['customer_name', 'product_name'], meta_approval_status: 'not_submitted', is_active: true },
-            { sequence_id: cartSeq.id, step_order: 2, delay_minutes_from_previous_step: 180, template_name: 'wacrm_cart_reminder_step2_v1', template_variable_mapping: ['customer_name', 'product_name'], meta_approval_status: 'not_submitted', is_active: true },
-            { sequence_id: cartSeq.id, step_order: 3, delay_minutes_from_previous_step: 1440, template_name: 'wacrm_cart_reminder_step3_v1', template_variable_mapping: ['customer_name', 'product_name', 'discount_code'], meta_approval_status: 'not_submitted', is_active: true },
+            { sequence_id: cartSeq.id, step_order: 1, delay_minutes_from_previous_step: 20, template_name: 'wacrm_cart_abandoned_v2', template_variable_mapping: ['customer_name', 'product_name'], meta_approval_status: 'not_submitted', is_active: true },
+            { sequence_id: cartSeq.id, step_order: 2, delay_minutes_from_previous_step: 180, template_name: 'wacrm_cart_reminder_step2_v2', template_variable_mapping: ['customer_name', 'product_name'], meta_approval_status: 'not_submitted', is_active: true },
+            { sequence_id: cartSeq.id, step_order: 3, delay_minutes_from_previous_step: 1440, template_name: 'wacrm_cart_reminder_step3_v2', template_variable_mapping: ['customer_name', 'product_name', 'discount_code'], meta_approval_status: 'not_submitted', is_active: true },
           ])
         }
 
@@ -206,7 +206,7 @@ export function ShopifySettings() {
 
         if (browseSeq) {
           await supabase.from('shopify_automation_sequence_steps').insert([
-            { sequence_id: browseSeq.id, step_order: 1, delay_minutes_from_previous_step: 90, template_name: 'wacrm_browse_abandoned_v1', template_variable_mapping: ['customer_name', 'product_name'], meta_approval_status: 'not_submitted', is_active: true }
+            { sequence_id: browseSeq.id, step_order: 1, delay_minutes_from_previous_step: 90, template_name: 'wacrm_browse_abandoned_v2', template_variable_mapping: ['customer_name', 'product_name'], meta_approval_status: 'not_submitted', is_active: true }
           ])
         }
 

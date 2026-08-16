@@ -14,10 +14,25 @@ describe("explainUnsupportedMetaObjectError", () => {
     expect(out).toMatch(/WABA/);
   });
 
-  it("rewrites Invalid parameter for Utility dynamic URL buttons", () => {
+  it("rewrites duplicate English (US) name errors", () => {
+    const raw =
+      "There is already English (US) content for this template. You can create a new template and try again. (Invalid parameter) [#100]";
+    const out = explainUnsupportedMetaObjectError(raw);
+    expect(out).toMatch(/\*_v2/);
+    expect(out).not.toMatch(/Track Order cannot use/);
+  });
+
+  it("rewrites category mismatch without the Track Order hint", () => {
+    const raw =
+      "The category UTILITY doesn't match the one that's already associated with this template, MARKETING. (Invalid parameter) [#100]";
+    const out = explainUnsupportedMetaObjectError(raw);
+    expect(out).toMatch(/category cannot be changed/i);
+    expect(out).not.toMatch(/Track Order cannot use/);
+  });
+
+  it("rewrites bare Invalid parameter for Utility dynamic URL buttons", () => {
     const out = explainUnsupportedMetaObjectError("Invalid parameter");
     expect(out).toMatch(/account\/orders/);
-    expect(out).toMatch(/static URL/);
   });
 
   it("leaves other errors unchanged", () => {

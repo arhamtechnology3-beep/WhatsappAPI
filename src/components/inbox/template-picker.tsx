@@ -22,6 +22,11 @@ import {
   Loader2,
 } from "lucide-react";
 import { extractVariableIndices } from "@/lib/whatsapp/template-validators";
+import {
+  COLLECTION_ALL_PRODUCTS_PATH,
+  defaultHeaderImageUrl,
+  urlButtonParamFromAbsolute,
+} from "@/lib/shopify/whatsapp-template-library";
 
 export interface TemplateSendValues {
   body: string[];
@@ -369,15 +374,20 @@ export function TemplatePicker({
       }
     }
 
-    // Button URL variables auto-fill
+    // Button URL variables auto-fill — Meta wants the path after the
+    // registered origin (`checkouts/cn/…`), never a full URL or coupon.
     const initialButtonParams: Record<number, string> = {};
     slots.urlButtonSlots.forEach((s) => {
-      if (/checkout|cart/i.test(s.url)) {
-        initialButtonParams[s.index] = storeContext.checkoutUrl;
-      } else if (/discount|code|coupon/i.test(s.url)) {
-        initialButtonParams[s.index] = storeContext.discountCode;
+      const haystack = `${s.text} ${s.url}`;
+      if (/complete purchase|checkout|cart|purchase/i.test(haystack)) {
+        initialButtonParams[s.index] =
+          urlButtonParamFromAbsolute(storeContext.checkoutUrl) || "checkouts";
+      } else if (/order now|product/i.test(haystack)) {
+        initialButtonParams[s.index] = COLLECTION_ALL_PRODUCTS_PATH;
       } else {
-        initialButtonParams[s.index] = storeContext.discountCode;
+        initialButtonParams[s.index] =
+          urlButtonParamFromAbsolute(storeContext.checkoutUrl) ||
+          COLLECTION_ALL_PRODUCTS_PATH;
       }
     });
 
@@ -385,8 +395,18 @@ export function TemplatePicker({
       slots.bodyVars.length === 0 &&
       slots.headerVarCount === 0 &&
       slots.urlButtonSlots.length === 0;
+    const headerMediaUrl =
+      template.header_media_url ||
+      (template.header_type === "image" ||
+      template.header_type === "video" ||
+      template.header_type === "document"
+        ? defaultHeaderImageUrl()
+        : undefined);
     if (noInputsNeeded) {
-      onSelect(template, { body: initialParams });
+      onSelect(template, {
+        body: initialParams,
+        headerMediaUrl,
+      });
       handleOpenChange(false);
       return;
     }
@@ -405,6 +425,13 @@ export function TemplatePicker({
         Object.entries(buttonParams).map(([k, v]) => [Number(k), v.trim()]),
       );
     }
+    values.headerMediaUrl =
+      selected.header_media_url ||
+      (selected.header_type === "image" ||
+      selected.header_type === "video" ||
+      selected.header_type === "document"
+        ? defaultHeaderImageUrl()
+        : undefined);
     onSelect(selected, values);
     handleOpenChange(false);
   }

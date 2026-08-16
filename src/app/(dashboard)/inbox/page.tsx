@@ -517,9 +517,15 @@ export default function InboxPage() {
 
   const handleUpdateMessage = useCallback(
     (id: string, updates: Partial<Message>) => {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === id ? { ...m, ...updates } : m))
-      );
+      setMessages((prev) => {
+        const merged = prev.map((m) => (m.id === id ? { ...m, ...updates } : m));
+        const seen = new Set<string>();
+        return merged.filter((m) => {
+          if (seen.has(m.id)) return false;
+          seen.add(m.id);
+          return true;
+        });
+      });
     },
     []
   );

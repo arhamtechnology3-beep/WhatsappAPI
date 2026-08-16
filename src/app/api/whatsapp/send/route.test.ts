@@ -82,7 +82,15 @@ function makeSupabaseMock() {
     }
     b.insert = vi.fn((payload: Record<string, unknown>) => {
       didInsert = true
-      if (table === 'conversations') conversationInserts.push(payload)
+      if (table === 'conversations') {
+        conversationInserts.push(payload)
+        existingConversation = {
+          id: 'conv-new',
+          account_id: 'acct-1',
+          contact_id: 'contact-1',
+          contact: CONTACT,
+        }
+      }
       if (table === 'messages') messageInserts.push(payload)
       return b
     })

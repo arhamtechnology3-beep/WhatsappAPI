@@ -10,6 +10,7 @@ import {
   TemplatePicker,
   type TemplateSendValues,
 } from '@/components/inbox/template-picker';
+import { defaultHeaderImageUrl } from '@/lib/shopify/whatsapp-template-library';
 import {
   Sheet,
   SheetContent,
@@ -358,6 +359,12 @@ export function ContactDetailView({
             body: values.body,
             headerText: values.headerText,
             buttonParams: values.buttonParams,
+            headerMediaUrl:
+              values.headerMediaUrl ||
+              template.header_media_url ||
+              (template.header_type === 'image'
+                ? defaultHeaderImageUrl()
+                : undefined),
           },
           template_params: values.body,
         }),

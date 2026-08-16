@@ -8,6 +8,11 @@ import {
   defaultHeaderImageUrl,
   recipeByName,
   urlButtonParamFromAbsolute,
+  coerceUrlButtonParam,
+  coerceTemplateButtonParams,
+  buildTemplateCustomerView,
+  inboxTemplateCustomerView,
+  dynamicStorefrontUrl,
 } from './whatsapp-template-library'
 
 describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
@@ -86,6 +91,73 @@ describe('urlButtonParamFromAbsolute', () => {
         'https://divyaprabhafoods.com/checkouts/cn/abc?key=1',
       ),
     ).toBe('checkouts/cn/abc?key=1')
+  })
+})
+
+describe('coerceUrlButtonParam', () => {
+  it('converts a pasted checkout URL into the Meta suffix', () => {
+    expect(
+      coerceUrlButtonParam(
+        dynamicStorefrontUrl(),
+        'https://divyaprabhafoods.com/checkouts/cn/xyz?key=1',
+      ),
+    ).toBe('checkouts/cn/xyz?key=1')
+  })
+
+  it('ignores static URL buttons', () => {
+    expect(
+      coerceUrlButtonParam(
+        'https://divyaprabhafoods.com/collections/all-products',
+        'https://example.com/x',
+      ),
+    ).toBeUndefined()
+  })
+
+  it('keeps an already-relative suffix', () => {
+    expect(coerceUrlButtonParam(dynamicStorefrontUrl(), '/checkouts/cn/a')).toBe(
+      'checkouts/cn/a',
+    )
+  })
+})
+
+describe('coerceTemplateButtonParams', () => {
+  it('only fills dynamic URL buttons', () => {
+    const recipe = recipeByName('wacrm_cart_abandoned_v4')!
+    const params = coerceTemplateButtonParams(recipe.buttons, {
+      0: 'https://divyaprabhafoods.com/checkouts/cn/abc',
+      1: 'https://divyaprabhafoods.com/collections/all-products',
+    })
+    expect(params).toEqual({ 0: 'checkouts/cn/abc' })
+  })
+})
+
+describe('inboxTemplateCustomerView', () => {
+  it('falls back to the recipe header image and CTAs', () => {
+    const view = inboxTemplateCustomerView({
+      template_name: 'wacrm_festival_broadcast_v2',
+    })
+    expect(view.header_type).toBe('image')
+    expect(view.header_media_url).toBe(DEFAULT_HEADER_IMAGE_URL)
+    expect(view.buttons?.map((b) => b.text)).toEqual([
+      'Shop Now',
+      'Shop From WhatsApp',
+    ])
+  })
+
+  it('prefers persisted payload URLs', () => {
+    const view = inboxTemplateCustomerView({
+      template_name: 'wacrm_cart_abandoned_v4',
+      media_url: 'https://cdn.example/product.png',
+      template_payload: buildTemplateCustomerView(
+        recipeByName('wacrm_cart_abandoned_v4')!,
+        { buttonParams: { 0: 'checkouts/cn/abc' } },
+      ),
+    })
+    expect(view.header_media_url).toBe('https://cdn.example/product.png')
+    const purchase = view.buttons?.find((b) => b.type === 'URL' && b.text === 'Complete Purchase')
+    expect(purchase && purchase.type === 'URL' ? purchase.url : '').toContain(
+      'checkouts/cn/abc',
+    )
   })
 })
 

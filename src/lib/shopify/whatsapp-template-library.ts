@@ -108,6 +108,107 @@ export function urlButtonParamFromAbsolute(
   }
 }
 
+/**
+ * Meta URL-button send params are the suffix that replaces `{{1}}`, never a
+ * full `https://…` URL. Pasting a checkout link (or a coupon code) as the
+ * variable makes Graph return `#100 Invalid parameter` and the inbox shows
+ * a failed bubble with no buttons.
+ */
+export function coerceUrlButtonParam(
+  templateButtonUrl: string,
+  raw?: string | null,
+): string | undefined {
+  if (extractVariableIndices(templateButtonUrl).length === 0) return undefined
+  const trimmed = (raw ?? '').trim()
+  if (!trimmed) return undefined
+  if (/^https?:\/\//i.test(trimmed)) {
+    return urlButtonParamFromAbsolute(trimmed) || undefined
+  }
+  return trimmed.replace(/^\//, '')
+}
+
+export function coerceTemplateButtonParams(
+  buttons: TemplateButton[] | undefined,
+  raw?: Record<number, string> | null,
+): Record<number, string> | undefined {
+  if (!buttons?.length) return undefined
+  const out: Record<number, string> = {}
+  buttons.forEach((btn, index) => {
+    if (btn.type !== 'URL') return
+    const coerced = coerceUrlButtonParam(btn.url, raw?.[index])
+    if (coerced) out[index] = coerced
+  })
+  return Object.keys(out).length ? out : undefined
+}
+
+export function resolveHeaderMediaUrl(
+  template: {
+    header_type?: string | null
+    header_media_url?: string | null
+  },
+  override?: string | null,
+): string | undefined {
+  const headerType = template.header_type
+  if (
+    headerType !== 'image' &&
+    headerType !== 'video' &&
+    headerType !== 'document'
+  ) {
+    return override?.trim() || undefined
+  }
+  return (
+    override?.trim() ||
+    template.header_media_url?.trim() ||
+    defaultHeaderImageUrl()
+  )
+}
+
+export interface TemplateCustomerView {
+  header_type?: 'text' | 'image' | 'video' | 'document'
+  header_media_url?: string
+  header_text?: string
+  footer_text?: string
+  buttons?: TemplateButton[]
+}
+
+/** Snapshot stored on `messages.template_payload` so the inbox can render CTAs. */
+export function buildTemplateCustomerView(
+  template: {
+    header_type?: 'text' | 'image' | 'video' | 'document' | null
+    header_content?: string | null
+    header_media_url?: string | null
+    footer_text?: string | null
+    buttons?: TemplateButton[] | null
+  },
+  params?: {
+    headerText?: string
+    headerMediaUrl?: string
+    buttonParams?: Record<number, string>
+  },
+): TemplateCustomerView {
+  const buttons = (template.buttons ?? []).map((btn, index) => {
+    if (btn.type !== 'URL') return btn
+    const suffix = coerceUrlButtonParam(btn.url, params?.buttonParams?.[index])
+    if (!suffix) return btn
+    return { ...btn, url: btn.url.replace(/\{\{1\}\}/g, suffix) }
+  })
+  const view: TemplateCustomerView = {
+    header_type: template.header_type ?? undefined,
+    footer_text: template.footer_text ?? undefined,
+    buttons: buttons.length ? buttons : undefined,
+  }
+  if (template.header_type === 'text') {
+    view.header_text =
+      params?.headerText?.trim() || template.header_content || undefined
+  } else {
+    view.header_media_url = resolveHeaderMediaUrl(
+      template,
+      params?.headerMediaUrl,
+    )
+  }
+  return view
+}
+
 export function buildRecipeButtonParams(
   recipe: ShopifyTemplateRecipe,
   urls: {
@@ -376,6 +477,52 @@ export function recipeByName(
   return SHOPIFY_TEMPLATE_LIBRARY.find(
     (r) => r.template_name === name || r.template_name === canonical,
   )
+}
+
+/** Rebuild header + CTA chrome for an inbox bubble (payload, catalog, or recipe). */
+export function inboxTemplateCustomerView(
+  message: {
+    template_name?: string | null
+    media_url?: string | null
+    template_payload?: TemplateCustomerView | null
+  },
+  catalog?: {
+    header_type?: 'text' | 'image' | 'video' | 'document' | null
+    header_content?: string | null
+    header_media_url?: string | null
+    footer_text?: string | null
+    buttons?: TemplateButton[] | null
+  } | null,
+): TemplateCustomerView {
+  const recipe = message.template_name
+    ? recipeByName(message.template_name)
+    : undefined
+  const payload = message.template_payload
+  const headerType =
+    payload?.header_type || catalog?.header_type || recipe?.header_type
+  const buttons =
+    payload?.buttons?.length
+      ? payload.buttons
+      : catalog?.buttons?.length
+        ? catalog.buttons
+        : recipe?.buttons
+  const footer =
+    payload?.footer_text || catalog?.footer_text || recipe?.footer_text
+  const headerText = payload?.header_text || catalog?.header_content || undefined
+  const imageUrl =
+    message.media_url ||
+    payload?.header_media_url ||
+    catalog?.header_media_url ||
+    (headerType === 'image' || headerType === 'video' || headerType === 'document'
+      ? defaultHeaderImageUrl()
+      : undefined)
+  return {
+    header_type: headerType,
+    header_media_url: imageUrl,
+    header_text: headerText,
+    footer_text: footer,
+    buttons,
+  }
 }
 
 export function recipeToDraftInsert(

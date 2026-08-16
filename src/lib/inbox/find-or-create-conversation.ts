@@ -45,7 +45,13 @@ export async function findOrCreateConversation(
     console.error('[findOrCreateConversation] lookup failed:', findError.message)
   }
 
-  const existing = pickPreferredConversation(existingRows ?? [])
+  const existing = pickPreferredConversation(
+    Array.isArray(existingRows)
+      ? existingRows
+      : existingRows
+        ? [existingRows]
+        : [],
+  )
   if (existing) return { id: existing.id }
 
   const { data: created, error } = await db

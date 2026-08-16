@@ -378,8 +378,13 @@ async function handleStatusUpdate(status: {
   errors?: Array<{ code: number; title: string; message: string }>
 }) {
   // Check for native user block/opt-out error codes
+  // 131050 = user preference / not accepting this message type.
+  // 131052/131053 are media upload/download errors — do NOT treat as opt-out
+  // (image-header templates fail this way when Meta cannot fetch the PNG).
   if (status.status === 'failed' && Array.isArray(status.errors)) {
-    const isBlockOrOptOut = status.errors.some((e: any) => e.code === 131052 || e.code === 131053)
+    const isBlockOrOptOut = status.errors.some(
+      (e: { code?: number }) => e.code === 131050,
+    )
     if (isBlockOrOptOut) {
       try {
         const { data: contact } = await supabaseAdmin()
@@ -417,12 +422,34 @@ async function handleStatusUpdate(status: {
   }
   // 1) Mirror onto messages (legacy behavior) — Meta's status values
   //    already match the CHECK constraint on messages.status.
+  const errorText =
+    status.status === 'failed' && Array.isArray(status.errors) && status.errors.length
+      ? status.errors
+          .map((e) => {
+            const code = e.code != null ? `#${e.code} ` : ''
+            return `${code}${e.title || e.message || ''}`.trim()
+          })
+          .filter(Boolean)
+          .join('; ')
+      : null
+
   const { error: msgErr } = await supabaseAdmin()
     .from('messages')
-    .update({ status: status.status })
+    .update({
+      status: status.status,
+      ...(errorText ? { error_message: errorText } : {}),
+    })
     .eq('message_id', status.id)
 
-  if (msgErr) {
+  if (msgErr && /error_message/.test(msgErr.message)) {
+    const retry = await supabaseAdmin()
+      .from('messages')
+      .update({ status: status.status })
+      .eq('message_id', status.id)
+    if (retry.error) {
+      console.error('Error updating message status:', retry.error)
+    }
+  } else if (msgErr) {
     console.error('Error updating message status:', msgErr)
   }
 

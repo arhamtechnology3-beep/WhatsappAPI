@@ -48,6 +48,10 @@ import { deleteAccountMedia } from "@/lib/storage/upload-media";
 import { TemplatePicker } from "./template-picker";
 import { buildReplyPreview } from "./reply-quote";
 import { toast } from "sonner";
+import {
+  buildTemplateCustomerView,
+  defaultHeaderImageUrl,
+} from "@/lib/shopify/whatsapp-template-library";
 
 interface ReplyDraft {
   id: string;
@@ -213,6 +217,35 @@ export function MessageThread({
           return;
         }
         setProfiles((data as Profile[]) ?? []);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const [templateCatalog, setTemplateCatalog] = useState<
+    Map<string, MessageTemplate>
+  >(() => new Map());
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    supabase
+      .from("message_templates")
+      .select(
+        "id, name, language, header_type, header_content, header_media_url, footer_text, buttons, body_text, category, user_id, created_at",
+      )
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Failed to fetch templates for inbox preview:", error);
+          return;
+        }
+        const map = new Map<string, MessageTemplate>();
+        for (const row of (data as MessageTemplate[]) ?? []) {
+          if (!map.has(row.name)) map.set(row.name, row);
+        }
+        setTemplateCatalog(map);
       });
     return () => {
       cancelled = true;
@@ -595,6 +628,10 @@ export function MessageThread({
       const renderedBody = renderTemplateBody(template.body_text, values.body);
       const tempId = `temp-${Date.now()}`;
 
+      const headerMediaUrl =
+        values.headerMediaUrl ||
+        template.header_media_url ||
+        (template.header_type === "image" ? defaultHeaderImageUrl() : undefined);
       const optimisticMsg: Message = {
         id: tempId,
         conversation_id: conversation.id,
@@ -602,6 +639,12 @@ export function MessageThread({
         content_type: "template",
         content_text: renderedBody,
         template_name: template.name,
+        media_url: headerMediaUrl,
+        template_payload: buildTemplateCustomerView(template, {
+          headerText: values.headerText,
+          headerMediaUrl,
+          buttonParams: values.buttonParams,
+        }),
         status: "sending",
         created_at: new Date().toISOString(),
       };
@@ -623,7 +666,7 @@ export function MessageThread({
             template_message_params: {
               body: values.body,
               headerText: values.headerText,
-              headerMediaUrl: values.headerMediaUrl || template.header_media_url || (template.header_type === 'image' ? 'https://divyaprabhafoods.com/cdn/shop/files/WhatsApp_Image_2025-04-12_at_4.37.20_PM.png?v=1744459199' : undefined),
+              headerMediaUrl,
               buttonParams: values.buttonParams,
             },
             template_params: values.body,
@@ -632,16 +675,29 @@ export function MessageThread({
         });
 
         const payload = await res.json().catch(() => ({}));
+        const saved = payload?.message as Message | undefined;
 
         if (!res.ok) {
           const reason = payload?.error || `HTTP ${res.status}`;
           console.error("Failed to send template:", reason);
           toast.error(`Failed to send template: ${reason}`);
-          onUpdateMessage(tempId, { status: "failed" });
+          if (saved?.id) {
+            onUpdateMessage(tempId, {
+              ...saved,
+              status: "failed",
+              error_message: saved.error_message || reason,
+            });
+          } else {
+            onUpdateMessage(tempId, { status: "failed", error_message: reason });
+          }
           return;
         }
 
-        onUpdateMessage(tempId, { status: "sent" });
+        if (saved?.id) {
+          onUpdateMessage(tempId, { ...saved, status: saved.status || "sent" });
+        } else {
+          onUpdateMessage(tempId, { status: "sent" });
+        }
       } catch (err) {
         console.error("Failed to send template:", err);
         const reason = err instanceof Error ? err.message : "network error";
@@ -1075,6 +1131,7 @@ export function MessageThread({
                           reactions={msgReactions}
                           currentUserId={user?.id}
                           onToggleReaction={handlePillToggle}
+                          templateCatalog={templateCatalog}
                         />
                       </MessageActions>
                     );

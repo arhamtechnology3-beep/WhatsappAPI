@@ -22,6 +22,28 @@ import {
 import type { MessageTemplate } from '@/types'
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
 import { findOrCreateConversation as ensureConversation } from '@/lib/inbox/find-or-create-conversation'
+import {
+  buildTemplateCustomerView,
+  coerceTemplateButtonParams,
+  resolveHeaderMediaUrl,
+} from '@/lib/shopify/whatsapp-template-library'
+
+async function insertOutboundMessage(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  row: Record<string, unknown>,
+) {
+  const first = await supabase.from('messages').insert(row).select().single()
+  if (
+    first.error &&
+    /template_payload|error_message/.test(first.error.message)
+  ) {
+    const fallback = { ...row }
+    delete fallback.template_payload
+    delete fallback.error_message
+    return supabase.from('messages').insert(fallback).select().single()
+  }
+  return first
+}
 
 export async function POST(request: Request) {
   try {
@@ -317,14 +339,26 @@ export async function POST(request: Request) {
     // crashing the send-builder later in the stack.
     let templateRow: MessageTemplate | null = null
     if (message_type === 'template' && template_name) {
+      const requestedLang = template_language || 'en_US'
       const { data } = await supabase
         .from('message_templates')
         .select('*')
         .eq('account_id', accountId)
         .eq('name', template_name)
-        .eq('language', template_language || 'en_US')
+        .eq('language', requestedLang)
         .maybeSingle()
-      if (data && !isMessageTemplate(data)) {
+      let row = data
+      if (!row) {
+        const { data: fallbackRow } = await supabase
+          .from('message_templates')
+          .select('*')
+          .eq('account_id', accountId)
+          .eq('name', template_name)
+          .limit(1)
+          .maybeSingle()
+        row = fallbackRow
+      }
+      if (row && !isMessageTemplate(row)) {
         return NextResponse.json(
           {
             error:
@@ -333,8 +367,35 @@ export async function POST(request: Request) {
           { status: 500 },
         )
       }
-      templateRow = data ?? null
+      templateRow = row ?? null
     }
+
+    const rawTemplateParams =
+      template_message_params && typeof template_message_params === 'object'
+        ? template_message_params
+        : {}
+    const resolvedHeaderMediaUrl = templateRow
+      ? resolveHeaderMediaUrl(templateRow, rawTemplateParams.headerMediaUrl)
+      : rawTemplateParams.headerMediaUrl
+    const resolvedButtonParams = templateRow
+      ? coerceTemplateButtonParams(
+          templateRow.buttons,
+          rawTemplateParams.buttonParams,
+        )
+      : rawTemplateParams.buttonParams
+    const resolvedMessageParams = {
+      ...rawTemplateParams,
+      body: rawTemplateParams.body ?? template_params ?? [],
+      headerMediaUrl: resolvedHeaderMediaUrl,
+      buttonParams: resolvedButtonParams,
+    }
+    const templatePayload = templateRow
+      ? buildTemplateCustomerView(templateRow, resolvedMessageParams)
+      : null
+    const persistedMediaUrl =
+      message_type === 'template'
+        ? resolvedHeaderMediaUrl || media_url || null
+        : media_url || null
 
     const attempt = async (phone: string): Promise<string> => {
       if (message_type === 'template') {
@@ -343,9 +404,10 @@ export async function POST(request: Request) {
           accessToken,
           to: phone,
           templateName: template_name,
-          language: template_language || 'en_US',
+          language:
+            templateRow?.language || template_language || 'en_US',
           template: templateRow ?? undefined,
-          messageParams: template_message_params ?? undefined,
+          messageParams: resolvedMessageParams,
           // Legacy body-only fallback — only consulted when
           // messageParams.body isn't set.
           params: template_params || [],
@@ -411,9 +473,33 @@ export async function POST(request: Request) {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown Meta API error'
       console.error('Meta API send failed for all variants:', message)
+      const { data: failedRecord } = await insertOutboundMessage(supabase, {
+        conversation_id,
+        sender_type: 'agent',
+        content_type: message_type,
+        content_text: content_text || null,
+        media_url: persistedMediaUrl,
+        template_name: template_name || null,
+        template_payload: templatePayload,
+        message_id: null,
+        status: 'failed',
+        error_message: message,
+        reply_to_message_id: reply_to_message_id || null,
+      })
+      await supabase
+        .from('conversations')
+        .update({
+          last_message_text: content_text || `[${message_type}]`,
+          last_message_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', conversation_id)
       return NextResponse.json(
-        { error: `Meta API error: ${message}` },
-        { status: 502 }
+        {
+          error: `Meta API error: ${message}`,
+          message: failedRecord,
+        },
+        { status: 502 },
       )
     }
 
@@ -434,21 +520,21 @@ export async function POST(request: Request) {
     // (see supabase/migrations/001_initial_schema.sql):
     //   conversation_id, sender_type, content_type, content_text,
     //   media_url, template_name, message_id, status, created_at
-    const { data: messageRecord, error: msgError } = await supabase
-      .from('messages')
-      .insert({
+    const { data: messageRecord, error: msgError } = await insertOutboundMessage(
+      supabase,
+      {
         conversation_id,
         sender_type: 'agent',
         content_type: message_type,
         content_text: content_text || null,
-        media_url: media_url || null,
+        media_url: persistedMediaUrl,
         template_name: template_name || null,
+        template_payload: templatePayload,
         message_id: waMessageId,
         status: 'sent',
         reply_to_message_id: reply_to_message_id || null,
-      })
-      .select()
-      .single()
+      },
+    )
 
     if (msgError) {
       console.error('Error inserting sent message:', msgError)
@@ -503,6 +589,7 @@ export async function POST(request: Request) {
       success: true,
       message_id: messageRecord.id,
       whatsapp_message_id: waMessageId,
+      message: messageRecord,
     })
   } catch (error) {
     console.error('Error in WhatsApp send POST:', error)

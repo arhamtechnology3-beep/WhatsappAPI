@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import type { Message, MessageReaction } from "@/types";
+import type { Message, MessageReaction, MessageTemplate, TemplateButton } from "@/types";
+import { inboxTemplateCustomerView } from "@/lib/shopify/whatsapp-template-library";
 import {
   Clock,
   Check,
@@ -13,6 +14,7 @@ import {
   LayoutTemplate,
   ImageOff,
   CornerDownLeft,
+  ExternalLink,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ReplyQuote } from "./reply-quote";
@@ -25,6 +27,8 @@ interface MessageBubbleProps {
   reactions?: MessageReaction[];
   currentUserId?: string;
   onToggleReaction?: (emoji: string) => void;
+  /** Approved templates keyed by name — fills header/CTAs for older rows. */
+  templateCatalog?: Map<string, MessageTemplate>;
 }
 
 function StatusIcon({ status }: { status: Message["status"] }) {
@@ -53,7 +57,15 @@ function MediaUnavailable({ label }: { label: string }) {
   );
 }
 
-function MediaImage({ url, alt }: { url: string; alt: string }) {
+function MediaImage({
+  url,
+  alt,
+  className,
+}: {
+  url: string;
+  alt: string;
+  className?: string;
+}) {
   const [src, setSrc] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -110,13 +122,69 @@ function MediaImage({ url, alt }: { url: string; alt: string }) {
     <img
       src={src ?? ""}
       alt={alt}
-      className="max-h-64 max-w-60 rounded-lg object-cover"
+      className={cn("max-h-64 max-w-60 rounded-lg object-cover", className)}
       onError={() => setError(true)}
     />
   );
 }
 
-function MessageContent({ message }: { message: Message }) {
+function TemplateCtaButtons({
+  buttons,
+  onAgent,
+}: {
+  buttons: TemplateButton[];
+  onAgent: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "mt-2 flex w-full min-w-[220px] max-w-60 flex-col overflow-hidden rounded-md border",
+        onAgent ? "border-primary-foreground/25" : "border-border",
+      )}
+    >
+      {buttons.map((btn, i) => {
+        const label = btn.text;
+        const href = btn.type === "URL" ? btn.url : undefined;
+        const className = cn(
+          "flex items-center justify-center gap-1.5 px-3 py-2 text-center text-xs font-medium",
+          i > 0 && "border-t",
+          onAgent
+            ? "border-primary-foreground/25 text-primary-foreground"
+            : "border-border text-primary",
+        );
+        if (href && !href.includes("{{")) {
+          return (
+            <a
+              key={`${btn.type}-${i}`}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={className}
+            >
+              {label}
+              <ExternalLink className="h-3 w-3 shrink-0 opacity-70" />
+            </a>
+          );
+        }
+        return (
+          <div key={`${btn.type}-${i}`} className={className}>
+            {label}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function MessageContent({
+  message,
+  templateCatalog,
+  isAgent,
+}: {
+  message: Message;
+  templateCatalog?: Map<string, MessageTemplate>;
+  isAgent: boolean;
+}) {
   switch (message.content_type) {
     case "text":
       return (
@@ -190,9 +258,27 @@ function MessageContent({ message }: { message: Message }) {
         </a>
       );
 
-    case "template":
+    case "template": {
+      const catalog = message.template_name
+        ? templateCatalog?.get(message.template_name)
+        : undefined;
+      const view = inboxTemplateCustomerView(message, catalog ?? null);
+      const showImage =
+        view.header_type === "image" && !!view.header_media_url;
       return (
-        <div>
+        <div className="min-w-[220px]">
+          {showImage && (
+            <div className="-mx-3 -mt-2 mb-2 overflow-hidden rounded-t-2xl">
+              <MediaImage
+                url={view.header_media_url!}
+                alt="Template header"
+                className="max-h-48 w-full max-w-none rounded-none object-cover"
+              />
+            </div>
+          )}
+          {view.header_type === "text" && view.header_text && (
+            <p className="mb-1 text-sm font-semibold">{view.header_text}</p>
+          )}
           <span className="mb-1 inline-flex items-center gap-1 rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-medium text-primary">
             <LayoutTemplate className="h-3 w-3" />
             Template
@@ -202,8 +288,24 @@ function MessageContent({ message }: { message: Message }) {
               {message.content_text}
             </p>
           )}
+          {view.footer_text && (
+            <p
+              className={cn(
+                "mt-1 text-[11px]",
+                isAgent
+                  ? "text-primary-foreground/60"
+                  : "text-muted-foreground",
+              )}
+            >
+              {view.footer_text}
+            </p>
+          )}
+          {view.buttons && view.buttons.length > 0 && (
+            <TemplateCtaButtons buttons={view.buttons} onAgent={isAgent} />
+          )}
         </div>
       );
+    }
 
     case "location":
       return (
@@ -247,6 +349,7 @@ export function MessageBubble({
   reactions,
   currentUserId,
   onToggleReaction,
+  templateCatalog,
 }: MessageBubbleProps) {
   const isAgent = message.sender_type === "agent" || message.sender_type === "bot";
   const time = format(new Date(message.created_at), "HH:mm");
@@ -275,7 +378,11 @@ export function MessageBubble({
             onPrimary={isAgent}
           />
         )}
-        <MessageContent message={message} />
+        <MessageContent
+          message={message}
+          templateCatalog={templateCatalog}
+          isAgent={isAgent}
+        />
         <div
           className={cn(
             "mt-1 flex items-center gap-1",
@@ -296,6 +403,11 @@ export function MessageBubble({
           </span>
           {isAgent && <StatusIcon status={message.status} />}
         </div>
+        {isAgent && message.status === "failed" && message.error_message && (
+          <p className="mt-1 max-w-60 text-[10px] leading-snug text-red-200">
+            {message.error_message}
+          </p>
+        )}
       </div>
       {reactions && reactions.length > 0 && onToggleReaction && (
         <MessageReactions

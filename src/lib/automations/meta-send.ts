@@ -9,8 +9,10 @@ import {
 import { supabaseAdmin } from './admin-client'
 import {
   buildRecipeButtonParams,
+  buildTemplateCustomerView,
   defaultHeaderImageUrl,
   recipeByName,
+  resolveHeaderMediaUrl,
 } from '@/lib/shopify/whatsapp-template-library'
 
 // ------------------------------------------------------------
@@ -224,11 +226,13 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
           }
         }
 
-        messageParams.headerMediaUrl =
-          resolvedImageUrl ||
-          templateRow.header_media_url ||
-          defaultHeaderImageUrl()
+        messageParams.headerMediaUrl = resolveHeaderMediaUrl(
+          templateRow,
+          resolvedImageUrl,
+        )
       }
+
+      ;(input as any)._messageParams = messageParams
 
       const r = await sendTemplateMessage({
         phoneNumberId: config.phone_number_id,
@@ -303,12 +307,24 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     })
   }
 
+  const templateRow = (input as any)._templateRow
+  const messageParams = (input as any)._messageParams || {}
+
   const { error: msgErr } = await db.from('messages').insert({
     conversation_id: input.conversationId,
     sender_type: 'bot',
     content_type,
     content_text,
+    media_url:
+      input.kind === 'template'
+        ? messageParams.headerMediaUrl ||
+          (templateRow?.header_type === 'image' ? defaultHeaderImageUrl() : null)
+        : null,
     template_name,
+    template_payload:
+      input.kind === 'template' && templateRow
+        ? buildTemplateCustomerView(templateRow, messageParams)
+        : null,
     message_id: waMessageId,
     status: 'sent',
   })

@@ -31,6 +31,37 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 13:41] Fix (Inbox) — template bubbles show image + CTAs; send URL suffix correctly
+
+### Root Cause
+- Inbox `template` bubbles only rendered body text. Header PNG and Shop Now / Complete Purchase buttons live on `message_templates`, and sends did not persist `media_url` or a button snapshot.
+- Manual template send filled URL-button `{{1}}` with a full checkout URL or a coupon code. Meta requires the path after `https://divyaprabhafoods.com/` (e.g. `checkouts/cn/…`). Graph then returns `#100 Invalid parameter` and the bubble is `failed`.
+- Failed Meta status `#131053` (cannot download header media) was treated as marketing opt-out.
+
+### Objective & Fixes
+- Render template messages like WhatsApp: header image, body, footer, CTA rows. Existing `wacrm_*` threads use the recipe even before a resend.
+- Coerce button params to path-only suffixes; always send the live header PNG (or product image) on the IMAGE component.
+- Persist `media_url` + `template_payload` on send; store Meta `error_message` on failed status.
+- After Hostinger deploy, hard-refresh Inbox and resend a cart/festival template. Run migration `047` in Supabase so error text and CTA snapshots save.
+
+### Files Modified
+- `src/components/inbox/message-bubble.tsx`
+- `src/components/inbox/message-thread.tsx`
+- `src/components/inbox/template-picker.tsx`
+- `src/app/api/whatsapp/send/route.ts`
+- `src/lib/shopify/whatsapp-template-library.ts`
+- `src/lib/automations/meta-send.ts`
+- `src/app/api/whatsapp/webhook/route.ts`
+- `supabase/migrations/047_message_template_payload.sql`
+- `src/types/index.ts`
+- `changes.md`
+
+### Live
+- Git SHA / PR pending.
+- Migration required: `supabase/migrations/047_message_template_payload.sql`
+
+---
+
 ## [2026-08-16 13:32] Fix (Inbox) — one conversation thread per contact
 
 ### Root Cause

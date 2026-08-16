@@ -181,6 +181,19 @@ export interface Message {
   content_text?: string;
   media_url?: string;
   template_name?: string;
+  /**
+   * Snapshot of header media + CTA buttons as sent (and as WhatsApp
+   * shows them). Lets the inbox render template bubbles without a join.
+   */
+  template_payload?: {
+    header_type?: 'text' | 'image' | 'video' | 'document';
+    header_media_url?: string;
+    header_text?: string;
+    footer_text?: string;
+    buttons?: TemplateButton[];
+  };
+  /** Meta Graph / webhook error when status is failed. */
+  error_message?: string;
   message_id?: string;
   status: MessageStatus;
   created_at: string;

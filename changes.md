@@ -31,7 +31,28 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
-## [2026-08-16 12:25] Fix (Templates) — Meta name already exists; ship *_v2
+## [2026-08-16 12:32] Fix (Templates) — cart abandoned v4 (v2 already on Meta)
+
+### Root Cause
+- Other `*_v2` templates were new and went Pending. `wacrm_cart_abandoned_v2` (and historically v3) already existed on the WABA, so Meta #100 duplicate name.
+
+### Objective & Fixes
+- Cart abandoned recipe is `wacrm_cart_abandoned_v4`. Install recipes remaps v1/v2/v3 automations and drops the failed v2 draft.
+- Do not resubmit templates that are already Pending.
+
+### Files Modified
+- `src/lib/shopify/whatsapp-template-library.ts`
+- `src/lib/shopify/install-template-recipes.ts` (uses RECIPE_NAME_RENAMES)
+- `src/lib/whatsapp/meta-api.ts`
+- `src/app/api/shopify/checkout/nudge/route.ts`
+- `docs/whatsapp-template-setup.md`
+- `changes.md`
+
+### Live
+- Ship on `main` after this PR. No migration.
+
+---
+
 
 ### Root Cause
 - Submitting `wacrm_*_v1` failed with Meta #100: English (US) already exists, or category UTILITY vs existing MARKETING.

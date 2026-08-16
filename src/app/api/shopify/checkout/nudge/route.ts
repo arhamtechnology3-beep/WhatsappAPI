@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
 import { moveDealToStageName } from '@/lib/shopify/shopify-helper'
+import { canonicalRecipeName, recipeByName } from '@/lib/shopify/whatsapp-template-library'
 
 export async function POST(request: Request) {
   try {
@@ -57,21 +58,9 @@ export async function POST(request: Request) {
       .eq('step_order', 1)
       .maybeSingle()
 
-    let targetTemplateName = 'wacrm_cart_abandoned_v3'
-
-    // Check if wacrm_cart_abandoned_v3 or v2 is approved in DB
-    const { data: v3Row } = await supabase
-      .from('message_templates')
-      .select('status')
-      .eq('account_id', accountId)
-      .eq('name', 'wacrm_cart_abandoned_v3')
-      .maybeSingle()
-
-    if (v3Row && (v3Row.status === 'APPROVED' || v3Row.status === 'PENDING')) {
-      targetTemplateName = 'wacrm_cart_abandoned_v3'
-    } else {
-      targetTemplateName = step?.template_name || 'wacrm_cart_abandoned_v2'
-    }
+    const targetTemplateName = canonicalRecipeName(
+      step?.template_name || 'wacrm_cart_abandoned_v4',
+    )
 
     // 3. Find or create conversation for the contact
     let { data: conv } = await supabase
@@ -103,9 +92,6 @@ export async function POST(request: Request) {
     const customerFirstName = contact?.name?.split(' ')[0] || 'Customer'
     const lineItems = checkout.line_items || []
     const productName = lineItems[0]?.title || 'your cart items'
-    const rawCheckoutUrl = checkout.abandoned_checkout_url || 'https://divyaprabhafoods.com/'
-    const cleanCheckoutUrl = rawCheckoutUrl.replace('divyaprabhafoods.myshopify.com', 'divyaprabhafoods.com')
-    const storeName = 'DivyaPrabha Foods'
 
     const totalPrice = Number(checkout.total_price || 0)
     let dynamicOffer = '🎁 Get 10% OFF on orders above ₹749 + Free Shipping on ₹599+!'
@@ -117,13 +103,10 @@ export async function POST(request: Request) {
       dynamicOffer = '✨ Add items worth ₹' + (599 - totalPrice) + ' to get FREE Shipping & ₹' + (749 - totalPrice) + ' for 10% OFF!'
     }
 
-    let params: string[] = []
-    if (targetTemplateName === 'wacrm_cart_abandoned_v3') {
+    const recipe = recipeByName(targetTemplateName)
+    let params: string[] = [customerFirstName, productName]
+    if ((recipe?.variables.length ?? 2) >= 3) {
       params = [customerFirstName, productName, dynamicOffer]
-    } else if (targetTemplateName === 'wacrm_cart_abandoned_v2') {
-      params = [customerFirstName, productName]
-    } else {
-      params = [customerFirstName, productName, storeName, cleanCheckoutUrl]
     }
 
     // 5. Send the template message immediately

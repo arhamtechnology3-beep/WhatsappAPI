@@ -5,11 +5,14 @@ import { extractVariableIndices } from '@/lib/whatsapp/template-validators'
 export const WACRM_TEMPLATE_LANGUAGE = 'en_US'
 
 /**
- * v1 names already exist on the live WABA (en_US). Meta rejects recreate
- * and rejects category changes. Recipes ship as *_v2; Install recipes remaps automations.
+ * Older names already exist on the live WABA (en_US). Meta rejects recreate.
+ * Cart abandoned v1–v3 were all used before; the live recipe is v4.
+ * Install recipes remaps automations to these canonical names.
  */
 export const RECIPE_NAME_RENAMES: Readonly<Record<string, string>> = {
-  wacrm_cart_abandoned_v1: 'wacrm_cart_abandoned_v2',
+  wacrm_cart_abandoned_v1: 'wacrm_cart_abandoned_v4',
+  wacrm_cart_abandoned_v2: 'wacrm_cart_abandoned_v4',
+  wacrm_cart_abandoned_v3: 'wacrm_cart_abandoned_v4',
   wacrm_cart_reminder_step2_v1: 'wacrm_cart_reminder_step2_v2',
   wacrm_cart_reminder_step3_v1: 'wacrm_cart_reminder_step3_v2',
   wacrm_browse_abandoned_v1: 'wacrm_browse_abandoned_v2',
@@ -173,7 +176,7 @@ const shopNow = (): TemplateButton => ({
 export const SHOPIFY_TEMPLATE_LIBRARY: readonly ShopifyTemplateRecipe[] = [
   {
     trigger_type: 'cart_abandoned',
-    template_name: 'wacrm_cart_abandoned_v2',
+    template_name: 'wacrm_cart_abandoned_v4',
     category: 'MARKETING',
     language: WACRM_TEMPLATE_LANGUAGE,
     body: `Namaste {{1}}! Aapka cart wait kar raha hai 🛒

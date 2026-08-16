@@ -678,7 +678,7 @@ export default function ShopifyDashboardPage() {
 const DEFAULT_SAMPLE_VALUES: Record<string, string[]> = {
   wacrm_cod_confirmation_v2: ['Jesal Patel', '1234', '1499'],
   wacrm_order_confirmed_v2: ['Jesal Patel', '1234', '1499'],
-  wacrm_cart_abandoned_v2: ['Jesal Patel', 'Nani Trial Pack'],
+  wacrm_cart_abandoned_v4: ['Jesal Patel', 'Nani Trial Pack'],
   wacrm_cart_reminder_step2_v2: ['Jesal Patel', 'Mango pickle'],
   wacrm_cart_reminder_step3_v2: ['Jesal Patel', 'Nani Trial Pack', 'WELCOME10'],
   wacrm_browse_abandoned_v2: ['Jesal Patel', 'Homemade Mango Pickle'],
@@ -789,7 +789,7 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
         ? customBody.replace(/\{\{1\}\}/g, 'Jesal Patel').replace(/\{\{2\}\}/g, '1234').replace(/\{\{3\}\}/g, '₹1,499')
         : "Hi Jesal Patel, your order #1234 of ₹1,499 is confirmed! We'll notify you when it ships."
     } else {
-      const customBody = customTemplates['wacrm_cart_abandoned_v2']?.body_text
+      const customBody = customTemplates['wacrm_cart_abandoned_v4']?.body_text
       return customBody
         ? customBody.replace(/\{\{1\}\}/g, 'Jesal Patel').replace(/\{\{2\}\}/g, 'Organic Jam Combo').replace(/\{\{3\}\}/g, 'Divyaprabha Foods').replace(/\{\{4\}\}/g, 'https://divyaprabhafoods.com/checkout')
         : "Hi Jesal Patel, you left Organic Jam Combo in your cart at Divyaprabha Foods. Complete your order here: https://divyaprabhafoods.com/checkout"
@@ -798,7 +798,7 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
 
   const getSequenceStepPreviewText = (stepOrder: number) => {
     if (stepOrder === 1) {
-      const customBody = customTemplates['wacrm_cart_abandoned_v2']?.body_text
+      const customBody = customTemplates['wacrm_cart_abandoned_v4']?.body_text
       return customBody
         ? customBody.replace(/\{\{1\}\}/g, 'Jesal Patel').replace(/\{\{2\}\}/g, 'Organic Jam Combo').replace(/\{\{3\}\}/g, 'Divyaprabha Foods').replace(/\{\{4\}\}/g, 'https://divyaprabhafoods.com/checkout')
         : "Hi Jesal Patel, you left Organic Jam Combo in your cart at Divyaprabha Foods. Complete your order here: https://divyaprabhafoods.com/checkout"
@@ -1892,7 +1892,7 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
                                 sequence_id: sequences[0].id,
                                 step_order: nextOrder,
                                 delay_minutes_from_previous_step: nextOrder === 1 ? 20 : nextOrder === 2 ? 180 : 1440,
-                                template_name: nextOrder === 1 ? 'wacrm_cart_abandoned_v2' : nextOrder === 2 ? 'wacrm_cart_reminder_step2_v2' : 'wacrm_cart_reminder_step3_v2',
+                                template_name: nextOrder === 1 ? 'wacrm_cart_abandoned_v4' : nextOrder === 2 ? 'wacrm_cart_reminder_step2_v2' : 'wacrm_cart_reminder_step3_v2',
                                 meta_approval_status: 'approved',
                                 is_active: true
                               })

@@ -90,8 +90,9 @@ export function explainUnsupportedMetaObjectError(message: string): string {
   if (/already .+ content for this template/i.test(text)) {
     return (
       `${text} — This name + English (US) already exists on the WhatsApp account. ` +
-      `Meta will not recreate it. Close the modal, click Install recipes (adds *_v2 drafts), ` +
-      `then Submit those new names. Or delete the old template in WhatsApp Manager first.`
+      `Meta will not recreate it. Close the modal. After deploy, click Install recipes ` +
+      `(cart abandoned becomes wacrm_cart_abandoned_v4). Submit only that new draft. ` +
+      `Leave templates that are already Pending alone.`
     )
   }
   if (/category .+ doesn'?t match|already associated with this template/i.test(text)) {

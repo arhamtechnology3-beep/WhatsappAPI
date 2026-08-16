@@ -192,7 +192,7 @@ export function ShopifySettings() {
 
         if (cartSeq) {
           await supabase.from('shopify_automation_sequence_steps').insert([
-            { sequence_id: cartSeq.id, step_order: 1, delay_minutes_from_previous_step: 20, template_name: 'wacrm_cart_abandoned_v2', template_variable_mapping: ['customer_name', 'product_name'], meta_approval_status: 'not_submitted', is_active: true },
+            { sequence_id: cartSeq.id, step_order: 1, delay_minutes_from_previous_step: 20, template_name: 'wacrm_cart_abandoned_v4', template_variable_mapping: ['customer_name', 'product_name'], meta_approval_status: 'not_submitted', is_active: true },
             { sequence_id: cartSeq.id, step_order: 2, delay_minutes_from_previous_step: 180, template_name: 'wacrm_cart_reminder_step2_v2', template_variable_mapping: ['customer_name', 'product_name'], meta_approval_status: 'not_submitted', is_active: true },
             { sequence_id: cartSeq.id, step_order: 3, delay_minutes_from_previous_step: 1440, template_name: 'wacrm_cart_reminder_step3_v2', template_variable_mapping: ['customer_name', 'product_name', 'discount_code'], meta_approval_status: 'not_submitted', is_active: true },
           ])

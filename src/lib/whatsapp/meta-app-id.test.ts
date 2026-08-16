@@ -18,7 +18,7 @@ describe("explainUnsupportedMetaObjectError", () => {
     const raw =
       "There is already English (US) content for this template. You can create a new template and try again. (Invalid parameter) [#100]";
     const out = explainUnsupportedMetaObjectError(raw);
-    expect(out).toMatch(/\*_v2/);
+    expect(out).toMatch(/wacrm_cart_abandoned_v4/);
     expect(out).not.toMatch(/Track Order cannot use/);
   });
 

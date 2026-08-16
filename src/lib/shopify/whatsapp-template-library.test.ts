@@ -24,7 +24,7 @@ describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
     const names = SHOPIFY_TEMPLATE_LIBRARY.map((r) => r.template_name)
     expect(names).toEqual(
       expect.arrayContaining([
-        'wacrm_cart_abandoned_v2',
+        'wacrm_cart_abandoned_v4',
         'wacrm_cart_reminder_step2_v2',
         'wacrm_cart_reminder_step3_v2',
         'wacrm_browse_abandoned_v2',
@@ -92,7 +92,7 @@ describe('urlButtonParamFromAbsolute', () => {
 describe('buildRecipeButtonParams', () => {
   it('fills Complete Purchase from checkout_url', () => {
     const recipe = SHOPIFY_TEMPLATE_LIBRARY.find(
-      (r) => r.template_name === 'wacrm_cart_abandoned_v2',
+      (r) => r.template_name === 'wacrm_cart_abandoned_v4',
     )!
     const params = buildRecipeButtonParams(recipe, {
       checkout_url: 'https://divyaprabhafoods.com/checkouts/cn/xyz',
@@ -111,9 +111,9 @@ describe('buildRecipeButtonParams', () => {
     expect(params).toEqual({})
   })
 
-  it('resolves v1 automation names to the v2 recipe', () => {
-    expect(canonicalRecipeName('wacrm_order_confirmed_v1')).toBe(
-      'wacrm_order_confirmed_v2',
+  it('resolves old cart abandoned names to v4', () => {
+    expect(canonicalRecipeName('wacrm_cart_abandoned_v2')).toBe(
+      'wacrm_cart_abandoned_v4',
     )
     expect(recipeByName('wacrm_cod_confirmation_v1')?.template_name).toBe(
       'wacrm_cod_confirmation_v2',

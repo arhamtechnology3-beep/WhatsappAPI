@@ -150,7 +150,7 @@ export const SHOPIFY_TEMPLATE_LIBRARY: readonly ShopifyTemplateRecipe[] = [
     template_name: 'wacrm_cart_abandoned_v1',
     category: 'MARKETING',
     language: WACRM_TEMPLATE_LANGUAGE,
-    body: `{{1}}, aapka cart wait kar raha hai 🛒
+    body: `Namaste {{1}}! Aapka cart wait kar raha hai 🛒
 {{2}} — abhi bhi available hai!
 
 ✅ Handmade, no chemical preservatives
@@ -192,7 +192,7 @@ Order confirm karo — cart abhi saved hai.`,
     template_name: 'wacrm_cart_reminder_step3_v1',
     category: 'MARKETING',
     language: WACRM_TEMPLATE_LANGUAGE,
-    body: `{{1}}, code {{3}} se abhi milega extra OFF! 🎁
+    body: `Namaste {{1}}! Code {{3}} se abhi milega extra OFF! 🎁
 {{2}} abhi bhi cart mein saved hai.
 
 ✅ Offer aaj ke liye
@@ -272,7 +272,7 @@ Hum packing shuru kar rahe hain — tracking alag message mein aayegi.
     template_name: 'wacrm_order_delivered_v1',
     category: 'UTILITY',
     language: WACRM_TEMPLATE_LANGUAGE,
-    body: `{{1}}, aapka order #{{2}} pahunch gaya! 🥭❤️
+    body: `Namaste {{1}}! Aapka order #{{2}} pahunch gaya! 🥭❤️
 
 Fridge zaroori nahi — dry jar, sookhe chamach se nikalein, swad mahino tak rahega.
 
@@ -298,7 +298,7 @@ Fridge zaroori nahi — dry jar, sookhe chamach se nikalein, swad mahino tak rah
     template_name: 'wacrm_cod_confirmation_v1',
     category: 'UTILITY',
     language: WACRM_TEMPLATE_LANGUAGE,
-    body: `{{1}}, aapka COD order #{{2}} of ₹{{3}} almost ready hai 😍
+    body: `Namaste {{1}}! Aapka COD order #{{2}} of ₹{{3}} almost ready hai 😍
 
 Confirm karein taaki packing aaj lock ho jaye.
 
@@ -322,7 +322,7 @@ Neeche Yes dabayein — Cancel se order ruk jayega.`,
     template_name: 'wacrm_festival_broadcast_v1',
     category: 'MARKETING',
     language: WACRM_TEMPLATE_LANGUAGE,
-    body: `{{1}}, festival ka swad ghar le aao! 🎁
+    body: `Namaste {{1}}! Festival ka swad ghar le aao! 🎁
 DivyaPrabha handmade pickles — gift-ready packing.
 
 ✅ No chemical preservatives
@@ -394,5 +394,15 @@ export function assertRecipeMetaSafe(recipe: ShopifyTemplateRecipe): void {
     if (b.text.length > 25) {
       throw new Error(`${recipe.template_name}: button "${b.text}" exceeds 25 chars`)
     }
+  }
+  if (recipe.body.trim().startsWith('{{')) {
+    throw new Error(
+      `${recipe.template_name}: body cannot start with a variable (Meta rule)`,
+    )
+  }
+  if (recipe.body.trim().endsWith('}}')) {
+    throw new Error(
+      `${recipe.template_name}: body cannot end with a variable (Meta rule)`,
+    )
   }
 }

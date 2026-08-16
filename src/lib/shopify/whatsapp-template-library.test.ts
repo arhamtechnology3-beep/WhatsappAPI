@@ -11,6 +11,8 @@ describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
     expect(SHOPIFY_TEMPLATE_LIBRARY.length).toBeGreaterThanOrEqual(9)
     for (const recipe of SHOPIFY_TEMPLATE_LIBRARY) {
       expect(() => assertRecipeMetaSafe(recipe)).not.toThrow()
+      expect(recipe.body.trim().startsWith('{{')).toBe(false)
+      expect(recipe.body.trim().endsWith('}}')).toBe(false)
     }
   })
 

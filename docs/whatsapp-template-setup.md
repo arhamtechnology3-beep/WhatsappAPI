@@ -33,7 +33,7 @@ Pre-configured **DivyaPrabha Foods** recipes (Farm Didi-style Hinglish, image he
 ### Cart #1 body (example)
 
 ```text
-{{1}}, aapka cart wait kar raha hai 🛒
+Namaste {{1}}! Aapka cart wait kar raha hai 🛒
 {{2}} — abhi bhi available hai!
 
 ✅ Handmade, no chemical preservatives

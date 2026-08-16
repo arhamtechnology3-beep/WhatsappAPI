@@ -389,9 +389,9 @@ export function TemplateManager() {
       }
       if (user) await fetchTemplates(user.id);
       toast.success(
-        `Installed ${data.inserted ?? 0} draft template(s)` +
-          (data.skipped ? ` (${data.skipped} already present)` : '') +
-          '. Submit each to Meta for approval.',
+        `Recipes ready: ${data.inserted ?? 0} new, ${data.updated ?? 0} drafts updated` +
+          (data.skipped ? `, ${data.skipped} already submitted` : '') +
+          '. Submit each draft to Meta.',
       );
     } catch (err) {
       toast.error(

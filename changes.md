@@ -31,6 +31,28 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 11:35] Fix (Templates) — Body cannot start with {{1}}
+
+### Root Cause
+- Meta (and wacrm's validator) reject template bodies that start with a variable. Festival and several other recipes opened with `{{1}}, …`, so Submit for Approval failed.
+
+### Objective & Fixes
+- Prefix those bodies with `Namaste {{1}}! …`.
+- **Install recipes** now refreshes DRAFT/REJECTED copy so you do not have to recreate rows.
+- After deploy: Install recipes again, then Submit for Approval.
+
+### Files Modified
+- `src/lib/shopify/whatsapp-template-library.ts`
+- `src/lib/shopify/install-template-recipes.ts`
+- `src/components/settings/template-manager.tsx`
+- `docs/whatsapp-template-setup.md`
+- `changes.md`
+
+### Live
+- Ship on `main` after this PR. No migration.
+
+---
+
 ## [2026-08-16 11:20] Feat (Templates & Automations) — Farm Didi-style Shopify recipes
 
 ### Root Cause

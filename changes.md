@@ -31,6 +31,27 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 11:45] Fix (Templates) — Live offers and divyaprabhafoods.com URLs
+
+### Root Cause
+- Recipes still said 3% prepaid and free shipping above ₹499. Buttons could resolve to `*.myshopify.com` instead of the live store.
+
+### Objective & Fixes
+- Marketing bodies: Buy 2 x 250g pickles FREE shipping, 10% OFF on ₹749+, FREE shipping above ₹599.
+- Customer URLs: `https://divyaprabhafoods.com/` and collection `https://divyaprabhafoods.com/collections/all-products` on Shop Now / Shop Bestsellers (cart, browse, festival).
+- After deploy: **Install recipes** to refresh DRAFTS, then submit. Already-open festival modal: paste the new offer lines and set Shop Now to the collection URL.
+
+### Files Modified
+- `src/lib/shopify/whatsapp-template-library.ts`
+- `src/lib/shopify/whatsapp-template-library.test.ts`
+- `docs/whatsapp-template-setup.md`
+- `changes.md`
+
+### Live
+- Ship on `main` after this PR. No migration.
+
+---
+
 ## [2026-08-16 11:35] Fix (Templates) — Body cannot start with {{1}}
 
 ### Root Cause

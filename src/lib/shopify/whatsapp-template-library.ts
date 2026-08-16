@@ -37,12 +37,14 @@ export interface ShopifyTemplateRecipe {
   sample_values: TemplateSampleValues
 }
 
+/** Customer-facing store. Never use the *.myshopify.com admin hostname. */
+export const STOREFRONT_ORIGIN = 'https://divyaprabhafoods.com'
+export const COLLECTION_ALL_PRODUCTS_PATH = 'collections/all-products'
+
 export function storefrontBaseUrl(): string {
-  const raw =
-    process.env.NEXT_PUBLIC_STOREFRONT_URL ||
-    process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN ||
-    'https://divyaprabhafoods.com'
+  const raw = (process.env.NEXT_PUBLIC_STOREFRONT_URL || STOREFRONT_ORIGIN).trim()
   const withProto = raw.startsWith('http') ? raw : `https://${raw}`
+  if (/myshopify\.com/i.test(withProto)) return STOREFRONT_ORIGIN
   return withProto.replace(/\/$/, '')
 }
 
@@ -50,8 +52,12 @@ export function shopFromWhatsAppUrl(): string {
   return `${storefrontBaseUrl()}/`
 }
 
+export function collectionAllProductsUrl(): string {
+  return `${storefrontBaseUrl()}/${COLLECTION_ALL_PRODUCTS_PATH}`
+}
+
 export function bestsellersUrl(): string {
-  return `${storefrontBaseUrl()}/collections/all`
+  return collectionAllProductsUrl()
 }
 
 export function dynamicStorefrontUrl(): string {
@@ -95,7 +101,7 @@ export function buildRecipeButtonParams(
         urlButtonParamFromAbsolute(urls.checkout_url) || 'checkouts'
     } else if (source === 'product_url') {
       out[index] =
-        urlButtonParamFromAbsolute(urls.product_url) || 'collections/all'
+        urlButtonParamFromAbsolute(urls.product_url) || COLLECTION_ALL_PRODUCTS_PATH
     } else if (source === 'tracking_url') {
       const tracking = urls.tracking_url || urls.checkout_url
       out[index] =
@@ -141,7 +147,7 @@ const trackOrder = (): TemplateButton => ({
 const shopNow = (): TemplateButton => ({
   type: 'URL',
   text: 'Shop Now',
-  url: shopFromWhatsAppUrl(),
+  url: collectionAllProductsUrl(),
 })
 
 export const SHOPIFY_TEMPLATE_LIBRARY: readonly ShopifyTemplateRecipe[] = [
@@ -154,15 +160,15 @@ export const SHOPIFY_TEMPLATE_LIBRARY: readonly ShopifyTemplateRecipe[] = [
 {{2}} — abhi bhi available hai!
 
 ✅ Handmade, no chemical preservatives
-✅ COD available | Free shipping above ₹499
-✅ 3% OFF on prepaid
+✅ Buy 2 x 250g pickles — FREE shipping
+✅ 10% OFF on ₹749+ | Free ship above ₹599
 
 Complete purchase se order confirm karo.`,
     variables: ['customer_name', 'product_name'],
     default_delay_minutes: 20,
     header_type: 'image',
     footer_text: 'DivyaPrabha Foods',
-    buttons: [completePurchase(), shopFromWhatsApp()],
+    buttons: [completePurchase(), shopBestsellers()],
     button_url_sources: ['checkout_url', null],
     sample_values: { body: ['Jesal', 'Nani Trial Pack'] },
   },
@@ -174,9 +180,9 @@ Complete purchase se order confirm karo.`,
     body: `Jaldi karo {{1}}! 🔥
 {{2}} mein se kuch fast moving hai.
 
-✅ Hygienically handmade
-✅ #1 pickle bestsellers
-✅ Stock khatam hone se pehle lock karo
+✅ Buy 2 x 250g pickles — FREE shipping
+✅ 10% OFF on orders ₹749+
+✅ FREE shipping above ₹599
 
 Order confirm karo — cart abhi saved hai.`,
     variables: ['customer_name', 'product_name'],
@@ -195,16 +201,16 @@ Order confirm karo — cart abhi saved hai.`,
     body: `Namaste {{1}}! Code {{3}} se abhi milega extra OFF! 🎁
 {{2}} abhi bhi cart mein saved hai.
 
-✅ Offer aaj ke liye
-✅ COD available
-✅ Free shipping above ₹499
+✅ Buy 2 x 250g pickles — FREE shipping
+✅ 10% OFF on orders ₹749+
+✅ FREE shipping above ₹599
 
 Complete purchase pe code apply ho jayega.`,
     variables: ['customer_name', 'product_name', 'discount_code'],
     default_delay_minutes: 1440,
     header_type: 'image',
     footer_text: 'DivyaPrabha Foods',
-    buttons: [completePurchase(), shopFromWhatsApp()],
+    buttons: [completePurchase(), shopBestsellers()],
     button_url_sources: ['checkout_url', null],
     sample_values: { body: ['Jesal', 'Nani Trial Pack', 'WACRM10'] },
   },
@@ -216,15 +222,15 @@ Complete purchase pe code apply ho jayega.`,
     body: `Abhi bhi soch rahe ho {{2}} ke baare mein, {{1}}? 🤔
 
 ✅ Handmade by didis — no chemical preservatives
-✅ Hygienic glass jar
-✅ COD available | Free shipping above ₹499
+✅ Buy 2 x 250g pickles — FREE shipping
+✅ 10% OFF on ₹749+ | Free ship above ₹599
 
 Try karo aur khud decide karo!`,
     variables: ['customer_name', 'product_name'],
     default_delay_minutes: 90,
     header_type: 'image',
     footer_text: 'DivyaPrabha Foods',
-    buttons: [orderNow(), shopFromWhatsApp()],
+    buttons: [orderNow(), shopBestsellers()],
     button_url_sources: ['product_url', null],
     sample_values: { body: ['Jesal', 'Homemade Mango Pickle'] },
   },
@@ -325,11 +331,11 @@ Neeche Yes dabayein — Cancel se order ruk jayega.`,
     body: `Namaste {{1}}! Festival ka swad ghar le aao! 🎁
 DivyaPrabha handmade pickles — gift-ready packing.
 
-✅ No chemical preservatives
-✅ COD available | Free shipping above ₹499
-✅ 3% OFF on prepaid
+✅ Buy 2 x 250g pickles — FREE shipping
+✅ 10% OFF on orders ₹749+
+✅ FREE shipping above ₹599
 
-Shop Now se bestsellers dekho.`,
+Shop Now se all products dekho.`,
     variables: ['customer_name'],
     default_delay_minutes: 0,
     header_type: 'image',

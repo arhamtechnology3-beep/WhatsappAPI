@@ -33,11 +33,25 @@ describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
     )
   })
 
-  it('uses image headers and no raw https in body', () => {
+  it('uses current offers and the custom-domain storefront', () => {
     for (const recipe of SHOPIFY_TEMPLATE_LIBRARY) {
-      expect(recipe.header_type).toBe('image')
-      expect(recipe.body).not.toMatch(/https?:\/\//i)
+      expect(recipe.body).not.toMatch(/3%\s*OFF/i)
+      expect(recipe.body).not.toMatch(/prepaid/i)
+      expect(recipe.body).not.toMatch(/₹499/)
+      for (const b of recipe.buttons) {
+        if (b.type === 'URL') {
+          expect(b.url).toContain('divyaprabhafoods.com')
+          expect(b.url).not.toMatch(/myshopify/i)
+        }
+      }
     }
+    const festival = SHOPIFY_TEMPLATE_LIBRARY.find(
+      (r) => r.template_name === 'wacrm_festival_broadcast_v1',
+    )!
+    const shopNow = festival.buttons.find((b) => b.type === 'URL' && b.text === 'Shop Now')
+    expect(shopNow && shopNow.type === 'URL' && shopNow.url).toContain(
+      'collections/all-products',
+    )
   })
 })
 

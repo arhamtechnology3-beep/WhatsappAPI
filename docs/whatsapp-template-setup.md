@@ -9,8 +9,8 @@ Pre-configured **DivyaPrabha Foods** recipes (Farm Didi-style Hinglish, image he
 1. In wacrm go to **Settings → Templates** and click **Install recipes**. That creates local **DRAFT** rows only (it does not re-seed on every page load).
 2. Open each draft → **Submit for Approval**, **or** paste the same name/body/buttons into [WhatsApp Manager](https://business.facebook.com/wa/manage/message-templates/).
 3. Template **names must match exactly** (e.g. `wacrm_cart_abandoned_v1`). Language: `en_US`.
-4. Header: **IMAGE**. wacrm fills the product photo at send time from Shopify; a brand banner is the fallback (`WHATSAPP_DEFAULT_HEADER_IMAGE_URL`).
-5. Do **not** put raw URLs in the body — checkout / product / tracking live on buttons (`https://your-store/{{1}}`).
+4. Storefront buttons: `https://divyaprabhafoods.com/` and collection `https://divyaprabhafoods.com/collections/all-products` (never `*.myshopify.com`). Marketing offers: Buy 2 x 250g pickles FREE shipping, 10% OFF on ₹749+, FREE shipping above ₹599 — no 3% prepaid.
+5. Do **not** put raw URLs in the body — checkout / product / tracking live on buttons (`https://divyaprabhafoods.com/{{1}}`).
 6. After Meta approves, on **Settings → Shopify Store** mark the matching rule/sequence **Approved & Active**.
 7. **Sync from Meta** only refreshes templates already in wacrm. It will not re-import deleted `wacrm_*` names.
 
@@ -37,8 +37,8 @@ Namaste {{1}}! Aapka cart wait kar raha hai 🛒
 {{2}} — abhi bhi available hai!
 
 ✅ Handmade, no chemical preservatives
-✅ COD available | Free shipping above ₹499
-✅ 3% OFF on prepaid
+✅ Buy 2 x 250g pickles — FREE shipping
+✅ 10% OFF on ₹749+ | Free ship above ₹599
 
 Complete purchase se order confirm karo.
 ```

@@ -43,6 +43,7 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import type { WhatsAppConfig as WhatsAppConfigType } from '@/types';
+import { isTestModeMessagingTier } from '@/lib/whatsapp/phone-utils';
 
 const MASKED_TOKEN = '••••••••••••••••';
 
@@ -600,6 +601,7 @@ export function WhatsAppConfig() {
       return limit;
     }
     if (tier) {
+      if (isTestModeMessagingTier(tier)) return 'Not set (test)';
       if (tier.includes('250')) return '250';
       if (tier.includes('1K')) return '1K';
       if (tier.includes('10K')) return '10K';
@@ -607,7 +609,7 @@ export function WhatsAppConfig() {
       if (tier.includes('UNLIMITED')) return 'Unlimited';
       return tier;
     }
-    return '250';
+    return 'Unknown';
   };
 
   if (loading) {
@@ -626,6 +628,15 @@ export function WhatsAppConfig() {
 
   const showResetBanner = resetReason === 'token_corrupted';
   const hasConnection = connectionStatus === 'connected' && config;
+  const testModeTier = isTestModeMessagingTier(phoneInfo?.messaging_limit_tier);
+  const verificationStatus = String(phoneInfo?.business_verification_status || '');
+  const businessUnverified =
+    Boolean(verificationStatus) && verificationStatus !== 'APPROVED';
+  const showRecipientLimitBanner =
+    hasConnection &&
+    (testModeTier ||
+      businessUnverified ||
+      phoneInfo?.account_review_status === 'PENDING');
 
   return (
     <section className="animate-in fade-in-50 duration-200 space-y-6">
@@ -673,6 +684,39 @@ export function WhatsAppConfig() {
                   </>
                 )}
               </Button>
+            </div>
+          </div>
+        </Alert>
+      )}
+
+      {showRecipientLimitBanner && (
+        <Alert className="bg-amber-950/40 border-amber-600/40">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="size-5 text-amber-400 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <AlertTitle className="text-amber-200 mb-1">
+                Meta still limits who you can message
+              </AlertTitle>
+              <AlertDescription className="text-amber-100/80 text-sm space-y-2">
+                <p>
+                  Templates can fail with a red X until the customer texts DivyaPrabha first.
+                  That is Meta&apos;s test-recipient / unverified-business rule, not the 24-hour
+                  WhatsApp chat window. After they send &quot;Hi&quot;, the same template delivers.
+                </p>
+                <p>
+                  Until Facebook Business Verification is Approved and the messaging limit is no
+                  longer &quot;Not set&quot;, add test numbers in{' '}
+                  <a
+                    href="https://developers.facebook.com/apps"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2"
+                  >
+                    Meta for Developers → WhatsApp → API Setup
+                  </a>
+                  , or complete verification in Meta Business Suite.
+                </p>
+              </AlertDescription>
             </div>
           </div>
         </Alert>
@@ -756,16 +800,16 @@ export function WhatsAppConfig() {
                   <Badge
                     variant="outline"
                     className={
-                      phoneInfo?.business_verification_status === 'APPROVED' || phoneInfo?.verified_name
+                      phoneInfo?.business_verification_status === 'APPROVED'
                         ? 'bg-emerald-500/10 text-emerald-600 border-none'
                         : 'bg-muted text-muted-foreground border-none'
                     }
                   >
                     {phoneInfo?.business_verification_status === 'APPROVED'
                       ? 'Verified'
-                      : phoneInfo?.verified_name
-                      ? 'Approved'
-                      : 'Unverified'}
+                      : phoneInfo?.business_verification_status
+                        ? String(phoneInfo.business_verification_status)
+                        : 'Unknown'}
                   </Badge>
                 </div>
                 <div className="flex items-center justify-between">

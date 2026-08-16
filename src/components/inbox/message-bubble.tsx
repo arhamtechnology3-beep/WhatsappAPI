@@ -331,8 +331,13 @@ export function MessageBubble({
           </span>
           {isAgent && <StatusIcon status={message.status} />}
         </div>
+        {isAgent && message.status === "sent" && (
+          <p className="mt-1 w-full text-[10px] leading-snug text-primary-foreground/75">
+            Not delivered yet (1 tick). New numbers often stay here until they message you first.
+          </p>
+        )}
         {isAgent && message.status === "failed" && message.error_message && (
-          <p className="mt-1 max-w-60 rounded bg-red-950/80 px-1.5 py-1 text-[11px] leading-snug text-red-100">
+          <p className="mt-1 w-full rounded bg-red-950/80 px-1.5 py-1 text-[11px] leading-snug text-red-100">
             {message.error_message}
           </p>
         )}

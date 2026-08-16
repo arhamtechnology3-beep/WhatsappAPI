@@ -1,10 +1,11 @@
 import { sendTextMessage, sendTemplateMessage } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
-  sanitizePhoneForMeta,
-  isValidE164,
-  phoneVariants,
+  explainMetaSendError,
   isRecipientNotAllowedError,
+  isValidE164,
+  primaryMetaRecipient,
+  recipientPhonesForMeta,
 } from '@/lib/whatsapp/phone-utils'
 import { supabaseAdmin } from './admin-client'
 import {
@@ -106,7 +107,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     throw new Error('contact has no phone number')
   }
 
-  const sanitized = sanitizePhoneForMeta(contact.phone)
+  const sanitized = primaryMetaRecipient(contact.phone)
   if (!isValidE164(sanitized)) {
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
@@ -259,7 +260,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   // Same phone-variant retry as /api/whatsapp/send — Meta sandbox and
   // numbers registered with/without a trunk 0 both require this to
   // reliably land a message.
-  const variants = phoneVariants(sanitized)
+  const variants = recipientPhonesForMeta(contact.phone)
   let workingPhone = sanitized
   let waMessageId = ''
   let lastError: unknown = null
@@ -285,9 +286,12 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       throw err // any other error (bad token, template error, etc.) bubbles up immediately
     }
   }
-  if (lastError) throw lastError
+  if (lastError) {
+    const raw = lastError instanceof Error ? lastError.message : String(lastError)
+    throw new Error(explainMetaSendError(raw))
+  }
 
-  if (workingPhone !== sanitized) {
+  if (workingPhone !== String(contact.phone || '').replace(/\D/g, '')) {
     await db.from('contacts').update({ phone: workingPhone }).eq('id', contact.id)
   }
 

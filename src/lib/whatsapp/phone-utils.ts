@@ -126,3 +126,72 @@ export function phoneVariants(sanitized: string): string[] {
 export function isRecipientNotAllowedError(message: string): boolean {
   return /131030|not in allowed list|not in the allowed list/i.test(message)
 }
+
+/**
+ * Digits Meta's Cloud API expects in `to`. Indian 10-digit mobiles get 91
+ * so Shopify/CSV numbers like "9769104020" match the WhatsApp id
+ * "919769104020" before the customer ever messages us.
+ */
+export function primaryMetaRecipient(phone: string): string {
+  return toMetaPhone(phone) || sanitizePhoneForMeta(phone)
+}
+
+/**
+ * Send-order: country-code form first, then trunk-0 variants of both the
+ * Meta form and the raw digits.
+ */
+export function recipientPhonesForMeta(phone: string): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  const pushAll = (digits: string) => {
+    for (const v of phoneVariants(digits)) {
+      if (v && !seen.has(v)) {
+        seen.add(v)
+        out.push(v)
+      }
+    }
+  }
+  const meta = toMetaPhone(phone)
+  const raw = sanitizePhoneForMeta(phone)
+  if (meta) pushAll(meta)
+  if (raw && raw !== meta) pushAll(raw)
+  return out
+}
+
+/** Meta `messaging_limit_tier` while the WABA is still in test / unverified. */
+export function isTestModeMessagingTier(tier?: string | null): boolean {
+  if (!tier) return false
+  return /TIER_NOT_SET|NOT_SET/i.test(tier)
+}
+
+/**
+ * Turn Graph errors into inbox-readable copy. #131030 looks like a
+ * "whitelist" to operators: templates only land after the customer
+ * messages first, which is Meta test-recipient / unverified-WABA — not
+ * the 24-hour customer-care window.
+ */
+export function explainMetaSendError(message: string): string {
+  const trimmed = (message || '').trim()
+  if (!trimmed) return trimmed
+  if (isRecipientNotAllowedError(trimmed)) {
+    return (
+      `${trimmed} Meta blocked this number (test/unverified WABA). ` +
+      `Approved templates still fail until they message you first, ` +
+      `you add them as a WhatsApp API test recipient, or Facebook Business Verification finishes. ` +
+      `This is not the 24-hour chat window.`
+    )
+  }
+  if (/#?131047|re-engagement/i.test(trimmed)) {
+    return `${trimmed} The 24-hour free-form window is closed — send an approved template.`
+  }
+  if (/#?131026|undeliverable/i.test(trimmed)) {
+    return (
+      `${trimmed} WhatsApp could not deliver. If this only works after they text you first, ` +
+      `the WABA is still in test/unverified mode.`
+    )
+  }
+  if (/#?131049/i.test(trimmed)) {
+    return `${trimmed} WhatsApp limited or paused marketing messages to this person.`
+  }
+  return trimmed
+}

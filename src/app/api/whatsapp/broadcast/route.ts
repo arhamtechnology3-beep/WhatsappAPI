@@ -5,10 +5,11 @@ import { decrypt } from '@/lib/whatsapp/encryption'
 import type { SendTimeParams } from '@/lib/whatsapp/template-send-builder'
 import { isMessageTemplate } from '@/lib/whatsapp/template-row-guard'
 import {
-  sanitizePhoneForMeta,
-  isValidE164,
-  phoneVariants,
+  explainMetaSendError,
   isRecipientNotAllowedError,
+  isValidE164,
+  primaryMetaRecipient,
+  recipientPhonesForMeta,
 } from '@/lib/whatsapp/phone-utils'
 import {
   checkRateLimit,
@@ -182,7 +183,7 @@ export async function POST(request: Request) {
     const isMarketing = templateRow?.category === 'MARKETING'
 
     for (const recipient of recipients) {
-      const sanitized = sanitizePhoneForMeta(recipient.phone)
+      const sanitized = primaryMetaRecipient(recipient.phone)
 
       if (!isValidE164(sanitized)) {
         results.push({
@@ -217,7 +218,7 @@ export async function POST(request: Request) {
 
       // Retry with phone variants on "not in allowed list" so numbers
       // that differ only in a trunk-prefix 0 still reach recipients.
-      const variants = phoneVariants(sanitized)
+      const variants = recipientPhonesForMeta(recipient.phone)
       let sentMessageId: string | null = null
       let lastError: string | null = null
 
@@ -239,12 +240,12 @@ export async function POST(request: Request) {
         } catch (error) {
           const errorMessage =
             error instanceof Error ? error.message : 'Unknown error'
-          if (!isRecipientNotAllowedError(errorMessage)) {
-            lastError = errorMessage
+          if (isRecipientNotAllowedError(errorMessage)) {
+            lastError = explainMetaSendError(errorMessage)
             break
           }
-          lastError = errorMessage
-          // retry with next variant
+          lastError = explainMetaSendError(errorMessage)
+          break
         }
       }
 

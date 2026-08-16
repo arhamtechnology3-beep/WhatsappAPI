@@ -35,6 +35,8 @@ export async function POST(request: Request) {
       first_name: payload.first_name || null,
       last_name: payload.last_name || null,
       marketing_opt_in: acceptsMarketing,
+      nameMode: 'replace',
+      orders_count: Number(payload.orders_count) || 0,
     })
 
     await supabase.from('shopify_webhook_logs').insert({

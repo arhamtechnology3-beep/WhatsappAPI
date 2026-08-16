@@ -31,6 +31,45 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 20:40] Fix (Shopify) — stop duplicate customers and keep Shopify names
+
+### Root Cause
+- COD / Cashfree `create-order` searched Shopify `phone:` with one format (`919167623044`). Admin already had `+91 91676 23044`, so Shopify returned no match and **created a second customer** (`wacrm via import`).
+- `matchOrCreateShopifyContact` always overwrote CRM name from checkout/WhatsApp, so **JESAL PANCHAL** replaced **Vidhi Panchal**.
+- Inbound WhatsApp profile name overwrote Shopify names whenever they differed.
+- Shopify email/SMS “not subscribed” was stored as WhatsApp **Opted Out** (insert trigger sets `marketing_opt_out_at` when `marketing_opt_in` is false).
+- Contacts UI loaded orders for one cached `shopify_customer_id`, often the **0-order twin**.
+
+### Objective & Fixes
+- Search Shopify customers by Meta, `+91`, 10-digit, and email; attach orders to the match with the most orders; only create an Admin customer if none exist.
+- Shopify customer sync/webhooks **replace** names; checkout/pixel/WhatsApp only **fill** placeholders.
+- Prefer the Shopify customer id that has orders; merge orders from all matching Admin ids on the contact Shopify panel.
+- New CRM contacts stay WhatsApp opted-in; Sync restores opt-in unless the last event is a real WhatsApp STOP/block.
+- After deploy: **Sync Shopify**, search `919167623044` — name should be Vidhi Panchal, not Opted Out, orders from the 2-order Admin record. Merge the duplicate Shopify customers in Admin (keep `9129655992534`). This code cannot merge Shopify Admin twins.
+
+### Files Modified
+- `src/lib/shopify/shopify-customer-lookup.ts`
+- `src/lib/shopify/shopify-customer-lookup.test.ts`
+- `src/lib/shopify/shopify-helper.ts`
+- `src/app/api/shopify/create-order/route.ts`
+- `src/app/api/cashfree/create-order/route.ts`
+- `src/app/api/shopify/customer/route.ts`
+- `src/app/api/shopify/sync-customers/route.ts`
+- `src/app/api/shopify/capture-visitor/route.ts`
+- `src/app/api/shopify/track-checkout/route.ts`
+- `src/app/api/shopify/pixel/product-viewed/route.ts`
+- `src/app/api/webhooks/shopify/customers-create/route.ts`
+- `src/app/api/webhooks/shopify/customers-update/route.ts`
+- `src/app/api/webhooks/shopify/orders-create/route.ts`
+- `src/app/api/webhooks/shopify/orders-updated/route.ts`
+- `src/app/api/webhooks/shopify/checkouts-create/route.ts`
+- `src/app/api/webhooks/shopify/checkouts-update/route.ts`
+- `src/app/api/whatsapp/webhook/route.ts`
+
+### Live
+- PR pending (`cursor/shopify-customer-sync-8968`).
+- Migration required: none.
+
 ## [2026-08-16 18:20] Fix (Templates) — do not block Meta send on header image upload
 
 ### Root Cause

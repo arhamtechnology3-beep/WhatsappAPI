@@ -134,6 +134,8 @@ export async function POST() {
       last_name?: string | null
       company?: string | null
       marketing_opt_in?: boolean
+      nameMode?: 'replace' | 'fill'
+      orders_count?: number
     }) => {
       if (!payload.phone && !payload.email && !payload.id) return null
       try {
@@ -169,6 +171,8 @@ export async function POST() {
         marketing_opt_in:
           sc.accepts_marketing === true ||
           (sc.sms_marketing_consent as ShopifyRecord | undefined)?.state === 'subscribed',
+        nameMode: 'replace',
+        orders_count: Number(sc.orders_count) || 0,
       })
     })
 
@@ -184,6 +188,7 @@ export async function POST() {
         first_name: asString(c.first_name) || asString(addr.first_name),
         last_name: asString(c.last_name) || asString(addr.last_name),
         company: asString(addr.company),
+        nameMode: 'fill',
       })
     })
 
@@ -199,6 +204,7 @@ export async function POST() {
         first_name: asString(addr.first_name) || asString(customer.first_name),
         last_name: asString(addr.last_name) || asString(customer.last_name),
         company: asString(addr.company),
+        nameMode: 'fill',
       })
 
       if (!contact?.id) return

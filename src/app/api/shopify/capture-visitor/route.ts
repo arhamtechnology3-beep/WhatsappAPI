@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { getShopifyAccountContext, matchOrCreateShopifyContact } from '@/lib/shopify/shopify-helper'
-import { fetchShopify } from '@/lib/shopify/shopify-client'
+import { findPreferredShopifyCustomer } from '@/lib/shopify/shopify-customer-lookup'
 import { applyShopifyCors, shopifyCorsPreflight } from '@/lib/shopify/cors'
 import { toMetaPhone } from '@/lib/whatsapp/phone-utils'
 
@@ -32,14 +32,17 @@ export async function POST(request: Request) {
     const phone = rawPhone ? toMetaPhone(rawPhone) : null
 
     let resolvedShopifyId = shopifyCustomerId ? String(shopifyCustomerId) : null
-    if (!resolvedShopifyId && (phone || email)) {
+    let ordersCount = 0
+    if (phone || email) {
       try {
-        const query = phone ? `phone:${phone}` : `email:${email}`
-        const searchRes = await fetchShopify(
-          `/customers/search.json?query=${encodeURIComponent(query)}&limit=1`
-        )
-        const found = searchRes.customers?.[0]
-        if (found?.id) resolvedShopifyId = String(found.id)
+        const found = await findPreferredShopifyCustomer({ phone, email })
+        if (found?.id) {
+          const foundOrders = Number(found.orders_count) || 0
+          if (!resolvedShopifyId || foundOrders > 0) {
+            resolvedShopifyId = String(found.id)
+            ordersCount = foundOrders
+          }
+        }
       } catch (err) {
         console.warn('[capture-visitor] Shopify customer search failed:', err)
       }
@@ -52,6 +55,8 @@ export async function POST(request: Request) {
       phone,
       first_name: nameParts[0] || null,
       last_name: nameParts.slice(1).join(' ') || null,
+      nameMode: 'fill',
+      orders_count: ordersCount,
     })
 
     if (!contact) {

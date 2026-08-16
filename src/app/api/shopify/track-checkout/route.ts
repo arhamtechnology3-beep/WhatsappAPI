@@ -51,6 +51,7 @@ export async function POST(request: Request) {
       phone: phone || null,
       first_name: firstName,
       last_name: lastName,
+      nameMode: 'fill',
     })
 
     if (!contact) {

@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       phone,
       first_name,
       last_name,
+      nameMode: 'fill',
     })
 
     if (!contact) {

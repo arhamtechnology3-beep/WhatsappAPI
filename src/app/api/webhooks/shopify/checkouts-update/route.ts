@@ -60,6 +60,7 @@ export async function POST(request: Request) {
       first_name: firstName,
       last_name: lastName,
       marketing_opt_in: acceptsMarketing,
+      nameMode: 'fill' as const,
     }
 
     const contact = await matchOrCreateShopifyContact(supabase, accountId, userId, customerPayload)

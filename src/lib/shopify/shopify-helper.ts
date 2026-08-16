@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { findExistingContact, findExistingContactByEmail, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { toMetaPhone, normalizePhone } from '@/lib/whatsapp/phone-utils'
+import { shouldReplaceContactName } from './shopify-customer-lookup'
 import { canonicalRecipeName, recipeByName } from './whatsapp-template-library'
 
 
@@ -12,6 +13,8 @@ export interface ShopifyCustomerPayload {
   last_name?: string | null
   company?: string | null
   marketing_opt_in?: boolean
+  nameMode?: 'replace' | 'fill'
+  orders_count?: number
 }
 
 /**
@@ -53,6 +56,7 @@ export async function matchOrCreateShopifyContact(
   const name = [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || null
   const company = customer.company?.trim() || null
   const optedIn = customer.marketing_opt_in
+  const nameMode = customer.nameMode || 'fill'
   const shopifyCustomerId = customer.id ? String(customer.id) : null
 
   let contact: any = null
@@ -96,10 +100,11 @@ export async function matchOrCreateShopifyContact(
         name: name || email || 'Shopify Customer',
         shopify_customer_id: shopifyCustomerId,
         company: company || undefined,
-        marketing_opt_in: optedIn ?? true,
-        whatsapp_marketing_opt_in: optedIn ?? true,
-        marketing_opt_in_source: optedIn === false ? null : 'checkout',
-        marketing_opt_in_at: optedIn === false ? null : new Date().toISOString(),
+        // Shopify email/SMS "not subscribed" is not a WhatsApp opt-out.
+        marketing_opt_in: true,
+        whatsapp_marketing_opt_in: true,
+        marketing_opt_in_source: 'checkout',
+        marketing_opt_in_at: new Date().toISOString(),
       })
       .select()
       .single()
@@ -126,16 +131,26 @@ export async function matchOrCreateShopifyContact(
     }
 
     if (!newContact && shopifyCustomerId) {
+      const uniqueUpdates: Record<string, unknown> = {
+        shopify_customer_id: shopifyCustomerId,
+        email: email || undefined,
+        phone,
+        company: company || undefined,
+        updated_at: new Date().toISOString(),
+      }
+      if (
+        shouldReplaceContactName({
+          existingName: contact.name,
+          incomingName: name,
+          mode: nameMode,
+          phone: contact.phone || phone,
+        })
+      ) {
+        uniqueUpdates.name = name
+      }
       const { data: updated } = await supabase
         .from('contacts')
-        .update({
-          shopify_customer_id: shopifyCustomerId,
-          email: email || undefined,
-          phone,
-          name: name || undefined,
-          company: company || undefined,
-          updated_at: new Date().toISOString(),
-        })
+        .update(uniqueUpdates)
         .eq('id', contact.id)
         .select()
         .single()
@@ -157,7 +172,10 @@ export async function matchOrCreateShopifyContact(
       updated_at: new Date().toISOString(),
     }
     if (shopifyCustomerId && contact.shopify_customer_id !== shopifyCustomerId) {
-      updates.shopify_customer_id = shopifyCustomerId
+      const incomingOrders = Number(customer.orders_count) || 0
+      if (!contact.shopify_customer_id || incomingOrders > 0) {
+        updates.shopify_customer_id = shopifyCustomerId
+      }
     }
     if (email) {
       updates.email = email.toLowerCase()
@@ -165,7 +183,14 @@ export async function matchOrCreateShopifyContact(
     if (phone && contact.phone !== phone) {
       updates.phone = phone
     }
-    if (name && name !== 'Shopify Customer') {
+    if (
+      shouldReplaceContactName({
+        existingName: contact.name,
+        incomingName: name,
+        mode: nameMode,
+        phone: contact.phone || phone,
+      })
+    ) {
       updates.name = name
     }
     if (company) {
@@ -173,13 +198,27 @@ export async function matchOrCreateShopifyContact(
     }
 
     let optInLogged = false
-    if (optedIn === true && !contact.marketing_opt_in) {
-      updates.marketing_opt_in = true
-      updates.whatsapp_marketing_opt_in = true
-      updates.marketing_opt_in_source = 'checkout'
-      updates.marketing_opt_in_at = new Date().toISOString()
-      updates.marketing_opt_out_at = null
-      optInLogged = true
+    const restoreFromShopifyEmail =
+      !contact.marketing_opt_in && optedIn !== true
+    if ((optedIn === true && !contact.marketing_opt_in) || restoreFromShopifyEmail) {
+      const { data: lastOpt } = await supabase
+        .from('opt_in_events')
+        .select('event_type, source')
+        .eq('contact_id', contact.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      const realWhatsAppOptOut =
+        lastOpt?.event_type === 'opt_out' &&
+        (lastOpt.source === 'inbound_message' || lastOpt.source === 'meta_platform_block')
+      if (!realWhatsAppOptOut) {
+        updates.marketing_opt_in = true
+        updates.whatsapp_marketing_opt_in = true
+        updates.marketing_opt_in_source = 'checkout'
+        updates.marketing_opt_in_at = new Date().toISOString()
+        updates.marketing_opt_out_at = null
+        optInLogged = true
+      }
     }
 
     if (Object.keys(updates).length > 0) {

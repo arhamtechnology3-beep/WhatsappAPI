@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { alignShopifyAutomations } from './automation-bindings'
 import {
   RECIPE_NAME_RENAMES,
   SHOPIFY_TEMPLATE_LIBRARY,
@@ -12,6 +13,9 @@ export interface InstallRecipesResult {
   delaysUpdated: number
   namesRemapped: number
   staleDraftsRemoved: number
+  rulesUpserted: number
+  sequencesUpserted: number
+  stepsUpserted: number
 }
 
 export async function installShopifyTemplateRecipes(
@@ -122,12 +126,17 @@ export async function installShopifyTemplateRecipes(
     staleDraftsRemoved = removed?.length ?? 0
   }
 
+  const aligned = await alignShopifyAutomations(db, accountId)
+
   return {
     inserted,
     skipped,
     updated,
     delaysUpdated,
-    namesRemapped,
+    namesRemapped: namesRemapped + aligned.namesRemapped,
     staleDraftsRemoved,
+    rulesUpserted: aligned.rulesUpserted,
+    sequencesUpserted: aligned.sequencesUpserted,
+    stepsUpserted: aligned.stepsUpserted,
   }
 }

@@ -28,6 +28,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { propagateTemplateApproval } from '@/lib/shopify/automation-bindings'
 import { normalizeStatus } from './template-status-normalize'
 
 const TEMPLATE_WEBHOOK_FIELDS = new Set([
@@ -154,22 +155,9 @@ async function handleStatusUpdate(
   }
 
   // Propagate status change to sequence steps and rules
-  const mappedApprovalStatus = status === 'APPROVED' ? 'approved' :
-                               status === 'REJECTED' ? 'rejected' :
-                               status === 'PENDING' ? 'pending' : 'not_submitted'
   for (const row of data) {
     if (row.name && row.account_id) {
-      await supabase
-        .from('shopify_automation_sequence_steps')
-        .update({ meta_approval_status: mappedApprovalStatus })
-        .eq('account_id', row.account_id)
-        .eq('template_name', row.name)
-
-      await supabase
-        .from('shopify_automation_rules')
-        .update({ meta_approval_status: mappedApprovalStatus })
-        .eq('account_id', row.account_id)
-        .eq('template_name', row.name)
+      await propagateTemplateApproval(supabase, row.account_id, row.name, status)
     }
   }
 

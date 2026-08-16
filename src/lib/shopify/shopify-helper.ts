@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { findExistingContact, findExistingContactByEmail, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { toMetaPhone, normalizePhone } from '@/lib/whatsapp/phone-utils'
-import { SHOPIFY_TEMPLATE_LIBRARY } from './whatsapp-template-library'
+import { canonicalRecipeName, recipeByName } from './whatsapp-template-library'
 
 
 export interface ShopifyCustomerPayload {
@@ -408,8 +408,8 @@ const TRIGGER_EVENT_MAP: Record<string, string[]> = {
 };
 
 function getVariablesForTemplate(templateName: string, key: string): string[] {
-  const recipe = SHOPIFY_TEMPLATE_LIBRARY.find((r) => r.template_name === templateName);
-  if (recipe) return [...recipe.variables];
+  const recipe = recipeByName(templateName)
+  if (recipe) return [...recipe.variables]
 
   // Fallbacks for categories not in initial library
   if (key === 'order_cancelled') return ['customer_name', 'order_number'];
@@ -484,7 +484,7 @@ export async function enqueueShopifyNotification(
           if (template.key === 'cod_confirmation' && !data.is_cod) continue
           if (template.key === 'order_confirmation' && data.is_cod) continue
 
-          const templateName = template.meta_template_name
+          const templateName = canonicalRecipeName(template.meta_template_name)
           const variables = getVariablesForTemplate(templateName, template.key)
           const templateParams = variables.map((variableName) => {
             return data[variableName as keyof typeof data] || ''
@@ -535,6 +535,7 @@ export async function enqueueShopifyNotification(
         .eq('account_id', accountId)
         .eq('trigger_type', ruleTrigger)
         .eq('is_active', true)
+        .eq('meta_approval_status', 'approved')
         .maybeSingle()
 
       if (rule) {
@@ -549,7 +550,7 @@ export async function enqueueShopifyNotification(
           account_id: accountId,
           contact_id: contactId,
           recipient_phone: recipientPhone,
-          template_name: rule.template_name,
+          template_name: canonicalRecipeName(rule.template_name),
           template_params: templateParams,
           status: 'pending',
           run_at: new Date(Date.now() + delay * 60000).toISOString(),

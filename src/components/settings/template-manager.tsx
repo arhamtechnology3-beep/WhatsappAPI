@@ -197,6 +197,9 @@ export function TemplateManager() {
         .order('created_at', { ascending: false });
       if (error) throw error;
       setTemplates(data || []);
+      await fetch('/api/shopify/align-automations', { method: 'POST' }).catch(
+        () => undefined,
+      );
     } catch (err) {
       console.error('Failed to fetch templates:', err);
       toast.error('Failed to load templates');
@@ -391,8 +394,9 @@ export function TemplateManager() {
       toast.success(
         `Recipes ready: ${data.inserted ?? 0} new, ${data.updated ?? 0} drafts updated` +
           (data.skipped ? `, ${data.skipped} already submitted` : '') +
-          (data.namesRemapped ? `, ${data.namesRemapped} automations pointed at *_v2` : '') +
-          '. Submit each *_v2 draft to Meta (do not resubmit the old names).',
+          (data.namesRemapped ? `, ${data.namesRemapped} automations pointed at current names` : '') +
+          (data.rulesUpserted ? `, ${data.rulesUpserted} order rules aligned` : '') +
+          '. Approved templates send on Shopify triggers; Pending ones wait for Meta.',
       );
     } catch (err) {
       toast.error(

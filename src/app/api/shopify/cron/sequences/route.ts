@@ -3,10 +3,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
 import { createShopifyDiscountCode } from '@/lib/shopify/discount-generator'
 import { authorizeCron } from '@/lib/cron/auth'
-import {
-  shouldStopBrowseDrip,
-  shouldStopCartDrip,
-} from '@/lib/shopify/recovery-conversion'
+import { sequenceStepSendDecision } from '@/lib/shopify/automation-bindings'
 
 export async function GET(request: Request) {
   const denied = authorizeCron(request)
@@ -104,15 +101,17 @@ export async function GET(request: Request) {
           .select('*')
           .eq('sequence_id', sequence.id)
           .eq('step_order', tracking.current_step)
-          .eq('is_active', true)
-          .eq('meta_approval_status', 'approved')
           .maybeSingle()
 
-        if (!step) {
-          // If step isn't approved/active, skip and try advancing to next step in sequence
+        const sendDecision = sequenceStepSendDecision(step)
+        if (sendDecision === 'wait') {
+          continue
+        }
+        if (sendDecision === 'skip') {
           await advanceOrComplete(supabase, tracking, sequence.id, null)
           continue
         }
+        if (!step) continue
 
         // 5) COMPLIANCE: OPT-IN CHECK
         // Step 1 cart abandoned reminder is transactional (uses 24h window), but Step 2, 3, and all browse reminders require marketing opt-in consent

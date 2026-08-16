@@ -31,7 +31,38 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
-## [2026-08-16 12:32] Fix (Templates) — cart abandoned v4 (v2 already on Meta)
+## [2026-08-16 12:42] Fix (Automations) — align Shopify triggers to approved templates
+
+### Root Cause
+- Sequence steps have no `account_id`, so submit/sync/webhook never copied Meta APPROVED onto drip steps.
+- Rules could still point at old names / `not_submitted`, so Shopify events skipped sending.
+- Pending cart step 1 was treated as missing and the cron skipped ahead to step 2.
+
+### Objective & Fixes
+- Bindings: COD, order confirmed/shipped/delivered, cart 20m/3h/24h, browse 90m.
+- Opening Templates or Shopify Store (or Install recipes) upserts those rules/steps, copies Meta status, and activates sequences.
+- Order jobs only send when the rule is **approved**. Pending drip steps wait instead of skipping.
+- Festival stays Broadcasts-only.
+
+### Files Modified
+- `src/lib/shopify/automation-bindings.ts`
+- `src/lib/shopify/install-template-recipes.ts`
+- `src/lib/shopify/shopify-helper.ts`
+- `src/app/api/shopify/align-automations/route.ts`
+- `src/app/api/shopify/cron/sequences/route.ts`
+- `src/app/api/whatsapp/templates/submit/route.ts`
+- `src/app/api/whatsapp/templates/sync/route.ts`
+- `src/lib/whatsapp/template-webhook.ts`
+- `src/components/settings/template-manager.tsx`
+- `src/components/settings/shopify-settings.tsx`
+- `docs/whatsapp-template-setup.md`
+- `changes.md`
+
+### Live
+- Ship on `main` after this PR. No migration. Hard-refresh Settings → Templates once.
+
+---
+
 
 ### Root Cause
 - Other `*_v2` templates were new and went Pending. `wacrm_cart_abandoned_v2` (and historically v3) already existed on the WABA, so Meta #100 duplicate name.

@@ -6,6 +6,7 @@ import {
   isSkippedMetaCatalogTemplate,
   shouldImportNewMetaTemplate,
 } from '@/lib/whatsapp/template-sync-policy'
+import { propagateTemplateApproval } from '@/lib/shopify/automation-bindings'
 import type { TemplateButton, TemplateSampleValues } from '@/types'
 
 /**
@@ -305,20 +306,7 @@ export async function POST() {
           })
         } else {
           updated++
-          // Propagate status change to sequence steps and rules
-          const mappedApprovalStatus = row.status === 'APPROVED' ? 'approved' :
-                                       row.status === 'REJECTED' ? 'rejected' :
-                                       row.status === 'PENDING' ? 'pending' : 'not_submitted'
-          await supabase
-            .from('shopify_automation_sequence_steps')
-            .update({ meta_approval_status: mappedApprovalStatus })
-            .eq('account_id', accountId)
-            .eq('template_name', t.name)
-          await supabase
-            .from('shopify_automation_rules')
-            .update({ meta_approval_status: mappedApprovalStatus })
-            .eq('account_id', accountId)
-            .eq('template_name', t.name)
+          await propagateTemplateApproval(supabase, accountId, t.name, row.status)
         }
       } else if (shouldImportNewMetaTemplate()) {
         const { error: insErr } = await supabase
@@ -332,19 +320,7 @@ export async function POST() {
           })
         } else {
           inserted++
-          const mappedApprovalStatus = row.status === 'APPROVED' ? 'approved' :
-                                       row.status === 'REJECTED' ? 'rejected' :
-                                       row.status === 'PENDING' ? 'pending' : 'not_submitted'
-          await supabase
-            .from('shopify_automation_sequence_steps')
-            .update({ meta_approval_status: mappedApprovalStatus })
-            .eq('account_id', accountId)
-            .eq('template_name', t.name)
-          await supabase
-            .from('shopify_automation_rules')
-            .update({ meta_approval_status: mappedApprovalStatus })
-            .eq('account_id', accountId)
-            .eq('template_name', t.name)
+          await propagateTemplateApproval(supabase, accountId, t.name, row.status)
         }
       } else {
         skipped++

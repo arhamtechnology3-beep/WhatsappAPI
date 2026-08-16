@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { submitMessageTemplate, explainUnsupportedMetaObjectError } from '@/lib/whatsapp/meta-api'
+import { propagateTemplateApproval } from '@/lib/shopify/automation-bindings'
 import {
   validateTemplatePayload,
   type TemplatePayload,
@@ -246,19 +247,7 @@ export async function POST(request: Request) {
 
     // Propagate status change to sequence steps and rules
     const localStatus = normalizeStatus(metaStatus)
-    const mappedApprovalStatus = localStatus === 'APPROVED' ? 'approved' :
-                                 localStatus === 'REJECTED' ? 'rejected' :
-                                 localStatus === 'PENDING' ? 'pending' : 'not_submitted'
-    await supabase
-      .from('shopify_automation_sequence_steps')
-      .update({ meta_approval_status: mappedApprovalStatus })
-      .eq('account_id', accountId)
-      .eq('template_name', payload.name)
-    await supabase
-      .from('shopify_automation_rules')
-      .update({ meta_approval_status: mappedApprovalStatus })
-      .eq('account_id', accountId)
-      .eq('template_name', payload.name)
+    await propagateTemplateApproval(supabase, accountId, payload.name, localStatus)
 
     return NextResponse.json({
       success: true,

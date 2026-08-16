@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/card"
 import { SettingsPanelHead } from "./settings-panel-head"
 import { Badge } from "@/components/ui/badge"
-import { SHOPIFY_TEMPLATE_LIBRARY } from "@/lib/shopify/whatsapp-template-library"
+import { recipeByName } from "@/lib/shopify/whatsapp-template-library"
 
 interface WebhookLog {
   id: string
@@ -42,7 +42,7 @@ interface WebhookLog {
 
 interface AutomationRule {
   id: string
-  trigger_type: 'order_created' | 'order_fulfilled' | 'order_delivered'
+  trigger_type: 'order_created' | 'order_fulfilled' | 'order_delivered' | 'cod_confirmation'
   template_name: string
   template_variable_mapping: string[]
   delay_minutes: number
@@ -147,6 +147,9 @@ export function ShopifySettings() {
     setRulesLoading(true)
     setSequencesLoading(true)
     try {
+      await fetch('/api/shopify/align-automations', { method: 'POST' }).catch(
+        () => undefined,
+      )
       // Load flat transactional rules
       let { data: rulesData, error: rulesErr } = await supabase
         .from('shopify_automation_rules')
@@ -335,6 +338,7 @@ export function ShopifySettings() {
       case 'cart_abandoned': return 'Cart Abandonment Recovery'
       case 'browse_abandoned': return 'Browse Abandonment Recovery'
       case 'order_created': return 'Order Confirmed'
+      case 'cod_confirmation': return 'COD Confirmation'
       case 'order_fulfilled': return 'Order Shipped'
       case 'order_delivered': return 'Order Delivered'
       default: return type
@@ -520,7 +524,7 @@ export function ShopifySettings() {
                   {/* Steps List */}
                   <div className="divide-y divide-border">
                     {seq.steps.map((step) => {
-                      const recipe = SHOPIFY_TEMPLATE_LIBRARY.find((r) => r.template_name === step.template_name)
+                      const recipe = recipeByName(step.template_name)
                       const isExpanded = expandedStepId === step.id
 
                       return (
@@ -688,7 +692,7 @@ export function ShopifySettings() {
           ) : (
             <div className="divide-y divide-border rounded-lg border border-border">
               {rules.map((rule) => {
-                const recipe = SHOPIFY_TEMPLATE_LIBRARY.find((r) => r.template_name === rule.template_name)
+                const recipe = recipeByName(rule.template_name)
 
                 return (
                   <div key={rule.id} className="p-4 space-y-3 bg-card/20 hover:bg-card/40 transition-colors">

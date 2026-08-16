@@ -11,7 +11,7 @@ Pre-configured **DivyaPrabha Foods** recipes (Farm Didi-style Hinglish, image he
 3. Template **names must match exactly** (e.g. `wacrm_cart_abandoned_v4`). Language: `en_US`.
 4. Storefront buttons: `https://divyaprabhafoods.com/` and collection `https://divyaprabhafoods.com/collections/all-products` (never `*.myshopify.com`). Marketing offers: Buy 2 x 250g pickles FREE shipping, 10% OFF on ₹749+, FREE shipping above ₹599 — no 3% prepaid.
 5. Do **not** put raw URLs in the body. Marketing checkout/product buttons use `https://divyaprabhafoods.com/{{1}}`. Utility **Track Order** must be a static URL `https://divyaprabhafoods.com/account/orders` (no `{{1}}`, empty suffix) — Meta returns **Invalid parameter** otherwise.
-6. After Meta approves, on **Settings → Shopify Store** mark the matching rule/sequence **Approved & Active**.
+6. Opening **Settings → Templates** or **Shopify Store** aligns automations to these names and copies Meta status (Approved sends; Pending waits). Festival `wacrm_festival_broadcast_v2` is for Broadcasts, not a Shopify trigger.
 7. **Sync from Meta** only refreshes templates already in wacrm. It will not re-import deleted `wacrm_*` names.
 
 ---

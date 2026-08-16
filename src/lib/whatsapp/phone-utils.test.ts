@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  explainMetaSendError,
   isRecipientNotAllowedError,
+  isTestModeMessagingTier,
   isValidE164,
   normalizePhone,
   phoneVariants,
   phonesMatch,
+  primaryMetaRecipient,
+  recipientPhonesForMeta,
   sanitizePhoneForMeta,
   toMetaPhone,
 } from "./phone-utils";
@@ -147,6 +151,45 @@ describe("phoneVariants", () => {
   it("returns just the original when the number is too short for any CC slice", () => {
     // 1-char input is shorter than all ccLen values; both loops skip.
     expect(phoneVariants("1")).toEqual(["1"]);
+  });
+});
+
+describe("primaryMetaRecipient", () => {
+  it("adds 91 to Indian 10-digit mobiles before send", () => {
+    expect(primaryMetaRecipient("9769104020")).toBe("919769104020");
+    expect(primaryMetaRecipient("919769104020")).toBe("919769104020");
+  });
+});
+
+describe("recipientPhonesForMeta", () => {
+  it("tries the 91-prefixed form first for Indian mobiles", () => {
+    const out = recipientPhonesForMeta("9769104020");
+    expect(out[0]).toBe("919769104020");
+    expect(out).toContain("9769104020");
+  });
+});
+
+describe("isTestModeMessagingTier", () => {
+  it("detects TIER_NOT_SET", () => {
+    expect(isTestModeMessagingTier("TIER_NOT_SET")).toBe(true);
+    expect(isTestModeMessagingTier("TIER_1K")).toBe(false);
+    expect(isTestModeMessagingTier(null)).toBe(false);
+  });
+});
+
+describe("explainMetaSendError", () => {
+  it("explains #131030 as test-recipient restriction, not the 24h window", () => {
+    const out = explainMetaSendError(
+      "(#131030) Recipient phone number not in allowed list",
+    );
+    expect(out).toMatch(/test\/unverified/i);
+    expect(out).toMatch(/not the 24-hour/i);
+  });
+
+  it("leaves unrelated Graph errors intact", () => {
+    expect(explainMetaSendError("(#100) Invalid parameter")).toBe(
+      "(#100) Invalid parameter",
+    );
   });
 });
 

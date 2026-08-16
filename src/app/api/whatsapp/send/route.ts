@@ -9,10 +9,11 @@ import {
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import {
-  sanitizePhoneForMeta,
-  isValidE164,
-  phoneVariants,
+  explainMetaSendError,
   isRecipientNotAllowedError,
+  isValidE164,
+  primaryMetaRecipient,
+  recipientPhonesForMeta,
 } from '@/lib/whatsapp/phone-utils'
 import {
   checkRateLimit,
@@ -243,8 +244,8 @@ export async function POST(request: Request) {
       )
     }
 
-    // Sanitize and validate phone
-    const sanitizedPhone = sanitizePhoneForMeta(contact.phone)
+    // Sanitize and validate phone (Indian 10-digit → 91… before first inbound)
+    const sanitizedPhone = primaryMetaRecipient(contact.phone)
     if (!isValidE164(sanitizedPhone)) {
       return NextResponse.json(
         { error: 'Invalid phone number format' },
@@ -441,7 +442,7 @@ export async function POST(request: Request) {
     }
 
     try {
-      const variants = phoneVariants(sanitizedPhone)
+      const variants = recipientPhonesForMeta(contact.phone)
       let lastError: unknown = null
 
       for (const variant of variants) {
@@ -471,7 +472,8 @@ export async function POST(request: Request) {
       if (lastError) throw lastError
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown Meta API error'
-      console.error('Meta API send failed for all variants:', message)
+      const explained = explainMetaSendError(message)
+      console.error('Meta API send failed for all variants:', explained)
       const { data: failedRecord } = await insertOutboundMessage(supabase, {
         conversation_id,
         sender_type: 'agent',
@@ -482,7 +484,7 @@ export async function POST(request: Request) {
         template_payload: templatePayload,
         message_id: null,
         status: 'failed',
-        error_message: message,
+        error_message: explained,
         reply_to_message_id: reply_to_message_id || null,
       })
       await supabase
@@ -495,19 +497,18 @@ export async function POST(request: Request) {
         .eq('id', conversation_id)
       return NextResponse.json(
         {
-          error: `Meta API error: ${message}`,
+          error: `Meta API error: ${explained}`,
           message: failedRecord,
         },
         { status: 502 },
       )
     }
 
-    // If a non-original variant succeeded, update the contact so future
-    // sends go straight through. sanitizePhoneForMeta on workingPhone
-    // will yield workingPhone itself, so re-storing preserves it.
-    if (workingPhone !== sanitizedPhone) {
+    // If we sent a different digit form than the stored contact (e.g. added 91),
+    // persist Meta's accepted id so the next send does not depend on an inbound.
+    if (workingPhone !== String(contact.phone || '').replace(/\D/g, '')) {
       console.log(
-        `[whatsapp/send] Auto-corrected contact phone: ${sanitizedPhone} → ${workingPhone}`
+        `[whatsapp/send] Auto-corrected contact phone: ${contact.phone} → ${workingPhone}`
       )
       await supabase
         .from('contacts')

@@ -9,10 +9,10 @@ import {
 } from '@/lib/whatsapp/meta-api'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import {
-  sanitizePhoneForMeta,
-  isValidE164,
-  phoneVariants,
   isRecipientNotAllowedError,
+  isValidE164,
+  primaryMetaRecipient,
+  recipientPhonesForMeta,
 } from '@/lib/whatsapp/phone-utils'
 import { supabaseAdmin } from './admin-client'
 
@@ -72,7 +72,7 @@ export async function engineSendText(
     throw new Error('contact not found for this account')
   }
 
-  const sanitized = sanitizePhoneForMeta(contact.phone)
+  const sanitized = primaryMetaRecipient(contact.phone)
   if (!isValidE164(sanitized)) {
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
@@ -98,7 +98,7 @@ export async function engineSendText(
     return r.messageId
   }
 
-  const variants = phoneVariants(sanitized)
+  const variants = recipientPhonesForMeta(contact.phone)
   let workingPhone = sanitized
   let waMessageId = ''
   let lastError: unknown = null
@@ -181,7 +181,7 @@ export async function engineSendMedia(
     throw new Error('contact not found for this account')
   }
 
-  const sanitized = sanitizePhoneForMeta(contact.phone)
+  const sanitized = primaryMetaRecipient(contact.phone)
   if (!isValidE164(sanitized)) {
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
@@ -210,7 +210,7 @@ export async function engineSendMedia(
     return r.messageId
   }
 
-  const variants = phoneVariants(sanitized)
+  const variants = recipientPhonesForMeta(contact.phone)
   let workingPhone = sanitized
   let waMessageId = ''
   let lastError: unknown = null
@@ -333,7 +333,7 @@ async function sendInteractiveViaMeta(
     throw new Error('contact not found for this account')
   }
 
-  const sanitized = sanitizePhoneForMeta(contact.phone)
+  const sanitized = primaryMetaRecipient(contact.phone)
   if (!isValidE164(sanitized)) {
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
@@ -378,7 +378,7 @@ async function sendInteractiveViaMeta(
   // Same phone-variant retry as automations/meta-send.ts. Numbers
   // registered with/without a trunk 0 + Meta's sandbox quirks all
   // need this to reliably land a message.
-  const variants = phoneVariants(sanitized)
+  const variants = recipientPhonesForMeta(contact.phone)
   let workingPhone = sanitized
   let waMessageId = ''
   let lastError: unknown = null

@@ -31,6 +31,37 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 18:45] Fix (WhatsApp) — Meta test-recipient limit looks like a whitelist
+
+### Root Cause
+- Festival/cart templates failed with a red X until Jesal messaged DivyaPrabha from personal WhatsApp, then the same template delivered. That is Meta Cloud API test-mode / unverified WABA (`#131030` not in allowed list, or `TIER_NOT_SET`), not the 24-hour customer-care window. Approved templates are allowed outside 24h once the WABA is verified and has a messaging tier.
+- Settings treated a WhatsApp display name as “Business Verified” and defaulted a missing messaging limit to 250, so the restriction was invisible.
+- Shopify/CSV 10-digit Indian numbers were sent without `91`. After inbound, Meta’s `wa_id` was not written onto `contacts.phone`, so the next send could suddenly work and look like a whitelist.
+
+### Objective & Fixes
+- Send with `91…` first; on inbound, persist Meta’s WhatsApp id onto the contact.
+- Failed inbox bubbles show a plain-language `#131030` / undeliverable explanation.
+- Settings banner when messaging tier is `TIER_NOT_SET` or business verification is not Approved.
+- After Hostinger deploy: Settings → WhatsApp (check Message Limit and the amber banner). Failed template bubbles should name the Meta restriction. Completing Facebook Business Verification (or adding the number under App → WhatsApp → API Setup → test recipients) is still required for cold outreach.
+
+### Files Modified
+- `src/lib/whatsapp/phone-utils.ts`
+- `src/lib/whatsapp/phone-utils.test.ts`
+- `src/lib/whatsapp/meta-api.ts`
+- `src/app/api/whatsapp/send/route.ts`
+- `src/app/api/whatsapp/broadcast/route.ts`
+- `src/app/api/whatsapp/webhook/route.ts`
+- `src/app/api/whatsapp/react/route.ts`
+- `src/lib/automations/meta-send.ts`
+- `src/lib/flows/meta-send.ts`
+- `src/components/settings/whatsapp-config.tsx`
+- `src/components/inbox/message-bubble.tsx`
+
+### Live
+- Migration required: none
+
+---
+
 ## [2026-08-16 18:20] Fix (Templates) — do not block Meta send on header image upload
 
 ### Root Cause

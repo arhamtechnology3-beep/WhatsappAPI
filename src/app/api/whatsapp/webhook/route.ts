@@ -2,7 +2,7 @@ import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt, encrypt, isLegacyFormat } from '@/lib/whatsapp/encryption'
 import { getMediaUrl, downloadMedia, sendTextMessage } from '@/lib/whatsapp/meta-api'
-import { normalizePhone } from '@/lib/whatsapp/phone-utils'
+import { normalizePhone, toMetaPhone } from '@/lib/whatsapp/phone-utils'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { verifyMetaWebhookSignature } from '@/lib/whatsapp/webhook-signature'
 import { runAutomationsForTrigger } from '@/lib/automations/engine'
@@ -624,7 +624,7 @@ async function processMessage(
   accessToken: string,
   phoneNumberId: string
 ) {
-  const senderPhone = normalizePhone(message.from)
+  const senderPhone = toMetaPhone(message.from) || normalizePhone(message.from)
   const contactName = contact.profile.name
 
   // Find or create contact
@@ -1347,12 +1347,25 @@ async function findOrCreateContact(
   )
 
   if (existingContact) {
-    // Update name if it changed
+    const inboundPhone = toMetaPhone(phone) || phone
+    const stored = String(existingContact.phone || '').replace(/\D/g, '')
+    const patch: Record<string, unknown> = {}
+    // Always store Meta's wa_id. Shopify/CSV often has a 10-digit local
+    // form that Meta rejects until the customer messages and we rewrite.
+    if (inboundPhone && stored !== inboundPhone) {
+      patch.phone = inboundPhone
+      patch.updated_at = new Date().toISOString()
+    }
     if (name && name !== existingContact.name) {
+      patch.name = name
+      patch.updated_at = new Date().toISOString()
+    }
+    if (Object.keys(patch).length > 0) {
       await supabaseAdmin()
         .from('contacts')
-        .update({ name, updated_at: new Date().toISOString() })
+        .update(patch)
         .eq('id', existingContact.id)
+      Object.assign(existingContact, patch)
     }
     return { contact: existingContact, wasCreated: false }
   }
@@ -1366,7 +1379,7 @@ async function findOrCreateContact(
     .insert({
       account_id: accountId,
       user_id: configOwnerUserId,
-      phone,
+      phone: toMetaPhone(phone) || phone,
       name: name || phone,
     })
     .select()

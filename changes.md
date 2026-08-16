@@ -1,6 +1,154 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
-This file tracks all modifications, updates, bug fixes, and feature additions made to the **WhatsappAPI (wacrm)** codebase.
+This file is the **source of truth** for what changed in this fork (`arhamtechnology3-beep/WhatsappAPI`) for Arham Technology / DivyaPrabha Foods (`whatsapp.arhamtechnology.com`).
+
+Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
+
+## How to log a change (required)
+
+Whenever you modify files, fix a bug, add a feature, or ship to `main`, **add a new entry at the top** of the dated list below (newest first). Do this in the same PR as the code.
+
+Entry template:
+
+```
+## [YYYY-MM-DD HH:MM] Type (Area) — Short title
+
+### Root Cause
+- What was wrong or missing (skip for pure features).
+
+### Objective & Fixes
+- What we changed and how to verify on live (hard-refresh, Sync Shopify, etc.).
+
+### Files Modified
+- `path/to/file`
+
+### Live
+- Git SHA / PR number if already on `main`.
+- Migration required: `supabase/migrations/0xx_....sql` (or none).
+```
+
+Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Templates, Automations, Cache, etc.
+
+---
+
+## [2026-08-16 10:50] Chore (Templates & Automations) — Delete all existing templates and automations
+
+### Root Cause
+- Settings still listed seeded Shopify WhatsApp drafts (`wacrm_*`) and leftover automations.
+- Opening Settings or Shopify **re-inserted** missing recipes via upsert, so a manual delete did not stick.
+
+### Objective & Fixes
+- On first dashboard load after deploy, wipe `message_templates`, `automations`, `shopify_automation_rules`, and `merchant_workflows` for the account (`POST /api/account/clear-templates-automations`). Tries Meta delete when a template was submitted.
+- Stop auto-seeding Shopify recipe drafts in Template Manager and the Shopify page.
+- One-shot via `localStorage` key `wacrm_cleared_templates_automations_20260816` so later templates you create are not deleted.
+
+### Files Modified
+- `src/lib/account/clear-templates-automations.ts`
+- `src/app/api/account/clear-templates-automations/route.ts`
+- `src/app/(dashboard)/dashboard-shell.tsx`
+- `src/components/settings/template-manager.tsx`
+- `src/app/(dashboard)/shopify/page.tsx`
+
+### Live
+- `8f26680` / PR #13 on `main`. After Hostinger deploy: hard-refresh dashboard once.
+
+---
+
+## [2026-08-16 10:38] Fix (Contacts) — One contact per email and mobile
+
+### Root Cause
+- Unique index only covered **non-empty phones**. Shopify checkouts often send email with a blank phone, so every sync inserted another row (e.g. 13 copies of `jesalp85@gmail.com`).
+- Email lookup used `.maybeSingle()`, which errors once two copies exist, so the next sync inserted again.
+
+### Objective & Fixes
+- Match by case-insensitive email; prefer the row that already has a phone.
+- Merge duplicates on Contacts load and after Sync Shopify.
+- Block the same email on manual add and CSV import.
+- Migration `045_contact_email_unique.sql` adds `email_normalized` + unique index (apply on Supabase when possible).
+
+### Files Modified
+- `src/lib/contacts/dedupe.ts`
+- `src/lib/contacts/merge-duplicates.ts`
+- `src/app/api/contacts/dedupe/route.ts`
+- `src/app/api/shopify/sync-customers/route.ts`
+- `src/lib/shopify/shopify-helper.ts`
+- `src/app/(dashboard)/contacts/page.tsx`
+- `src/components/contacts/contact-form.tsx`
+- `src/components/contacts/import-modal.tsx`
+- `supabase/migrations/045_contact_email_unique.sql`
+
+### Live
+- `15898a3` / PR #12 on `main`. Hard-refresh Contacts; duplicates merge automatically.
+
+---
+
+## [2026-08-15 12:58] Fix (Shopify) — Latest store contacts actually ingest
+
+### Root Cause
+- Formatted `+91 98203 68269` did not match CRM `9820368269` / `919820368269` (`LIKE` on spaced digits failed). Insert then hit unique `phone_normalized` and was swallowed.
+- REST `order=updated_at+desc` could 400 and leave the customer list empty.
+
+### Objective & Fixes
+- `toMetaPhone` canonicalizes Indian 10-digit mobiles to `91…`.
+- Lookup by `phone_normalized` and last-10 digits; recover unique-violation by updating the existing row.
+- Newest customers via Admin GraphQL (`UPDATED_AT desc`) with REST fallbacks.
+- Sync writes with the service-role client.
+- Storefront capture looks up the Shopify customer and upserts the same way.
+- Contacts **Updated** column; after sync, **Shopify Customers** filter.
+
+### Files Modified
+- `src/lib/whatsapp/phone-utils.ts`
+- `src/lib/contacts/dedupe.ts`
+- `src/lib/shopify/shopify-client.ts`
+- `src/lib/shopify/shopify-helper.ts`
+- `src/app/api/shopify/sync-customers/route.ts`
+- `src/app/api/shopify/capture-visitor/route.ts`
+- `src/app/(dashboard)/contacts/page.tsx`
+
+### Live
+- `2498c91` / PR #11 on `main`. Hard-refresh Contacts → Sync Shopify.
+
+---
+
+## [2026-08-15 10:26] Fix (Shopify) — Sync newest customers (pagination)
+
+### Root Cause
+- Sync fetched a single `/customers.json?limit=250` page with Shopify’s default order, so newer buyers never appeared.
+- Re-sync did not move people up because the list sorted by `created_at`.
+
+### Objective & Fixes
+- Paginate Shopify REST (`Link: rel=next`), newest-first where supported.
+- Sort Contacts by `updated_at`.
+- Migration `044_filter_contacts_by_updated_at.sql` for the tag-filter RPC.
+
+### Files Modified
+- `src/lib/shopify/shopify-client.ts`
+- `src/app/api/shopify/sync-customers/route.ts`
+- `src/lib/shopify/shopify-helper.ts`
+- `src/app/(dashboard)/contacts/page.tsx`
+- `supabase/migrations/044_filter_contacts_by_updated_at.sql`
+
+### Live
+- `6509eeb` / PR #10 on `main`.
+
+---
+
+## [2026-08-15 10:00] Fix (Inbox) — Latest real threads on top
+
+### Root Cause
+- Postgres `ORDER BY last_message_at DESC` is **NULLS FIRST**, so Shopify-created empty conversations sat above real chats.
+
+### Objective & Fixes
+- Sort by `last_message_at` descending with nulls last.
+- Hide threads with no `last_message_at` from the inbox list.
+
+### Files Modified
+- `src/lib/inbox/sort-conversations.ts`
+- `src/components/inbox/conversation-list.tsx`
+- `src/app/(dashboard)/inbox/page.tsx`
+
+### Live
+- `5886c8c` / `609b986` / PR #9 on `main`.
 
 ---
 

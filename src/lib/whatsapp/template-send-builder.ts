@@ -49,6 +49,10 @@ export interface SendTimeParams {
    * override at send time.
    */
   buttonParams?: Record<number, string>;
+  /** Retry: skip IMAGE/VIDEO/DOCUMENT header (Meta uses the approved sample). */
+  omitMediaHeader?: boolean;
+  /** Retry: skip send-time button components (static CTAs still render). */
+  omitButtons?: boolean;
 }
 
 export type MetaSendComponent =
@@ -73,8 +77,14 @@ function buildHeaderComponent(
   template: MessageTemplate,
   params: SendTimeParams,
 ): MetaSendComponent | null {
-  const headerType = template.header_type;
+  const headerType = template.header_type?.toLowerCase() as
+    | 'text'
+    | 'image'
+    | 'video'
+    | 'document'
+    | undefined;
   if (!headerType) return null;
+  if (params.omitMediaHeader && headerType !== 'text') return null;
 
   if (headerType === 'text') {
     // TEXT header with {{1}} → need a value. Static text headers
@@ -173,7 +183,12 @@ function buildButtonComponent(
     case 'URL': {
       // Each URL button is its own component with sub_type=url and
       // the button's index in the template's buttons array.
-      if (!override || !override.trim()) {
+      const example =
+        'example' in button && typeof button.example === 'string'
+          ? button.example.trim()
+          : '';
+      const value = override?.trim() || example;
+      if (!value) {
         throw new Error(
           `URL button #${index + 1} uses {{1}} — requires a buttonParams[${index}] value.`,
         );
@@ -182,7 +197,7 @@ function buildButtonComponent(
         type: 'button',
         sub_type: 'url',
         index: String(index),
-        parameters: [{ type: 'text', text: override }],
+        parameters: [{ type: 'text', text: value }],
       };
     }
     case 'COPY_CODE': {
@@ -225,8 +240,9 @@ export function buildSendComponents(
   if (header) out.push(header);
   const body = buildBodyComponent(template, params);
   if (body) out.push(body);
-  if (template.buttons?.length) {
-    template.buttons.forEach((btn, i) => {
+  const buttons = Array.isArray(template.buttons) ? template.buttons : [];
+  if (!params.omitButtons && buttons.length) {
+    buttons.forEach((btn, i) => {
       const override = params.buttonParams?.[i];
       const component = buildButtonComponent(btn, i, override);
       if (component) out.push(component);

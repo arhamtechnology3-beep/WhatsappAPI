@@ -122,9 +122,9 @@ export function coerceUrlButtonParam(
   const trimmed = (raw ?? '').trim()
   if (!trimmed) return undefined
   if (/^https?:\/\//i.test(trimmed)) {
-    return urlButtonParamFromAbsolute(trimmed) || undefined
+    return urlButtonParamFromAbsolute(trimmed).split(/[?#]/)[0] || undefined
   }
-  return trimmed.replace(/^\//, '')
+  return trimmed.replace(/^\//, '').split(/[?#]/)[0]
 }
 
 export function coerceTemplateButtonParams(
@@ -148,7 +148,7 @@ export function resolveHeaderMediaUrl(
   },
   override?: string | null,
 ): string | undefined {
-  const headerType = template.header_type
+  const headerType = template.header_type?.toLowerCase()
   if (
     headerType !== 'image' &&
     headerType !== 'video' &&

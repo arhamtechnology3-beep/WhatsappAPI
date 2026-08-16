@@ -181,7 +181,30 @@ describe('buildSendComponents — buttons', () => {
     ]);
   });
 
-  it('throws when URL button has {{1}} but no buttonParam was provided', () => {
+  it('uses the button example when no buttonParam was provided', () => {
+    const components = buildSendComponents(
+      row({
+        buttons: [
+          {
+            type: 'URL',
+            text: 'Track',
+            url: 'https://x.com/{{1}}',
+            example: 'ORD-42',
+          },
+        ],
+      }),
+    );
+    expect(components).toEqual([
+      {
+        type: 'button',
+        sub_type: 'url',
+        index: '0',
+        parameters: [{ type: 'text', text: 'ORD-42' }],
+      },
+    ]);
+  });
+
+  it('throws when URL button has {{1}} but no buttonParam or example', () => {
     expect(() =>
       buildSendComponents(
         row({
@@ -273,5 +296,45 @@ describe('buildSendComponents — end-to-end mix', () => {
     // QUICK_REPLY at index 0 doesn't need send-time params, so only the
     // URL button at index 1 emits a component.
     expect((components[2] as { index: string }).index).toBe('1');
+  });
+});
+
+describe('buildSendComponents — delivery retries', () => {
+  it('treats IMAGE header_type as image (DB/sync casing)', () => {
+    const components = buildSendComponents(
+      row({
+        header_type: 'IMAGE' as MessageTemplate['header_type'],
+        header_media_url: 'https://x.com/s.jpg',
+      }),
+    );
+    expect(components[0]).toEqual({
+      type: 'header',
+      parameters: [{ type: 'image', image: { link: 'https://x.com/s.jpg' } }],
+    });
+  });
+
+  it('omitMediaHeader drops the image header so Meta can use the approved sample', () => {
+    const components = buildSendComponents(
+      row({
+        header_type: 'image',
+        header_media_url: 'https://x.com/s.jpg',
+        body_text: 'Hi {{1}}',
+      }),
+      { body: ['Jesal'], omitMediaHeader: true },
+    );
+    expect(components.map((c) => c.type)).toEqual(['body']);
+  });
+
+  it('omitButtons drops URL button components', () => {
+    const components = buildSendComponents(
+      row({
+        body_text: 'Hi {{1}}',
+        buttons: [
+          { type: 'URL', text: 'Track', url: 'https://x.com/{{1}}', example: 'a' },
+        ],
+      }),
+      { body: ['Jesal'], omitButtons: true },
+    );
+    expect(components.map((c) => c.type)).toEqual(['body']);
   });
 });

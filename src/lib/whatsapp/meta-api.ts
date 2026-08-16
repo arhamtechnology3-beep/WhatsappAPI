@@ -438,6 +438,51 @@ import {
   type SendTimeParams,
 } from './template-send-builder'
 
+export function normalizeWhatsAppLanguage(code?: string | null): string {
+  const raw = (code || 'en_US').trim().replace(/-/g, '_')
+  if (!raw || /^en$/i.test(raw)) return 'en_US'
+  const [lang, region] = raw.split('_')
+  const left = (lang || 'en').toLowerCase()
+  if (!region) return left === 'en' ? 'en_US' : left
+  return `${left}_${region.toUpperCase()}`
+}
+
+/**
+ * Fetch a public image and upload it to WhatsApp Cloud media so template
+ * IMAGE headers can send `{ id }` instead of `{ link }`. Meta's crawler
+ * often 403s Shopify/Cloudflare URLs (status webhook #131053) even when
+ * the Graph send call returned 200.
+ */
+export async function uploadWhatsAppMediaFromUrl(args: {
+  phoneNumberId: string
+  accessToken: string
+  sourceUrl: string
+}): Promise<string | null> {
+  try {
+    const fileRes = await fetch(args.sourceUrl)
+    if (!fileRes.ok) return null
+    const mime = (fileRes.headers.get('content-type') || 'image/png')
+      .split(';')[0]
+      .trim()
+    if (!mime.startsWith('image/')) return null
+    const buf = await fileRes.arrayBuffer()
+    const form = new FormData()
+    form.append('messaging_product', 'whatsapp')
+    form.append('type', mime)
+    form.append('file', new Blob([buf], { type: mime }), 'header.png')
+    const res = await fetch(`${META_API_BASE}/${args.phoneNumberId}/media`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${args.accessToken}` },
+      body: form,
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as { id?: string }
+    return data.id ? String(data.id) : null
+  } catch {
+    return null
+  }
+}
+
 export interface SendTemplateMessageArgs {
   phoneNumberId: string
   accessToken: string
@@ -488,39 +533,116 @@ export async function sendTemplateMessage(
     accessToken,
     to,
     templateName,
-    language = 'en_US',
     params,
     template,
     messageParams,
     contextMessageId,
   } = args
-  const url = `${META_API_BASE}/${phoneNumberId}/messages`
 
-  const templatePayload: Record<string, unknown> = {
-    name: templateName,
-    language: { code: language },
+  const language = normalizeWhatsAppLanguage(
+    template?.language || args.language || 'en_US',
+  )
+
+  const bodyValues = messageParams?.body ?? params
+  let headerMediaId = messageParams?.headerMediaId
+  const headerLink = messageParams?.headerMediaUrl || template?.header_media_url
+  const headerKind = template?.header_type?.toLowerCase()
+  if (
+    !headerMediaId &&
+    headerLink &&
+    (headerKind === 'image' || headerKind === 'video' || headerKind === 'document')
+  ) {
+    headerMediaId =
+      (await uploadWhatsAppMediaFromUrl({
+        phoneNumberId,
+        accessToken,
+        sourceUrl: headerLink,
+      })) || undefined
   }
 
-  const bodyParams = params ?? messageParams?.body
-  if (template) {
-    const components = buildSendComponents(template, {
-      // Legacy callers pass body values in `params`; fold them into
-      // `messageParams.body` so the new path covers them too.
-      body: messageParams?.body ?? params,
-      headerText: messageParams?.headerText,
-      headerMediaUrl: messageParams?.headerMediaUrl,
-      headerMediaId: messageParams?.headerMediaId,
-      buttonParams: messageParams?.buttonParams,
-    })
+  const base: SendTimeParams = {
+    body: bodyValues,
+    headerText: messageParams?.headerText,
+    headerMediaUrl: headerMediaId ? undefined : headerLink,
+    headerMediaId,
+    buttonParams: messageParams?.buttonParams,
+  }
+
+  // Full payload first (image + CTAs). If Meta rejects the extra
+  // components, strip them — body-only is how these templates delivered
+  // before the header/button send path. Static CTAs still appear from
+  // the approved template definition.
+  const attempts: SendTimeParams[] = template
+    ? [
+        base,
+        { ...base, omitButtons: true },
+        {
+          ...base,
+          omitButtons: true,
+          omitMediaHeader: true,
+          headerMediaId: undefined,
+          headerMediaUrl: undefined,
+        },
+      ]
+    : [base]
+
+  let lastError: Error | null = null
+  for (const attempt of attempts) {
+    try {
+      return await postTemplateSend({
+        phoneNumberId,
+        accessToken,
+        to,
+        templateName,
+        language,
+        template,
+        bodyValues,
+        messageParams: attempt,
+        contextMessageId,
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      if (/#131030|not in allowed list/i.test(message)) throw err
+      lastError = err instanceof Error ? err : new Error(message)
+      console.warn(
+        `[sendTemplateMessage] ${templateName} attempt failed, retrying simpler payload:`,
+        message,
+      )
+    }
+  }
+  throw lastError ?? new Error('Template send failed')
+}
+
+async function postTemplateSend(args: {
+  phoneNumberId: string
+  accessToken: string
+  to: string
+  templateName: string
+  language: string
+  template?: MessageTemplate
+  bodyValues?: string[]
+  messageParams: SendTimeParams
+  contextMessageId?: string
+}): Promise<MetaSendResult> {
+  const url = `${META_API_BASE}/${args.phoneNumberId}/messages`
+  const templatePayload: Record<string, unknown> = {
+    name: args.templateName,
+    language: { code: args.language },
+  }
+
+  if (args.template) {
+    const components = buildSendComponents(args.template, args.messageParams)
     if (components.length > 0) {
       templatePayload.components = components
     }
-  } else if (bodyParams && bodyParams.length > 0) {
-    // Fallback body-only path — no template row available in DB.
+  } else if (args.bodyValues && args.bodyValues.length > 0) {
     templatePayload.components = [
       {
         type: 'body',
-        parameters: bodyParams.map((p) => ({ type: 'text', text: String(p) })),
+        parameters: args.bodyValues.map((p) => ({
+          type: 'text',
+          text: String(p),
+        })),
       },
     ]
   }
@@ -528,19 +650,19 @@ export async function sendTemplateMessage(
   const body: Record<string, unknown> = {
     messaging_product: 'whatsapp',
     recipient_type: 'individual',
-    to,
+    to: args.to,
     type: 'template',
     template: templatePayload,
   }
-  if (contextMessageId) {
-    body.context = { message_id: contextMessageId }
+  if (args.contextMessageId) {
+    body.context = { message_id: args.contextMessageId }
   }
 
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${args.accessToken}`,
     },
     body: JSON.stringify(body),
   })

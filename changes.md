@@ -31,6 +31,30 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 14:22] Fix (Templates) — restore template delivery (retry simpler Meta payload)
+
+### Root Cause
+- Yesterday’s templates delivered. After we started always sending IMAGE header `{ link }` plus URL-button `{{1}}` suffixes, Graph returned `#100 Invalid parameter` (or accepted then `#131053` media download). Festival (static CTAs) failed on the header; cart failed on header and/or the dynamic checkout suffix (`?key=`).
+
+### Objective & Fixes
+- Normalize language (`EN_US` → `en_US`) and IMAGE header casing.
+- Upload the header PNG to WhatsApp `/media` and send `{ id }` so Meta does not have to crawl Shopify/Cloudflare.
+- If Meta still rejects: retry without button components, then body-only (approved image + static CTAs still show on the customer’s phone).
+- URL-button suffixes drop `?query` (Meta `#100`); fall back to the button `example` when a suffix is missing.
+
+### Files Modified
+- `src/lib/whatsapp/meta-api.ts`
+- `src/lib/whatsapp/template-send-builder.ts`
+- `src/lib/shopify/whatsapp-template-library.ts`
+- `src/lib/whatsapp/meta-api.template-send.test.ts`
+- `changes.md`
+
+### Live
+- Push to `main` after this commit.
+- Migration: none (047 already applied).
+
+---
+
 ## [2026-08-16 14:05] Feat (Templates) — WhatsApp-style image + CTA preview in Settings and picker
 
 ### Root Cause

@@ -101,7 +101,7 @@ describe('coerceUrlButtonParam', () => {
         dynamicStorefrontUrl(),
         'https://divyaprabhafoods.com/checkouts/cn/xyz?key=1',
       ),
-    ).toBe('checkouts/cn/xyz?key=1')
+    ).toBe('checkouts/cn/xyz')
   })
 
   it('ignores static URL buttons', () => {

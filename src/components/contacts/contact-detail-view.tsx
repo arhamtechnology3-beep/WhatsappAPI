@@ -10,7 +10,7 @@ import {
   TemplatePicker,
   type TemplateSendValues,
 } from '@/components/inbox/template-picker';
-import { defaultHeaderImageUrl } from '@/lib/shopify/whatsapp-template-library';
+import { defaultHeaderImageUrl, fillTemplatePlaceholders } from '@/lib/shopify/whatsapp-template-library';
 import {
   Sheet,
   SheetContent,
@@ -367,6 +367,7 @@ export function ContactDetailView({
                 : undefined),
           },
           template_params: values.body,
+          content_text: fillTemplatePlaceholders(template.body_text, values.body),
         }),
       });
 

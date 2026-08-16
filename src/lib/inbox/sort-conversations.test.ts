@@ -15,4 +15,14 @@ describe("sortConversationsByLastMessage", () => {
       sortConversationsByLastMessage([empty, older, newer]).map((c) => c.id),
     ).toEqual(["b", "a"]);
   });
+
+  it("keeps a thread that has preview text even if last_message_at is missing", () => {
+    const orphan = {
+      id: "d",
+      last_message_text: "Hi",
+    } as Conversation;
+    expect(sortConversationsByLastMessage([orphan]).map((c) => c.id)).toEqual([
+      "d",
+    ]);
+  });
 });

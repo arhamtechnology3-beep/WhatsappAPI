@@ -7,18 +7,10 @@ import type { MessageTemplate, TemplateButton } from '@/types';
 import {
   defaultHeaderImageUrl,
   recipeByName,
+  fillTemplatePlaceholders,
 } from '@/lib/shopify/whatsapp-template-library';
 
-export function fillTemplatePlaceholders(
-  text: string,
-  samples?: string[] | null,
-): string {
-  return text.replace(/\{\{(\d+)\}\}/g, (_, raw) => {
-    const idx = Number(raw) - 1;
-    const value = samples?.[idx];
-    return value && value.trim().length > 0 ? value : `{{${raw}}}`;
-  });
-}
+export { fillTemplatePlaceholders } from '@/lib/shopify/whatsapp-template-library';
 
 export function resolveTemplatePreview(template: {
   name: string;
@@ -164,7 +156,8 @@ export function WhatsAppTemplatePreview({
 }: WhatsAppTemplatePreviewProps) {
   const resolved = resolveTemplatePreview(template);
   const image = headerMediaUrl || resolved.headerMediaUrl;
-  const body = bodyText ?? resolved.body;
+  const body =
+    bodyText && bodyText.trim().length > 0 ? bodyText : resolved.body;
   const header = headerText || resolved.headerText;
   const footer = resolved.footer;
   const ctas = buttons?.length ? buttons : resolved.buttons;

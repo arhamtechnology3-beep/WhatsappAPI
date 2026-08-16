@@ -212,20 +212,25 @@ function MessageContent({
         ? templateCatalog?.get(message.template_name)
         : undefined;
       const view = inboxTemplateCustomerView(message, catalog ?? null);
+      const filledBody =
+        (message.content_text && message.content_text.trim()) ||
+        view.body_text ||
+        "";
       const previewTemplate = {
         name: message.template_name || "template",
         header_type: view.header_type,
         header_content: view.header_text,
         header_media_url: view.header_media_url,
-        body_text: message.content_text || "",
+        body_text: filledBody,
         footer_text: view.footer_text,
         buttons: view.buttons,
+        sample_values: catalog?.sample_values,
       };
       return (
         <div className="min-w-[220px] max-w-60">
           <WhatsAppTemplatePreview
             template={previewTemplate}
-            bodyText={message.content_text || ""}
+            bodyText={filledBody || undefined}
             headerMediaUrl={view.header_media_url}
             headerText={view.header_text}
             buttons={view.buttons}

@@ -31,6 +31,54 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 20:10] Fix (Inbox) — two Jesals look like one missing chat
+
+### Root Cause
+- The WhatsApp Hi + festival thread was on `919769104020`. New failed templates (red X) were sent to a different Shopify contact **JESAL PANCHAL `919167623044`**. Inbox listed only the name, so the earlier chat looked gone. New sends fail because that second number never messaged the business (Meta test/unverified). Inbox load also ran `merge_duplicate_conversations` on every refresh, which can delete a conversation id the UI still points at.
+
+### Objective & Fixes
+- Show the phone under each inbox name. Search by `97691` vs `16762`.
+- Do not merge conversations on every Inbox load. Fetch 300 threads and always include `?c=` even if it is outside that page.
+- After deploy: Inbox search `9769104020` for the Hi thread. Do not send marketing to `919167623044` until that handset texts DivyaPrabha first (or Meta verification / test recipients).
+
+### Files Modified
+- `src/components/inbox/conversation-list.tsx`
+- `src/app/(dashboard)/inbox/page.tsx`
+- `src/lib/inbox/sort-conversations.ts`
+- `src/lib/inbox/sort-conversations.test.ts`
+
+### Live
+- Same PR as contact-list template preview. Migration required: none
+
+---
+
+## [2026-08-16 19:10] Fix (Inbox) — contact-list template send stored empty `[template]` preview
+
+### Root Cause
+- Contacts → Send template did not pass `content_text`. The send route persisted `null` body and set `last_message_text` to `[template]`. The inbox bubble treated `""` as the body (so it never fell back to the recipe), which hid image + CTAs even after WhatsApp delivered (2 ticks) — e.g. Sukeshadomadia.
+
+### Objective & Fixes
+- Server fills and stores the template body (and payload chrome) when `content_text` is omitted.
+- Inbox bubble uses recipe/catalog body, header image, and CTAs when the stored body is empty.
+- Contact picker also sends `content_text`. List shows "Template sent" instead of `[template]` for old rows.
+- After deploy: hard-refresh Inbox. Open Sukeshadomadia — the existing bubble should show image, copy, and Shop buttons. New sends from Contacts should preview the Namaste body in the list.
+
+### Files Modified
+- `src/lib/shopify/whatsapp-template-library.ts`
+- `src/lib/shopify/whatsapp-template-library.test.ts`
+- `src/app/api/whatsapp/send/route.ts`
+- `src/app/api/whatsapp/send/route.test.ts`
+- `src/components/inbox/message-bubble.tsx`
+- `src/components/inbox/message-thread.tsx`
+- `src/components/inbox/conversation-list.tsx`
+- `src/components/contacts/contact-detail-view.tsx`
+- `src/components/whatsapp/whatsapp-template-preview.tsx`
+
+### Live
+- Migration required: none
+
+---
+
 ## [2026-08-16 18:20] Fix (Templates) — do not block Meta send on header image upload
 
 ### Root Cause

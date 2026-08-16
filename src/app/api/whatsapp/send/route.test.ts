@@ -215,6 +215,17 @@ describe('POST /api/whatsapp/send — contact_id template path', () => {
     })
   })
 
+  it('persists filled body and last_message_text when content_text is omitted', async () => {
+    const res = await postContactTemplate({
+      template_name: 'wacrm_festival_broadcast_v2',
+      template_message_params: { body: ['Sukesha'] },
+      template_params: ['Sukesha'],
+    })
+    expect(res.status).toBe(200)
+    expect(messageInserts[0]?.content_text).toMatch(/Namaste Sukesha/)
+    expect(String(messageInserts[0]?.content_text)).not.toMatch(/^\[template\]$/)
+  })
+
   it('reuses an existing conversation instead of creating a duplicate', async () => {
     existingConversation = {
       id: 'conv-existing',

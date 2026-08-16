@@ -23,6 +23,11 @@ interface ConversationListProps {
   conversations: Conversation[];
   onConversationsLoaded: (conversations: Conversation[]) => void;
   /**
+   * Inbox `?c=` id. Fetched even when it is not in the latest-100 list
+   * so a thread does not look "deleted" after opening a different Jesal.
+   */
+  pinnedConversationId?: string | null;
+  /**
    * Increment to force the fetch effect below to refire. The parent
    * bumps this on realtime reconnect / tab visibility → visible so the
    * list catches up on any events sent while the WS was disconnected
@@ -56,6 +61,7 @@ export function ConversationList({
   conversations,
   onConversationsLoaded,
   resyncToken = 0,
+  pinnedConversationId = null,
 }: ConversationListProps) {
   const { accountId, loading: authLoading } = useAuth();
   const [search, setSearch] = useState("");
@@ -85,15 +91,9 @@ export function ConversationList({
           .select("*, contact:contacts(*)")
           .not("last_message_at", "is", null)
           .order("last_message_at", { ascending: false, nullsFirst: false })
-          .limit(100);
+          .limit(300);
         if (accountId) {
           query = query.eq("account_id", accountId);
-        }
-        const { error: mergeErr } = await supabase.rpc(
-          "merge_duplicate_conversations",
-        );
-        if (mergeErr) {
-          console.warn("conversation merge skipped:", mergeErr.message);
         }
         const { data, error } = await query;
 
@@ -109,7 +109,24 @@ export function ConversationList({
           return;
         }
 
-        const list = sortConversationsByLastMessage(data ?? []);
+        let rows = (data ?? []) as Conversation[];
+        if (
+          pinnedConversationId &&
+          !rows.some((c) => c.id === pinnedConversationId)
+        ) {
+          const pinnedQuery = supabase
+            .from("conversations")
+            .select("*, contact:contacts(*)")
+            .eq("id", pinnedConversationId);
+          const pinned = accountId
+            ? await pinnedQuery.eq("account_id", accountId).maybeSingle()
+            : await pinnedQuery.maybeSingle();
+          if (pinned.data) {
+            rows = [pinned.data as Conversation, ...rows];
+          }
+        }
+
+        const list = sortConversationsByLastMessage(rows);
         setCachedData("inbox_conversations", list);
         onConversationsLoadedRef.current(list);
       } catch (err) {
@@ -120,7 +137,7 @@ export function ConversationList({
         if (gen === fetchGen.current) setLoading(false);
       }
     })();
-  }, [resyncToken, accountId, authLoading]);
+  }, [resyncToken, accountId, authLoading, pinnedConversationId]);
 
   const filtered = useMemo(() => {
     let result = conversations;
@@ -290,9 +307,16 @@ function ConversationItem({
           </span>
           <span className="shrink-0 text-[10px] text-muted-foreground">{timeAgo}</span>
         </div>
+        {contact?.phone && contact?.name ? (
+          <p className="truncate font-mono text-[10px] text-muted-foreground">
+            {contact.phone}
+          </p>
+        ) : null}
         <div className="mt-0.5 flex items-center justify-between gap-2">
           <p className="truncate text-xs text-muted-foreground">
-            {conversation.last_message_text || "No messages yet"}
+            {conversation.last_message_text === "[template]"
+              ? "Template sent"
+              : conversation.last_message_text || "No messages yet"}
           </p>
           <div className="flex shrink-0 items-center gap-1.5">
             {conversation.unread_count > 0 && (

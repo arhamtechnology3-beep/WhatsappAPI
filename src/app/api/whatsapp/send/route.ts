@@ -25,7 +25,10 @@ import { findOrCreateConversation as ensureConversation } from '@/lib/inbox/find
 import {
   buildTemplateCustomerView,
   coerceTemplateButtonParams,
+  recipeByName,
   resolveHeaderMediaUrl,
+  resolveTemplateBodyPreview,
+  defaultHeaderImageUrl,
 } from '@/lib/shopify/whatsapp-template-library'
 
 async function insertOutboundMessage(
@@ -389,8 +392,42 @@ export async function POST(request: Request) {
       headerMediaUrl: resolvedHeaderMediaUrl,
       buttonParams: resolvedButtonParams,
     }
-    const templatePayload = templateRow
-      ? buildTemplateCustomerView(templateRow, resolvedMessageParams)
+    const recipe =
+      message_type === 'template' && template_name
+        ? recipeByName(template_name)
+        : undefined
+    const interpolatedBody =
+      message_type === 'template'
+        ? resolveTemplateBodyPreview({
+            contentText: typeof content_text === 'string' ? content_text : null,
+            bodyText: templateRow?.body_text,
+            templateName: template_name,
+            bodyParams: resolvedMessageParams.body,
+          })
+        : ''
+    const persistedContentText =
+      message_type === 'template'
+        ? interpolatedBody || null
+        : content_text || null
+    const conversationPreview =
+      persistedContentText ||
+      (message_type === 'template' ? template_name : null) ||
+      `[${message_type}]`
+    const chromeSource = templateRow
+      ? templateRow
+      : recipe
+        ? {
+            header_type: 'image' as const,
+            header_media_url: defaultHeaderImageUrl(),
+            footer_text: recipe.footer_text,
+            buttons: recipe.buttons,
+          }
+        : null
+    const templatePayload = chromeSource
+      ? {
+          ...buildTemplateCustomerView(chromeSource, resolvedMessageParams),
+          body_text: interpolatedBody || undefined,
+        }
       : null
     const persistedMediaUrl =
       message_type === 'template'
@@ -476,7 +513,7 @@ export async function POST(request: Request) {
         conversation_id,
         sender_type: 'agent',
         content_type: message_type,
-        content_text: content_text || null,
+        content_text: persistedContentText,
         media_url: persistedMediaUrl,
         template_name: template_name || null,
         template_payload: templatePayload,
@@ -488,7 +525,7 @@ export async function POST(request: Request) {
       await supabase
         .from('conversations')
         .update({
-          last_message_text: content_text || `[${message_type}]`,
+          last_message_text: conversationPreview,
           last_message_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
@@ -525,7 +562,7 @@ export async function POST(request: Request) {
         conversation_id,
         sender_type: 'agent',
         content_type: message_type,
-        content_text: content_text || null,
+        content_text: persistedContentText,
         media_url: persistedMediaUrl,
         template_name: template_name || null,
         template_payload: templatePayload,
@@ -547,7 +584,7 @@ export async function POST(request: Request) {
     await supabase
       .from('conversations')
       .update({
-        last_message_text: content_text || `[${message_type}]`,
+        last_message_text: conversationPreview,
         last_message_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })

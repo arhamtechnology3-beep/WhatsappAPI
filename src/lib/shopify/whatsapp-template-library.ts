@@ -167,8 +167,46 @@ export interface TemplateCustomerView {
   header_type?: 'text' | 'image' | 'video' | 'document'
   header_media_url?: string
   header_text?: string
+  body_text?: string
   footer_text?: string
   buttons?: TemplateButton[]
+}
+
+/** Fill {{1}} / {{2}} in a template body. Empty slots stay as {{n}}. */
+export function fillTemplatePlaceholders(
+  text: string,
+  samples?: string[] | null,
+): string {
+  if (!text) return ''
+  return text.replace(/\{\{(\d+)\}\}/g, (_, raw) => {
+    const idx = Number(raw) - 1
+    const value = samples?.[idx]
+    return value && String(value).trim().length > 0 ? String(value) : `{{${raw}}}`
+  })
+}
+
+/**
+ * Inbox / conversation preview text for a template send. Contact-list
+ * sends omit `content_text`; we still persist the filled body so the
+ * thread is not `[template]` with an empty bubble.
+ */
+export function resolveTemplateBodyPreview(args: {
+  contentText?: string | null
+  bodyText?: string | null
+  templateName?: string | null
+  bodyParams?: unknown
+}): string {
+  if (typeof args.contentText === 'string' && args.contentText.trim()) {
+    return args.contentText
+  }
+  const params = Array.isArray(args.bodyParams)
+    ? args.bodyParams.map((p) => String(p))
+    : []
+  const source =
+    (typeof args.bodyText === 'string' && args.bodyText) ||
+    (args.templateName ? recipeByName(args.templateName)?.body : '') ||
+    ''
+  return fillTemplatePlaceholders(source, params)
 }
 
 /** Snapshot stored on `messages.template_payload` so the inbox can render CTAs. */
@@ -205,6 +243,9 @@ export function buildTemplateCustomerView(
       template,
       params?.headerMediaUrl,
     )
+    if (!view.header_type && view.header_media_url) {
+      view.header_type = 'image'
+    }
   }
   return view
 }
@@ -490,6 +531,7 @@ export function inboxTemplateCustomerView(
     header_type?: 'text' | 'image' | 'video' | 'document' | null
     header_content?: string | null
     header_media_url?: string | null
+    body_text?: string | null
     footer_text?: string | null
     buttons?: TemplateButton[] | null
   } | null,
@@ -499,7 +541,10 @@ export function inboxTemplateCustomerView(
     : undefined
   const payload = message.template_payload
   const headerType =
-    payload?.header_type || catalog?.header_type || recipe?.header_type
+    payload?.header_type ||
+    catalog?.header_type ||
+    recipe?.header_type ||
+    (payload?.header_media_url || message.media_url ? 'image' : undefined)
   const buttons =
     payload?.buttons?.length
       ? payload.buttons
@@ -516,10 +561,16 @@ export function inboxTemplateCustomerView(
     (headerType === 'image' || headerType === 'video' || headerType === 'document'
       ? defaultHeaderImageUrl()
       : undefined)
+  const body =
+    payload?.body_text ||
+    catalog?.body_text ||
+    recipe?.body ||
+    undefined
   return {
     header_type: headerType,
     header_media_url: imageUrl,
     header_text: headerText,
+    body_text: body,
     footer_text: footer,
     buttons,
   }

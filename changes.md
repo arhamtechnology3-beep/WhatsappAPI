@@ -31,7 +31,34 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
-## [2026-08-16 18:20] Fix (Templates) — do not block Meta send on header image upload
+## [2026-08-16 19:10] Fix (Inbox) — contact-list template send stored empty `[template]` preview
+
+### Root Cause
+- Contacts → Send template did not pass `content_text`. The send route persisted `null` body and set `last_message_text` to `[template]`. The inbox bubble treated `""` as the body (so it never fell back to the recipe), which hid image + CTAs even after WhatsApp delivered (2 ticks) — e.g. Sukeshadomadia.
+
+### Objective & Fixes
+- Server fills and stores the template body (and payload chrome) when `content_text` is omitted.
+- Inbox bubble uses recipe/catalog body, header image, and CTAs when the stored body is empty.
+- Contact picker also sends `content_text`. List shows "Template sent" instead of `[template]` for old rows.
+- After deploy: hard-refresh Inbox. Open Sukeshadomadia — the existing bubble should show image, copy, and Shop buttons. New sends from Contacts should preview the Namaste body in the list.
+
+### Files Modified
+- `src/lib/shopify/whatsapp-template-library.ts`
+- `src/lib/shopify/whatsapp-template-library.test.ts`
+- `src/app/api/whatsapp/send/route.ts`
+- `src/app/api/whatsapp/send/route.test.ts`
+- `src/components/inbox/message-bubble.tsx`
+- `src/components/inbox/message-thread.tsx`
+- `src/components/inbox/conversation-list.tsx`
+- `src/components/contacts/contact-detail-view.tsx`
+- `src/components/whatsapp/whatsapp-template-preview.tsx`
+
+### Live
+- Migration required: none
+
+---
+
+
 
 ### Root Cause
 - Every inbox template send first fetched the Shopify PNG and uploaded it to WhatsApp `/media`. On Hostinger that call can hang or fail, so Graph never got the message. Festival (static CTAs) still failed after the retry deploy — same phone that received templates yesterday.

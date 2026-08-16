@@ -12,6 +12,8 @@ import {
   coerceTemplateButtonParams,
   buildTemplateCustomerView,
   inboxTemplateCustomerView,
+  fillTemplatePlaceholders,
+  resolveTemplateBodyPreview,
   dynamicStorefrontUrl,
 } from './whatsapp-template-library'
 
@@ -131,6 +133,32 @@ describe('coerceTemplateButtonParams', () => {
   })
 })
 
+describe('resolveTemplateBodyPreview', () => {
+  it('fills recipe body when the client omitted content_text', () => {
+    const text = resolveTemplateBodyPreview({
+      templateName: 'wacrm_festival_broadcast_v2',
+      bodyParams: ['JESAL'],
+    })
+    expect(text).toMatch(/Namaste JESAL/)
+    expect(text).not.toBe('')
+  })
+
+  it('keeps an explicit content_text', () => {
+    expect(
+      resolveTemplateBodyPreview({
+        contentText: 'Already rendered',
+        templateName: 'wacrm_festival_broadcast_v2',
+      }),
+    ).toBe('Already rendered')
+  })
+})
+
+describe('fillTemplatePlaceholders', () => {
+  it('substitutes numbered slots', () => {
+    expect(fillTemplatePlaceholders('Hi {{1}}', ['Naman'])).toBe('Hi Naman')
+  })
+})
+
 describe('inboxTemplateCustomerView', () => {
   it('falls back to the recipe header image and CTAs', () => {
     const view = inboxTemplateCustomerView({
@@ -142,6 +170,7 @@ describe('inboxTemplateCustomerView', () => {
       'Shop Now',
       'Shop From WhatsApp',
     ])
+    expect(view.body_text).toMatch(/Namaste \{\{1\}\}/)
   })
 
   it('prefers persisted payload URLs', () => {

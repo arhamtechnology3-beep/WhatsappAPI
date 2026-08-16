@@ -233,7 +233,7 @@ export function MessageThread({
     supabase
       .from("message_templates")
       .select(
-        "id, name, language, header_type, header_content, header_media_url, footer_text, buttons, body_text, category, user_id, created_at",
+        "id, name, language, header_type, header_content, header_media_url, footer_text, buttons, body_text, sample_values, category, user_id, created_at",
       )
       .then(({ data, error }) => {
         if (cancelled) return;

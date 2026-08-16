@@ -47,6 +47,44 @@ async function throwMetaError(response: Response, fallback: string): Promise<nev
   throw new Error(message)
 }
 
+/** App ID that issued this WhatsApp token — required for POST /{app-id}/uploads. */
+export async function resolveMetaAppIdForToken(
+  accessToken: string,
+): Promise<string> {
+  const url = `${META_API_BASE}/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(accessToken)}`
+  try {
+    const res = await fetch(url)
+    if (res.ok) {
+      const body = (await res.json()) as { data?: { app_id?: string } }
+      const id = body?.data?.app_id
+      if (id) return String(id)
+    }
+  } catch {
+    // fall through to env
+  }
+  const envId = process.env.META_APP_ID?.trim()
+  if (envId) return envId
+  throw new Error(
+    'Could not resolve Meta App ID from this WhatsApp token. In Hostinger set META_APP_ID to the Facebook App ID that owns WhatsApp (developers.facebook.com → App settings → Basic → App ID).',
+  )
+}
+
+export function explainUnsupportedMetaObjectError(message: string): string {
+  if (
+    !/Unsupported post request|does not exist|missing permissions|does not support this operation/i.test(
+      message,
+    )
+  ) {
+    return message
+  }
+  const id = message.match(/Object with ID ['"]?(\d+)/i)?.[1]
+  return (
+    `Meta rejected ID ${id ?? '(unknown)'}: this WhatsApp token cannot use that object. ` +
+    `Fix Hostinger META_APP_ID (must be the Facebook App ID for this token, not a Page or WABA ID) ` +
+    `and Settings → WhatsApp WABA ID. Then retry Submit.`
+  )
+}
+
 // ============================================================
 // Phone number / account
 // ============================================================

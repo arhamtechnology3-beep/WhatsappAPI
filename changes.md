@@ -31,6 +31,27 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 12:00] Fix (Templates) — Unsupported post request on template submit
+
+### Root Cause
+- Image-header submit POSTs to `/{META_APP_ID}/uploads`. Hostinger `META_APP_ID` `1237128812817964` is not an object this WhatsApp token can use (wrong App / Page / WABA ID), so Meta returns Unsupported post request.
+
+### Objective & Fixes
+- Resolve App ID from the token (`debug_token`) before resumable upload; fall back to env.
+- Rewrite that Meta error to say: set META_APP_ID to the Facebook App that issued the token, and check WABA ID in Settings → WhatsApp.
+- After deploy: retry Submit. If it still fails, in Hostinger set `META_APP_ID` from developers.facebook.com → that WhatsApp app → Settings → Basic.
+
+### Files Modified
+- `src/lib/whatsapp/meta-api.ts`
+- `src/lib/whatsapp/template-header-handle.ts`
+- `src/app/api/whatsapp/templates/submit/route.ts`
+- `changes.md`
+
+### Live
+- Ship on `main` after this PR. No migration.
+
+---
+
 ## [2026-08-16 11:50] Fix (Templates) — Header image URL 404
 
 ### Root Cause

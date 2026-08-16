@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { decrypt } from '@/lib/whatsapp/encryption'
-import { submitMessageTemplate } from '@/lib/whatsapp/meta-api'
+import { submitMessageTemplate, explainUnsupportedMetaObjectError } from '@/lib/whatsapp/meta-api'
 import {
   validateTemplatePayload,
   type TemplatePayload,
@@ -199,6 +199,7 @@ export async function POST(request: Request) {
         metaStatus = meta.status
       } catch (e) {
         const message = e instanceof Error ? e.message : 'Meta submit failed.'
+        const explained = explainUnsupportedMetaObjectError(message)
         // Persist the failure so the user can retry; row stays DRAFT
         // until they fix and re-submit.
         await upsertTemplateRow(
@@ -206,7 +207,7 @@ export async function POST(request: Request) {
           buildUpsertRow(accountId, user.id, payload, {
             status: 'DRAFT',
             metaTemplateId: null,
-            submissionError: message,
+            submissionError: explained,
           }),
         )
         const isRateLimit = /\b429\b/.test(message)
@@ -214,7 +215,7 @@ export async function POST(request: Request) {
           {
             error: isRateLimit
               ? 'Meta rate limit hit (100 template creates per hour). Try again later.'
-              : message,
+              : explained,
           },
           { status: isRateLimit ? 429 : 502 },
         )

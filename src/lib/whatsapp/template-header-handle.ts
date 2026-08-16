@@ -1,4 +1,8 @@
-import { uploadResumableMedia } from '@/lib/whatsapp/meta-api'
+import {
+  uploadResumableMedia,
+  resolveMetaAppIdForToken,
+  explainUnsupportedMetaObjectError,
+} from '@/lib/whatsapp/meta-api'
 import type { TemplatePayload } from '@/lib/whatsapp/template-validators'
 
 /**
@@ -14,7 +18,6 @@ import type { TemplatePayload } from '@/lib/whatsapp/template-validators'
  * the same shape.
  */
 
-// Meta's image-header sample limits.
 const IMAGE_MAX_BYTES = 5 * 1024 * 1024
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png']
 
@@ -23,29 +26,27 @@ export async function ensureImageHeaderHandle(
   accessToken: string,
 ): Promise<void> {
   if (payload.header_type !== 'image') return
-  if (payload.header_handle) return // already have one
-  if (!payload.header_media_url) return // validator already requires url-or-handle
+  if (payload.header_handle) return
+  if (!payload.header_media_url) return
 
-  const appId = process.env.META_APP_ID
-  if (!appId) {
-    throw new Error(
-      'Image-header templates need META_APP_ID set (used for Meta’s Resumable Upload). Add it to your environment, or remove the image header.',
-    )
-  }
-
-  // Fetch the sample image bytes (works for our uploaded chat-media URL
-  // and for a manually-pasted public link).
   let res: Response
   try {
     res = await fetch(payload.header_media_url)
   } catch {
-    throw new Error('Could not fetch the header image URL. Make sure it is publicly reachable.')
+    throw new Error(
+      'Could not fetch the header image URL. Make sure it is publicly reachable.',
+    )
   }
   if (!res.ok) {
-    throw new Error(`Header image URL returned ${res.status}. It must be publicly reachable.`)
+    throw new Error(
+      `Header image URL returned ${res.status}. It must be publicly reachable.`,
+    )
   }
 
-  const contentType = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase()
+  const contentType = (res.headers.get('content-type') || '')
+    .split(';')[0]
+    .trim()
+    .toLowerCase()
   if (contentType && !ALLOWED_IMAGE_TYPES.includes(contentType)) {
     throw new Error(`Header image must be JPEG or PNG (got ${contentType}).`)
   }
@@ -60,15 +61,23 @@ export async function ensureImageHeaderHandle(
     )
   }
 
-  const mimeType = ALLOWED_IMAGE_TYPES.includes(contentType) ? contentType : 'image/jpeg'
+  const appId = await resolveMetaAppIdForToken(accessToken)
+  const mimeType = ALLOWED_IMAGE_TYPES.includes(contentType)
+    ? contentType
+    : 'image/jpeg'
   const fileName = mimeType === 'image/png' ? 'header.png' : 'header.jpg'
 
-  const { handle } = await uploadResumableMedia({
-    appId,
-    accessToken,
-    fileName,
-    mimeType,
-    bytes,
-  })
-  payload.header_handle = handle
+  try {
+    const { handle } = await uploadResumableMedia({
+      appId,
+      accessToken,
+      fileName,
+      mimeType,
+      bytes,
+    })
+    payload.header_handle = handle
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    throw new Error(explainUnsupportedMetaObjectError(message))
+  }
 }

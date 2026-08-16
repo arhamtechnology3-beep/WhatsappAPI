@@ -8,7 +8,7 @@ function lastMessageTime(c: Conversation): number {
 
 /** Inbox only lists threads that have actually sent or received a message. */
 export function hasInboxActivity(c: Conversation): boolean {
-  return Boolean(c.last_message_at);
+  return Boolean(c.last_message_at || c.last_message_text?.trim());
 }
 
 /** Newest `last_message_at` first. Empty threads are dropped. */

@@ -31,6 +31,27 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-16 20:10] Fix (Inbox) — two Jesals look like one missing chat
+
+### Root Cause
+- The WhatsApp Hi + festival thread was on `919769104020`. New failed templates (red X) were sent to a different Shopify contact **JESAL PANCHAL `919167623044`**. Inbox listed only the name, so the earlier chat looked gone. New sends fail because that second number never messaged the business (Meta test/unverified). Inbox load also ran `merge_duplicate_conversations` on every refresh, which can delete a conversation id the UI still points at.
+
+### Objective & Fixes
+- Show the phone under each inbox name. Search by `97691` vs `16762`.
+- Do not merge conversations on every Inbox load. Fetch 300 threads and always include `?c=` even if it is outside that page.
+- After deploy: Inbox search `9769104020` for the Hi thread. Do not send marketing to `919167623044` until that handset texts DivyaPrabha first (or Meta verification / test recipients).
+
+### Files Modified
+- `src/components/inbox/conversation-list.tsx`
+- `src/app/(dashboard)/inbox/page.tsx`
+- `src/lib/inbox/sort-conversations.ts`
+- `src/lib/inbox/sort-conversations.test.ts`
+
+### Live
+- Same PR as contact-list template preview. Migration required: none
+
+---
+
 ## [2026-08-16 19:10] Fix (Inbox) — contact-list template send stored empty `[template]` preview
 
 ### Root Cause
@@ -58,7 +79,7 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
-
+## [2026-08-16 18:20] Fix (Templates) — do not block Meta send on header image upload
 
 ### Root Cause
 - Every inbox template send first fetched the Shopify PNG and uploaded it to WhatsApp `/media`. On Hostinger that call can hang or fail, so Graph never got the message. Festival (static CTAs) still failed after the retry deploy — same phone that received templates yesterday.

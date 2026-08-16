@@ -18,6 +18,11 @@ export function normalizeKey(phone: string): string {
   return normalizePhone(phone);
 }
 
+/** Canonical de-dup key for an email (trim + lowercase). */
+export function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 /** Minimal shape we need back from a contacts lookup. */
 export interface ExistingContact {
   id: string;
@@ -68,6 +73,38 @@ export async function findExistingContact(
 
   return (
     (data as ExistingContact[]).find((c) => phonesMatch(c.phone, phone)) ?? null
+  );
+}
+
+/**
+ * Find a contact in this account with the same email (case-insensitive).
+ * Prefers the row that already has a phone so Shopify checkouts without a
+ * number fold into the WhatsApp-ready contact.
+ */
+export async function findExistingContactByEmail(
+  db: SupabaseClient,
+  accountId: string,
+  email: string,
+): Promise<ExistingContact | null> {
+  const key = normalizeEmail(email);
+  if (!key) return null;
+
+  const { data, error } = await db
+    .from("contacts")
+    .select("*")
+    .eq("account_id", accountId)
+    .ilike("email", key)
+    .limit(50);
+
+  if (error || !data || data.length === 0) return null;
+
+  const matches = (data as ExistingContact[]).filter(
+    (c) => normalizeEmail(String(c.email ?? "")) === key,
+  );
+  if (matches.length === 0) return null;
+
+  return (
+    matches.find((c) => Boolean(toMetaPhone(c.phone || ""))) ?? matches[0]
   );
 }
 

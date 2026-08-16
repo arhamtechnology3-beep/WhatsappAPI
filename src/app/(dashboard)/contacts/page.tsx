@@ -114,6 +114,9 @@ export default function ContactsPage() {
         throw new Error(data.error || 'Failed to sync customers');
       }
       toast.success(`Successfully synced ${data.syncedCount} contacts from Shopify!`);
+      if (data.mergedDuplicates > 0) {
+        toast.success(`Merged ${data.mergedDuplicates} duplicate contacts into unique email/phone rows`);
+      }
       if (Array.isArray(data.warnings) && data.warnings.length > 0) {
         toast.warning(data.warnings.join(' · '));
       }
@@ -142,6 +145,7 @@ export default function ContactsPage() {
   // results. Without this, rapidly toggling tag filters could let a slower
   // earlier request resolve last and render stale rows.
   const fetchSeq = useRef(0);
+  const didDedupe = useRef(false);
 
   const fetchTags = useCallback(async () => {
     const { data } = await supabase.from('tags').select('*');
@@ -162,6 +166,21 @@ export default function ContactsPage() {
   tagsMapRef.current = tagsMap;
 
   const fetchContacts = useCallback(async () => {
+    if (!didDedupe.current) {
+      didDedupe.current = true;
+      try {
+        const res = await fetch('/api/contacts/dedupe', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && typeof data.merged === 'number' && data.merged > 0) {
+          toast.success(
+            `Merged ${data.merged} duplicate contact${data.merged === 1 ? '' : 's'} (same email or phone)`,
+          );
+        }
+      } catch {
+        // List still loads if merge is unavailable
+      }
+    }
+
     const seq = ++fetchSeq.current;
     setLoading(true);
     setSelected(new Set());

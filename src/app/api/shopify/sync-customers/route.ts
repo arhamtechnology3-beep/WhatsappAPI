@@ -6,6 +6,7 @@ import {
   fetchShopifyCollection,
 } from '@/lib/shopify/shopify-client'
 import { matchOrCreateShopifyContact } from '@/lib/shopify/shopify-helper'
+import { mergeDuplicateContactsForAccount } from '@/lib/contacts/merge-duplicates'
 
 export const maxDuration = 60
 
@@ -229,9 +230,19 @@ export async function POST() {
       }
     })
 
+    let mergedDuplicates = 0
+    try {
+      mergedDuplicates = await mergeDuplicateContactsForAccount(db, ctx.accountId)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn('[shopify-sync] duplicate merge failed:', err)
+      fetchWarnings.push(`dedupe: ${msg}`)
+    }
+
     return NextResponse.json({
       success: true,
       syncedCount: syncedIds.size,
+      mergedDuplicates,
       fetched: {
         customers: shopifyCustomers.length,
         orders: shopifyOrders.length,

@@ -228,18 +228,28 @@ export function ImportModal({
       //    generated `phone_normalized` column (migration 022) → Set.
       const { data: existingRows } = await supabase
         .from('contacts')
-        .select('phone_normalized')
+        .select('phone_normalized, email')
         .eq('account_id', accountId);
-      const existing = new Set(
+      const existingPhones = new Set(
         (existingRows ?? [])
           .map(
             (r) => (r as { phone_normalized: string | null }).phone_normalized
           )
           .filter((p): p is string => !!p)
       );
+      const existingEmails = new Set(
+        (existingRows ?? [])
+          .map((r) => String((r as { email?: string | null }).email ?? '').trim().toLowerCase())
+          .filter(Boolean)
+      );
 
       const toInsert = unique.filter((row) => {
-        if (existing.has(normalizeKey(row.phone))) {
+        if (existingPhones.has(normalizeKey(row.phone))) {
+          skipped++;
+          return false;
+        }
+        const emailKey = row.email?.trim().toLowerCase();
+        if (emailKey && existingEmails.has(emailKey)) {
           skipped++;
           return false;
         }

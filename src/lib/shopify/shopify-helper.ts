@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
+import { findExistingContact, findExistingContactByEmail, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { toMetaPhone, normalizePhone } from '@/lib/whatsapp/phone-utils'
 import { SHOPIFY_TEMPLATE_LIBRARY } from './whatsapp-template-library'
 
@@ -64,8 +64,8 @@ export async function matchOrCreateShopifyContact(
       .select('*')
       .eq('account_id', accountId)
       .eq('shopify_customer_id', shopifyCustomerId)
-      .maybeSingle()
-    contact = data
+      .limit(1)
+    contact = data?.[0] ?? null
   }
 
   // 2) Match by phone number
@@ -73,15 +73,9 @@ export async function matchOrCreateShopifyContact(
     contact = await findExistingContact(supabase, accountId, phone)
   }
 
-  // 3) Fallback to email
+  // 3) Same email = same person (case-insensitive)
   if (!contact && email) {
-    const { data } = await supabase
-      .from('contacts')
-      .select('*')
-      .eq('account_id', accountId)
-      .eq('email', email)
-      .maybeSingle()
-    contact = data
+    contact = await findExistingContactByEmail(supabase, accountId, email)
   }
 
   // 3) Create contact if missing
@@ -98,7 +92,7 @@ export async function matchOrCreateShopifyContact(
         account_id: accountId,
         user_id: userId,
         phone: phone || '',
-        email: email,
+        email: email ? email.toLowerCase() : email,
         name: name || email || 'Shopify Customer',
         shopify_customer_id: shopifyCustomerId,
         company: company || undefined,
@@ -116,13 +110,7 @@ export async function matchOrCreateShopifyContact(
           contact = await findExistingContact(supabase, accountId, phone)
         }
         if (!contact && email) {
-          const { data } = await supabase
-            .from('contacts')
-            .select('*')
-            .eq('account_id', accountId)
-            .eq('email', email)
-            .maybeSingle()
-          contact = data
+          contact = await findExistingContactByEmail(supabase, accountId, email)
         }
       }
       if (!contact) {
@@ -172,7 +160,7 @@ export async function matchOrCreateShopifyContact(
       updates.shopify_customer_id = shopifyCustomerId
     }
     if (email) {
-      updates.email = email
+      updates.email = email.toLowerCase()
     }
     if (phone && contact.phone !== phone) {
       updates.phone = phone

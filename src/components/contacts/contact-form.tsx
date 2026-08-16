@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag } from '@/types';
 import {
   findExistingContact,
+  findExistingContactByEmail,
   isExactMatch,
   isUniqueViolation,
   type ExistingContact,
@@ -86,16 +87,20 @@ export function ContactForm({
   async function checkDuplicate() {
     if (isEdit || !accountId) return;
     const value = phone.trim();
-    if (!value) {
+    const emailValue = email.trim();
+    if (!value && !emailValue) {
       setDupMatch(null);
       return;
     }
     setCheckingDup(true);
     try {
-      const existing = await findExistingContact(supabase, accountId, value);
+      let existing = value ? await findExistingContact(supabase, accountId, value) : null;
+      if (!existing && emailValue) {
+        existing = await findExistingContactByEmail(supabase, accountId, emailValue);
+      }
       setDupMatch(
         existing
-          ? { contact: existing, exact: isExactMatch(existing, value) }
+          ? { contact: existing, exact: value ? isExactMatch(existing, value) : true }
           : null,
       );
     } finally {
@@ -132,7 +137,7 @@ export function ContactForm({
     // Hard-block an exact duplicate on create (the DB unique index is
     // the real backstop; this avoids a round-trip + a raw error toast).
     if (!isEdit && dupMatch?.exact) {
-      toast.error('A contact with this phone number already exists');
+      toast.error('A contact with this phone number or email already exists');
       return;
     }
 
@@ -207,7 +212,7 @@ export function ContactForm({
       // normalizes equal). Surface it as the friendly duplicate notice
       // and, for new contacts, point the user at the existing record.
       if (isUniqueViolation(err)) {
-        toast.error('A contact with this phone number already exists');
+        toast.error('A contact with this phone number or email already exists');
         if (!isEdit && accountId) {
           const existing = await findExistingContact(
             supabase,
@@ -310,6 +315,7 @@ export function ContactForm({
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onBlur={checkDuplicate}
               placeholder="john@example.com"
               className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
             />

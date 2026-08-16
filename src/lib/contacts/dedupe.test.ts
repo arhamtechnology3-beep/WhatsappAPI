@@ -3,10 +3,18 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   dedupeByPhone,
   findExistingContact,
+  findExistingContactByEmail,
   isExactMatch,
   isUniqueViolation,
+  normalizeEmail,
   normalizeKey,
 } from "./dedupe";
+
+describe("normalizeEmail", () => {
+  it("trims and lowercases", () => {
+    expect(normalizeEmail("  JesalP85@Gmail.com ")).toBe("jesalp85@gmail.com");
+  });
+});
 
 describe("normalizeKey", () => {
   it("strips every non-digit", () => {
@@ -107,5 +115,33 @@ describe("findExistingContact", () => {
   it("returns null for an empty phone without querying", async () => {
     const db = stubDb([{ id: "c1", phone: "15551234567" }]);
     expect(await findExistingContact(db, "acct", "   ")).toBeNull();
+  });
+});
+
+describe("findExistingContactByEmail", () => {
+  function stubEmailDb(
+    rows: Array<{ id: string; phone: string; email: string }>,
+  ): SupabaseClient {
+    const builder = {
+      select: () => builder,
+      eq: () => builder,
+      ilike: () => builder,
+      limit: () => Promise.resolve({ data: rows, error: null }),
+    };
+    return { from: () => builder } as unknown as SupabaseClient;
+  }
+
+  it("prefers the row that already has a phone", async () => {
+    const db = stubEmailDb([
+      { id: "empty", phone: "", email: "jesalp85@gmail.com" },
+      { id: "with-phone", phone: "919769104020", email: "jesalp85@gmail.com" },
+    ]);
+    const hit = await findExistingContactByEmail(db, "acct", "JesalP85@gmail.com");
+    expect(hit?.id).toBe("with-phone");
+  });
+
+  it("returns null for a blank email", async () => {
+    const db = stubEmailDb([{ id: "c1", phone: "1", email: "a@b.com" }]);
+    expect(await findExistingContactByEmail(db, "acct", "  ")).toBeNull();
   });
 });

@@ -141,19 +141,42 @@ export function coerceTemplateButtonParams(
   return Object.keys(out).length ? out : undefined
 }
 
+export function resolveTemplateHeaderKind(template: {
+  name?: string | null
+  header_type?: string | null
+  header_handle?: string | null
+  header_media_url?: string | null
+}): 'text' | 'image' | 'video' | 'document' | undefined {
+  const raw = template.header_type?.toLowerCase()
+  if (raw === 'text' || raw === 'image' || raw === 'video' || raw === 'document') {
+    return raw
+  }
+  const recipe = template.name ? recipeByName(template.name) : undefined
+  if (recipe?.header_type) return recipe.header_type
+  if (template.header_handle || template.header_media_url) return 'image'
+  return undefined
+}
+
+export function templateHasMediaHeader(template: {
+  name?: string | null
+  header_type?: string | null
+  header_handle?: string | null
+  header_media_url?: string | null
+}): boolean {
+  const kind = resolveTemplateHeaderKind(template)
+  return kind === 'image' || kind === 'video' || kind === 'document'
+}
+
 export function resolveHeaderMediaUrl(
   template: {
+    name?: string | null
     header_type?: string | null
+    header_handle?: string | null
     header_media_url?: string | null
   },
   override?: string | null,
 ): string | undefined {
-  const headerType = template.header_type?.toLowerCase()
-  if (
-    headerType !== 'image' &&
-    headerType !== 'video' &&
-    headerType !== 'document'
-  ) {
+  if (!templateHasMediaHeader(template)) {
     return override?.trim() || undefined
   }
   return (

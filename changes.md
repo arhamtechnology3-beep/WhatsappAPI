@@ -31,6 +31,26 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-17 11:50] Fix (Inbox) — template Upload image always shows for Festival
+
+### Root Cause
+- Upload was hidden unless `message_templates.header_type` was `image`. Synced Festival rows often have a null `header_type` (Meta stores `header_handle`); the recipe still is IMAGE, so the picker only showed Body `{{1}}`.
+
+### Objective & Fixes
+- Resolve IMAGE headers from the Farm Didi recipe / `header_handle`, not only the DB column.
+- Put a dashed **Click or drop a PNG / JPEG** zone at the top of the template fill modal (Festival and every `wacrm_*` template).
+- After deploy: hard-refresh Inbox → Templates → `wacrm_festival_broadcast_v2` — drop zone appears above the preview.
+
+### Files Modified
+- `src/lib/shopify/whatsapp-template-library.ts`
+- `src/lib/shopify/whatsapp-template-library.test.ts`
+- `src/components/inbox/template-picker.tsx`
+- `changes.md`
+
+### Live
+- PR `cursor/inbox-upload-image-send-8968`.
+- Migration required: none.
+
 ## [2026-08-17 09:45] Feat (Inbox) — upload an image and send it with the message
 
 ### Root Cause

@@ -36,6 +36,8 @@ import {
   COLLECTION_ALL_PRODUCTS_PATH,
   defaultHeaderImageUrl,
   urlButtonParamFromAbsolute,
+  templateHasMediaHeader,
+  resolveTemplateHeaderKind,
 } from "@/lib/shopify/whatsapp-template-library";
 
 export interface TemplateSendValues {
@@ -60,13 +62,19 @@ interface UrlButtonSlot {
 }
 
 function isMediaHeader(template: MessageTemplate): boolean {
-  const t = template.header_type?.toLowerCase();
-  return t === "image" || t === "video" || t === "document";
+  return templateHasMediaHeader(template);
 }
 
 function defaultMediaHeaderUrl(template: MessageTemplate): string | undefined {
   if (!isMediaHeader(template)) return undefined;
   return template.header_media_url || defaultHeaderImageUrl();
+}
+
+function headerAccept(template: MessageTemplate): string {
+  const kind = resolveTemplateHeaderKind(template);
+  if (kind === "video") return "video/mp4,video/3gpp";
+  if (kind === "document") return "application/pdf,image/png,image/jpeg";
+  return "image/png,image/jpeg,image/webp";
 }
 
 /**
@@ -462,9 +470,9 @@ export function TemplatePicker({
   async function handleHeaderFile(file: File | undefined) {
     if (!file || !selected) return;
     const kind =
-      selected.header_type?.toLowerCase() === "video"
+      resolveTemplateHeaderKind(selected) === "video"
         ? "video"
-        : selected.header_type?.toLowerCase() === "document"
+        : resolveTemplateHeaderKind(selected) === "document"
           ? "document"
           : "image";
     const max = MEDIA_MAX_BYTES_BY_KIND[kind];
@@ -495,7 +503,7 @@ export function TemplatePicker({
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
             {selected
-              ? "Fill in the placeholders to render this template. Meta requires every variable to be set."
+              ? "Upload a header photo, fill {{1}}, then Send. The photo sits at the top of the WhatsApp bubble."
               : "Pick an approved WhatsApp template to send to this contact."}
           </DialogDescription>
         </DialogHeader>
@@ -546,7 +554,75 @@ export function TemplatePicker({
             )}
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="max-h-[65vh] space-y-3 overflow-y-auto pr-1">
+            {isMediaHeader(selected) ||
+            (selected.name || "").startsWith("wacrm_") ? (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-popover-foreground">
+                  Upload header image
+                </Label>
+                <input
+                  ref={headerFileRef}
+                  type="file"
+                  accept={headerAccept(selected)}
+                  className="hidden"
+                  onChange={(e) => {
+                    void handleHeaderFile(e.target.files?.[0]);
+                    e.target.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={headerUploading}
+                  onClick={() => headerFileRef.current?.click()}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "copy";
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    void handleHeaderFile(e.dataTransfer.files?.[0]);
+                  }}
+                  className="flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-primary/50 bg-primary/5 px-4 py-6 text-center transition-colors hover:border-primary hover:bg-primary/10 disabled:opacity-60"
+                >
+                  {headerUploading ? (
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  ) : headerMediaUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={headerMediaUrl}
+                      alt="Header preview"
+                      className="max-h-36 rounded-md object-contain"
+                    />
+                  ) : (
+                    <ImagePlus className="h-8 w-8 text-primary" />
+                  )}
+                  <span className="text-sm font-medium text-popover-foreground">
+                    {headerUploading
+                      ? "Uploading…"
+                      : headerMediaUrl
+                        ? "Click or drop to replace photo"
+                        : "Click or drop a PNG / JPEG here"}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Max 5 MB. This image is sent with the template.
+                  </span>
+                </button>
+                {headerMediaUrl &&
+                  headerMediaUrl !== defaultHeaderImageUrl() && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setHeaderMediaUrl(defaultMediaHeaderUrl(selected) || "")
+                      }
+                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                      Use default DivyaPrabha banner
+                    </button>
+                  )}
+              </div>
+            ) : null}
             <div>
               <p className="mb-1 text-xs text-muted-foreground">
                 How it looks to the customer
@@ -556,69 +632,10 @@ export function TemplatePicker({
                 bodyText={fillTemplatePlaceholders(selected.body_text, params)}
                 headerText={headerText || undefined}
                 headerMediaUrl={
-                  headerMediaUrl ||
-                  (selected.header_type === "image"
-                    ? defaultHeaderImageUrl()
-                    : undefined)
+                  headerMediaUrl || defaultMediaHeaderUrl(selected)
                 }
               />
             </div>
-            {isMediaHeader(selected) && (
-              <div className="space-y-2">
-                <Label className="text-xs text-popover-foreground">
-                  Header image — uploaded photo is sent with this template
-                </Label>
-                <input
-                  ref={headerFileRef}
-                  type="file"
-                  accept={
-                    selected.header_type === "video"
-                      ? "video/mp4,video/3gpp"
-                      : selected.header_type === "document"
-                        ? "application/pdf,image/png,image/jpeg"
-                        : "image/png,image/jpeg,image/webp"
-                  }
-                  className="hidden"
-                  onChange={(e) => {
-                    void handleHeaderFile(e.target.files?.[0]);
-                    e.target.value = "";
-                  }}
-                />
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={headerUploading}
-                    onClick={() => headerFileRef.current?.click()}
-                    className="border-border text-popover-foreground hover:bg-muted"
-                  >
-                    {headerUploading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ImagePlus className="h-4 w-4" />
-                    )}
-                    {headerUploading ? "Uploading…" : "Upload image"}
-                  </Button>
-                  {headerMediaUrl &&
-                    headerMediaUrl !== defaultHeaderImageUrl() && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setHeaderMediaUrl(defaultMediaHeaderUrl(selected) || "")
-                        }
-                        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="h-3 w-3" />
-                        Use default banner
-                      </button>
-                    )}
-                </div>
-                <p className="text-[10px] text-muted-foreground">
-                  PNG or JPEG, max 5 MB. This photo appears at the top of the WhatsApp bubble.
-                </p>
-              </div>
-            )}
             {slots && slots.headerVarCount > 0 && (
               <div className="space-y-1">
                 <Label className="text-xs text-popover-foreground">

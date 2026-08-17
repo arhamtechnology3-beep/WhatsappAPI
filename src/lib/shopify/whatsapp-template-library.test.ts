@@ -13,6 +13,8 @@ import {
   buildTemplateCustomerView,
   inboxTemplateCustomerView,
   dynamicStorefrontUrl,
+  templateHasMediaHeader,
+  resolveTemplateHeaderKind,
 } from './whatsapp-template-library'
 
 describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
@@ -128,6 +130,29 @@ describe('coerceTemplateButtonParams', () => {
       1: 'https://divyaprabhafoods.com/collections/all-products',
     })
     expect(params).toEqual({ 0: 'checkouts/cn/abc' })
+  })
+})
+
+describe('templateHasMediaHeader', () => {
+  it('uses the Farm Didi recipe when the synced row has no header_type', () => {
+    expect(
+      templateHasMediaHeader({
+        name: 'wacrm_festival_broadcast_v2',
+        header_type: null,
+      }),
+    ).toBe(true)
+    expect(resolveTemplateHeaderKind({ name: 'wacrm_festival_broadcast_v2' })).toBe(
+      'image',
+    )
+  })
+
+  it('treats a stored header_handle as an IMAGE header', () => {
+    expect(
+      templateHasMediaHeader({
+        name: 'custom_promo',
+        header_handle: '4::abc',
+      }),
+    ).toBe(true)
   })
 })
 

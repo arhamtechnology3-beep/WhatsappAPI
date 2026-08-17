@@ -48,7 +48,7 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 - `changes.md`
 
 ### Live
-- PR `cursor/inbox-upload-image-send-8968`.
+- On `main`: `6e31268` (Hostinger `whatsapp.arhamtechnology.com`).
 - Migration required: none.
 
 ## [2026-08-17 09:45] Feat (Inbox) — upload an image and send it with the message
@@ -68,7 +68,7 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 - `src/lib/whatsapp/meta-api.ts`
 
 ### Live
-- PR pending (`cursor/inbox-upload-image-send-8968`).
+- On `main`: `6e31268`.
 - Migration required: none.
 
 ## [2026-08-16 18:20] Fix (Templates) — do not block Meta send on header image upload

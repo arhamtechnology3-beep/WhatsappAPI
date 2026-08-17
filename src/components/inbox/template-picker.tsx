@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { MessageTemplate } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -18,10 +18,16 @@ import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft,
   ChevronRight,
+  ImagePlus,
   LayoutTemplate,
   Loader2,
+  X,
 } from "lucide-react";
-import { extractVariableIndices } from "@/lib/whatsapp/template-validators";
+import { toast } from "sonner";
+import {
+  uploadAccountMedia,
+  MEDIA_MAX_BYTES_BY_KIND,
+} from "@/lib/storage/upload-media";
 import {
   WhatsAppTemplatePreview,
   fillTemplatePlaceholders,
@@ -30,6 +36,8 @@ import {
   COLLECTION_ALL_PRODUCTS_PATH,
   defaultHeaderImageUrl,
   urlButtonParamFromAbsolute,
+  templateHasMediaHeader,
+  resolveTemplateHeaderKind,
 } from "@/lib/shopify/whatsapp-template-library";
 
 export interface TemplateSendValues {
@@ -51,6 +59,22 @@ interface UrlButtonSlot {
   index: number;
   text: string;
   url: string;
+}
+
+function isMediaHeader(template: MessageTemplate): boolean {
+  return templateHasMediaHeader(template);
+}
+
+function defaultMediaHeaderUrl(template: MessageTemplate): string | undefined {
+  if (!isMediaHeader(template)) return undefined;
+  return template.header_media_url || defaultHeaderImageUrl();
+}
+
+function headerAccept(template: MessageTemplate): string {
+  const kind = resolveTemplateHeaderKind(template);
+  if (kind === "video") return "video/mp4,video/3gpp";
+  if (kind === "document") return "application/pdf,image/png,image/jpeg";
+  return "image/png,image/jpeg,image/webp";
 }
 
 /**
@@ -90,6 +114,9 @@ export function TemplatePicker({
   const [params, setParams] = useState<string[]>([]);
   const [headerText, setHeaderText] = useState<string>("");
   const [buttonParams, setButtonParams] = useState<Record<number, string>>({});
+  const [headerMediaUrl, setHeaderMediaUrl] = useState<string>("");
+  const [headerUploading, setHeaderUploading] = useState(false);
+  const headerFileRef = useRef<HTMLInputElement>(null);
   const [storeContext, setStoreContext] = useState<{
     customerFirstName: string;
     productName: string;
@@ -272,6 +299,8 @@ export function TemplatePicker({
     setParams([]);
     setHeaderText("");
     setButtonParams({});
+    setHeaderMediaUrl("");
+    setHeaderUploading(false);
   }
 
   function handleOpenChange(next: boolean) {
@@ -387,17 +416,13 @@ export function TemplatePicker({
       }
     });
 
+    const headerMediaUrl =
+      defaultMediaHeaderUrl(template);
     const noInputsNeeded =
       slots.bodyVars.length === 0 &&
       slots.headerVarCount === 0 &&
-      slots.urlButtonSlots.length === 0;
-    const headerMediaUrl =
-      template.header_media_url ||
-      (template.header_type === "image" ||
-      template.header_type === "video" ||
-      template.header_type === "document"
-        ? defaultHeaderImageUrl()
-        : undefined);
+      slots.urlButtonSlots.length === 0 &&
+      !isMediaHeader(template);
     if (noInputsNeeded) {
       onSelect(template, {
         body: initialParams,
@@ -410,6 +435,7 @@ export function TemplatePicker({
     setParams(initialParams);
     setHeaderText(initialHeader);
     setButtonParams(initialButtonParams);
+    setHeaderMediaUrl(headerMediaUrl || "");
   }
 
   function confirm() {
@@ -422,12 +448,7 @@ export function TemplatePicker({
       );
     }
     values.headerMediaUrl =
-      selected.header_media_url ||
-      (selected.header_type === "image" ||
-      selected.header_type === "video" ||
-      selected.header_type === "document"
-        ? defaultHeaderImageUrl()
-        : undefined);
+      headerMediaUrl.trim() || defaultMediaHeaderUrl(selected);
     onSelect(selected, values);
     handleOpenChange(false);
   }
@@ -439,11 +460,38 @@ export function TemplatePicker({
   const canConfirm =
     !!selected &&
     !!slots &&
+    !headerUploading &&
     slots.bodyVars.every((_, i) => (params[i] ?? "").trim().length > 0) &&
     (slots.headerVarCount === 0 || headerText.trim().length > 0) &&
     slots.urlButtonSlots.every(
       (s) => (buttonParams[s.index] ?? "").trim().length > 0,
     );
+
+  async function handleHeaderFile(file: File | undefined) {
+    if (!file || !selected) return;
+    const kind =
+      resolveTemplateHeaderKind(selected) === "video"
+        ? "video"
+        : resolveTemplateHeaderKind(selected) === "document"
+          ? "document"
+          : "image";
+    const max = MEDIA_MAX_BYTES_BY_KIND[kind];
+    if (file.size > max) {
+      toast.error(
+        `File is ${(file.size / 1024 / 1024).toFixed(1)} MB — ${kind} limit is ${Math.round(max / 1024 / 1024)} MB.`,
+      );
+      return;
+    }
+    setHeaderUploading(true);
+    try {
+      const { publicUrl } = await uploadAccountMedia("chat-media", file);
+      setHeaderMediaUrl(publicUrl);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Image upload failed.");
+    } finally {
+      setHeaderUploading(false);
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -455,7 +503,7 @@ export function TemplatePicker({
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
             {selected
-              ? "Fill in the placeholders to render this template. Meta requires every variable to be set."
+              ? "Upload a header photo, fill {{1}}, then Send. The photo sits at the top of the WhatsApp bubble."
               : "Pick an approved WhatsApp template to send to this contact."}
           </DialogDescription>
         </DialogHeader>
@@ -506,7 +554,75 @@ export function TemplatePicker({
             )}
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="max-h-[65vh] space-y-3 overflow-y-auto pr-1">
+            {isMediaHeader(selected) ||
+            (selected.name || "").startsWith("wacrm_") ? (
+              <div className="space-y-2">
+                <Label className="text-sm font-medium text-popover-foreground">
+                  Upload header image
+                </Label>
+                <input
+                  ref={headerFileRef}
+                  type="file"
+                  accept={headerAccept(selected)}
+                  className="hidden"
+                  onChange={(e) => {
+                    void handleHeaderFile(e.target.files?.[0]);
+                    e.target.value = "";
+                  }}
+                />
+                <button
+                  type="button"
+                  disabled={headerUploading}
+                  onClick={() => headerFileRef.current?.click()}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = "copy";
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    void handleHeaderFile(e.dataTransfer.files?.[0]);
+                  }}
+                  className="flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-primary/50 bg-primary/5 px-4 py-6 text-center transition-colors hover:border-primary hover:bg-primary/10 disabled:opacity-60"
+                >
+                  {headerUploading ? (
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  ) : headerMediaUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={headerMediaUrl}
+                      alt="Header preview"
+                      className="max-h-36 rounded-md object-contain"
+                    />
+                  ) : (
+                    <ImagePlus className="h-8 w-8 text-primary" />
+                  )}
+                  <span className="text-sm font-medium text-popover-foreground">
+                    {headerUploading
+                      ? "Uploading…"
+                      : headerMediaUrl
+                        ? "Click or drop to replace photo"
+                        : "Click or drop a PNG / JPEG here"}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Max 5 MB. This image is sent with the template.
+                  </span>
+                </button>
+                {headerMediaUrl &&
+                  headerMediaUrl !== defaultHeaderImageUrl() && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setHeaderMediaUrl(defaultMediaHeaderUrl(selected) || "")
+                      }
+                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-3 w-3" />
+                      Use default DivyaPrabha banner
+                    </button>
+                  )}
+              </div>
+            ) : null}
             <div>
               <p className="mb-1 text-xs text-muted-foreground">
                 How it looks to the customer
@@ -516,10 +632,7 @@ export function TemplatePicker({
                 bodyText={fillTemplatePlaceholders(selected.body_text, params)}
                 headerText={headerText || undefined}
                 headerMediaUrl={
-                  selected.header_media_url ||
-                  (selected.header_type === "image"
-                    ? defaultHeaderImageUrl()
-                    : undefined)
+                  headerMediaUrl || defaultMediaHeaderUrl(selected)
                 }
               />
             </div>

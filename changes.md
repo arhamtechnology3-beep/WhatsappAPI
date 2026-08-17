@@ -31,6 +31,46 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-17 11:50] Fix (Inbox) — template Upload image always shows for Festival
+
+### Root Cause
+- Upload was hidden unless `message_templates.header_type` was `image`. Synced Festival rows often have a null `header_type` (Meta stores `header_handle`); the recipe still is IMAGE, so the picker only showed Body `{{1}}`.
+
+### Objective & Fixes
+- Resolve IMAGE headers from the Farm Didi recipe / `header_handle`, not only the DB column.
+- Put a dashed **Click or drop a PNG / JPEG** zone at the top of the template fill modal (Festival and every `wacrm_*` template).
+- After deploy: hard-refresh Inbox → Templates → `wacrm_festival_broadcast_v2` — drop zone appears above the preview.
+
+### Files Modified
+- `src/lib/shopify/whatsapp-template-library.ts`
+- `src/lib/shopify/whatsapp-template-library.test.ts`
+- `src/components/inbox/template-picker.tsx`
+- `changes.md`
+
+### Live
+- PR `cursor/inbox-upload-image-send-8968`.
+- Migration required: none.
+
+## [2026-08-17 09:45] Feat (Inbox) — upload an image and send it with the message
+
+### Root Cause
+- Inbox attach hid the typed message, so a photo and caption could not go out together.
+- Template send skipped a custom header image (body-only first), and templates with no `{{vars}}` sent immediately with no chance to pick a photo.
+
+### Objective & Fixes
+- Inbox **+** attaches a photo above the composer; typed text is the caption; Send delivers image + caption together (inside the 24h window).
+- Template picker: **Upload image** before Send. That public URL is sent as the template IMAGE header. If Meta rejects the link, send still falls back to the approved sample.
+- After deploy: Inbox → tap **+** → Photo → type caption → Send. For templates: Templates → pick one → Upload image → Send template.
+
+### Files Modified
+- `src/components/inbox/message-composer.tsx`
+- `src/components/inbox/template-picker.tsx`
+- `src/lib/whatsapp/meta-api.ts`
+
+### Live
+- PR pending (`cursor/inbox-upload-image-send-8968`).
+- Migration required: none.
+
 ## [2026-08-16 18:20] Fix (Templates) — do not block Meta send on header image upload
 
 ### Root Cause

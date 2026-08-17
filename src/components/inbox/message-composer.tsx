@@ -10,7 +10,7 @@ import {
 import {
   Send,
   LayoutTemplate,
-  Paperclip,
+  Plus,
   Image as ImageIcon,
   Video,
   FileText,
@@ -189,7 +189,34 @@ export function MessageComposer({
     el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
   }, []);
 
+  const sendDraft = useCallback(() => {
+    if (!draft || busy) return;
+    onSendMedia({
+      kind: draft.kind,
+      mediaUrl: draft.mediaUrl,
+      path: draft.path,
+      caption:
+        draft.kind === "audio"
+          ? undefined
+          : text.trim().slice(0, MEDIA_CAPTION_MAX) ||
+            draft.caption.trim() ||
+            undefined,
+      filename: draft.kind === "document" ? draft.filename : undefined,
+      replyToId: replyTo?.id,
+    });
+    setDraft(null);
+    setText("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+    onClearReply?.();
+  }, [draft, busy, onSendMedia, text, replyTo?.id, onClearReply]);
+
   const handleSend = useCallback(async () => {
+    if (draft) {
+      sendDraft();
+      return;
+    }
     const trimmed = text.trim();
     if (!trimmed || sending || sessionExpired) return;
 
@@ -203,7 +230,7 @@ export function MessageComposer({
     } finally {
       setSending(false);
     }
-  }, [text, sending, sessionExpired, onSend, replyTo?.id]);
+  }, [draft, sendDraft, text, sending, sessionExpired, onSend, replyTo?.id]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -243,14 +270,22 @@ export function MessageComposer({
         const { publicUrl, path } = await uploadAccountMedia(CHAT_MEDIA_BUCKET, file);
         // Replacing an existing draft? GC the previous object first.
         removeStaged(draftRef.current?.path);
-        setDraft({ kind, mediaUrl: publicUrl, path, filename: file.name, caption: "" });
+        const caption =
+          kind === "audio" ? "" : text.trim().slice(0, MEDIA_CAPTION_MAX);
+        setDraft({
+          kind,
+          mediaUrl: publicUrl,
+          path,
+          filename: file.name,
+          caption,
+        });
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Upload failed.");
       } finally {
         setBusy(false);
       }
     },
-    [removeStaged],
+    [removeStaged, text],
   );
 
   const handlePicked = useCallback(
@@ -347,33 +382,11 @@ export function MessageComposer({
 
   // ---- Draft send / discard -----------------------------------------
 
-  const sendDraft = useCallback(() => {
-    if (!draft || busy) return;
-    onSendMedia({
-      kind: draft.kind,
-      mediaUrl: draft.mediaUrl,
-      path: draft.path,
-      // Audio takes no caption (Meta rejects it). Everything else: the
-      // trimmed caption, or undefined when blank.
-      caption:
-        draft.kind === "audio" ? undefined : draft.caption.trim() || undefined,
-      filename: draft.kind === "document" ? draft.filename : undefined,
-      replyToId: replyTo?.id,
-    });
-    // The object is now owned by the sent message — clear without GC.
-    setDraft(null);
-    onClearReply?.();
-  }, [draft, busy, onSendMedia, replyTo?.id, onClearReply]);
-
   // Discard GCs the staged object — it was uploaded but never sent.
   const discardDraft = useCallback(() => {
     removeStaged(draft?.path);
     setDraft(null);
   }, [draft?.path, removeStaged]);
-
-  const setCaption = useCallback((caption: string) => {
-    setDraft((d) => (d ? { ...d, caption } : d));
-  }, []);
 
   // ---- Render --------------------------------------------------------
 
@@ -391,7 +404,7 @@ export function MessageComposer({
       {sessionExpired && (
         <div className="mb-2 flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
           <p className="text-xs text-amber-400">
-            24-hour session expired. Use a template to re-engage.
+            24-hour session expired. Send a template — you can upload a photo on the template first.
           </p>
           <Button
             variant="ghost"
@@ -437,16 +450,47 @@ export function MessageComposer({
         }}
       />
 
-      {draft ? (
-        <MediaDraftPreview
-          draft={draft}
-          busy={busy}
-          readOnly={readOnly}
-          onCaptionChange={setCaption}
-          onDiscard={discardDraft}
-          onSend={sendDraft}
-        />
-      ) : recording ? (
+      {draft && (
+        <div className="mb-2 flex items-start gap-3 rounded-xl border border-border bg-muted/40 p-3">
+          <div className="min-w-0 flex-1">
+            {draft.kind === "image" && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={draft.mediaUrl}
+                alt={draft.filename}
+                className="max-h-40 rounded-lg object-cover"
+              />
+            )}
+            {draft.kind === "video" && (
+              <video src={draft.mediaUrl} controls className="max-h-40 rounded-lg" />
+            )}
+            {draft.kind === "audio" && (
+              <audio src={draft.mediaUrl} controls className="w-full" />
+            )}
+            {draft.kind === "document" && (
+              <div className="flex items-center gap-2 text-sm text-foreground">
+                <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
+                <span className="truncate">{draft.filename}</span>
+              </div>
+            )}
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {draft.kind === "audio"
+                ? "Voice note ready — tap send"
+                : "Image attached. Type a caption and tap send."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={discardDraft}
+            aria-label="Remove attachment"
+            className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {recording ? (
         // Recording bar — replaces the composer while the mic is live.
         <div className="flex items-center gap-3 rounded-xl border border-border bg-muted px-4 py-2.5">
           <span className="flex h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-red-500" />
@@ -479,16 +523,16 @@ export function MessageComposer({
               title={
                 readOnly
                   ? "Read-only — your role can't send messages"
-                  : inputsDisabled
-                    ? undefined
-                    : "Attach media"
+                  : sessionExpired
+                    ? "24-hour window expired — send a template with an image instead"
+                    : "Upload image or file"
               }
               className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md p-0 text-muted-foreground hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
             >
               {busy ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <Paperclip className="h-4 w-4" />
+                <Plus className="h-5 w-5" />
               )}
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="border-border bg-popover">
@@ -533,17 +577,17 @@ export function MessageComposer({
                 ? "Read-only — viewers can browse but not reply"
                 : sessionExpired
                   ? "Session expired - use a template"
-                  : "Type a message... (Shift+Enter for new line)"
+                  : draft && draft.kind !== "audio"
+                    ? "Add a caption…"
+                    : "Type a message, or tap + to attach a photo"
             }
-            disabled={sessionExpired || readOnly}
+            disabled={sessionExpired || readOnly || draft?.kind === "audio"}
             rows={1}
-            // Textarea keeps its own inline title — the GatedButton
-            // wrapping pattern doesn't apply to non-button inputs.
-            // The placeholder text also surfaces the read-only state.
             title={readOnly ? "Read-only — your role can't send messages" : undefined}
             className={cn(
               "flex-1 resize-none rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50",
-              (sessionExpired || readOnly) && "cursor-not-allowed opacity-50"
+              (sessionExpired || readOnly || draft?.kind === "audio") &&
+                "cursor-not-allowed opacity-50"
             )}
           />
 
@@ -551,7 +595,11 @@ export function MessageComposer({
             size="sm"
             canAct={!readOnly}
             gateReason="send messages"
-            disabled={!text.trim() || sessionExpired || sending}
+            disabled={
+              busy ||
+              sending ||
+              (!draft && (!text.trim() || sessionExpired))
+            }
             onClick={handleSend}
             className="h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40"
           >
@@ -563,101 +611,13 @@ export function MessageComposer({
       {/* Hint sits outside the flex row so its height doesn't push
           `items-end` buttons below the textarea. Indented to line up
           under the textarea left edge. */}
-      {!draft && !recording && (
+      {!recording && (
         <p className="mt-1 pl-[5.5rem] text-[10px] text-muted-foreground">
-          Type &apos;/&apos; for quick replies
+          {draft
+            ? "The photo and your caption are sent together."
+            : "Tap + to attach a photo, or type / for quick replies"}
         </p>
       )}
-    </div>
-  );
-}
-
-/**
- * Staged-attachment preview with caption + send/discard. Declared at
- * module scope (not nested in MessageComposer) so React keeps it mounted
- * across the parent's re-renders — a nested component would remount the
- * caption input on every keystroke and drop focus.
- */
-function MediaDraftPreview({
-  draft,
-  busy,
-  readOnly,
-  onCaptionChange,
-  onDiscard,
-  onSend,
-}: {
-  draft: MediaDraft;
-  busy: boolean;
-  readOnly: boolean;
-  onCaptionChange: (caption: string) => void;
-  onDiscard: () => void;
-  onSend: () => void;
-}) {
-  return (
-    <div className="rounded-xl border border-border bg-muted/40 p-3">
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          {draft.kind === "image" && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={draft.mediaUrl}
-              alt={draft.filename}
-              className="max-h-40 rounded-lg object-cover"
-            />
-          )}
-          {draft.kind === "video" && (
-            <video src={draft.mediaUrl} controls className="max-h-40 rounded-lg" />
-          )}
-          {draft.kind === "audio" && (
-            <audio src={draft.mediaUrl} controls className="w-full" />
-          )}
-          {draft.kind === "document" && (
-            <div className="flex items-center gap-2 text-sm text-foreground">
-              <FileText className="h-5 w-5 shrink-0 text-muted-foreground" />
-              <span className="truncate">{draft.filename}</span>
-            </div>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={onDiscard}
-          aria-label="Remove attachment"
-          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-        >
-          <X className="h-4 w-4" />
-        </button>
-      </div>
-
-      <div className="mt-2 flex items-end gap-2">
-        {draft.kind !== "audio" && (
-          <input
-            value={draft.caption}
-            maxLength={MEDIA_CAPTION_MAX}
-            onChange={(e) => onCaptionChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                onSend();
-              }
-            }}
-            placeholder="Add a caption…"
-            className="flex-1 rounded-xl border border-border bg-muted px-4 py-2.5 text-sm text-foreground placeholder-muted-foreground outline-none transition-colors focus:border-primary/50"
-          />
-        )}
-        <GatedButton
-          size="sm"
-          canAct={!readOnly}
-          gateReason="send messages"
-          disabled={busy}
-          onClick={onSend}
-          className={cn(
-            "h-9 w-9 shrink-0 bg-primary p-0 hover:bg-primary/90 disabled:opacity-40",
-            draft.kind === "audio" && "ml-auto",
-          )}
-        >
-          <Send className="h-4 w-4" />
-        </GatedButton>
-      </div>
     </div>
   );
 }

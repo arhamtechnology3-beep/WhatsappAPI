@@ -614,11 +614,14 @@ export async function sendTemplateMessage(
     buttonParams: messageParams?.buttonParams,
   }
 
-  // Body-only first. Fetching Shopify PNGs / uploading media before the
-  // Graph send hung Hostinger and never reached Meta. The approved
-  // template already has its image + static CTAs on WhatsApp.
+  // Prefer the uploaded/public header image link on the first Graph
+  // call (no server-side fetch/upload — Meta pulls the URL). If that
+  // link is rejected, retry without buttons, then without the media
+  // header so the approved sample still delivers.
   const payloads: SendTimeParams[] = template
     ? [
+        base,
+        { ...base, omitButtons: true },
         {
           ...base,
           omitButtons: true,
@@ -626,8 +629,6 @@ export async function sendTemplateMessage(
           headerMediaId: undefined,
           headerMediaUrl: undefined,
         },
-        { ...base, omitButtons: true },
-        base,
       ]
     : [base]
 

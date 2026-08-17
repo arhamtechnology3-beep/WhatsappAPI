@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { MessageTemplate } from "@/types";
 import { Button } from "@/components/ui/button";
@@ -18,10 +18,16 @@ import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft,
   ChevronRight,
+  ImagePlus,
   LayoutTemplate,
   Loader2,
+  X,
 } from "lucide-react";
-import { extractVariableIndices } from "@/lib/whatsapp/template-validators";
+import { toast } from "sonner";
+import {
+  uploadAccountMedia,
+  MEDIA_MAX_BYTES_BY_KIND,
+} from "@/lib/storage/upload-media";
 import {
   WhatsAppTemplatePreview,
   fillTemplatePlaceholders,
@@ -51,6 +57,16 @@ interface UrlButtonSlot {
   index: number;
   text: string;
   url: string;
+}
+
+function isMediaHeader(template: MessageTemplate): boolean {
+  const t = template.header_type?.toLowerCase();
+  return t === "image" || t === "video" || t === "document";
+}
+
+function defaultMediaHeaderUrl(template: MessageTemplate): string | undefined {
+  if (!isMediaHeader(template)) return undefined;
+  return template.header_media_url || defaultHeaderImageUrl();
 }
 
 /**
@@ -90,6 +106,9 @@ export function TemplatePicker({
   const [params, setParams] = useState<string[]>([]);
   const [headerText, setHeaderText] = useState<string>("");
   const [buttonParams, setButtonParams] = useState<Record<number, string>>({});
+  const [headerMediaUrl, setHeaderMediaUrl] = useState<string>("");
+  const [headerUploading, setHeaderUploading] = useState(false);
+  const headerFileRef = useRef<HTMLInputElement>(null);
   const [storeContext, setStoreContext] = useState<{
     customerFirstName: string;
     productName: string;
@@ -272,6 +291,8 @@ export function TemplatePicker({
     setParams([]);
     setHeaderText("");
     setButtonParams({});
+    setHeaderMediaUrl("");
+    setHeaderUploading(false);
   }
 
   function handleOpenChange(next: boolean) {
@@ -387,17 +408,13 @@ export function TemplatePicker({
       }
     });
 
+    const headerMediaUrl =
+      defaultMediaHeaderUrl(template);
     const noInputsNeeded =
       slots.bodyVars.length === 0 &&
       slots.headerVarCount === 0 &&
-      slots.urlButtonSlots.length === 0;
-    const headerMediaUrl =
-      template.header_media_url ||
-      (template.header_type === "image" ||
-      template.header_type === "video" ||
-      template.header_type === "document"
-        ? defaultHeaderImageUrl()
-        : undefined);
+      slots.urlButtonSlots.length === 0 &&
+      !isMediaHeader(template);
     if (noInputsNeeded) {
       onSelect(template, {
         body: initialParams,
@@ -410,6 +427,7 @@ export function TemplatePicker({
     setParams(initialParams);
     setHeaderText(initialHeader);
     setButtonParams(initialButtonParams);
+    setHeaderMediaUrl(headerMediaUrl || "");
   }
 
   function confirm() {
@@ -422,12 +440,7 @@ export function TemplatePicker({
       );
     }
     values.headerMediaUrl =
-      selected.header_media_url ||
-      (selected.header_type === "image" ||
-      selected.header_type === "video" ||
-      selected.header_type === "document"
-        ? defaultHeaderImageUrl()
-        : undefined);
+      headerMediaUrl.trim() || defaultMediaHeaderUrl(selected);
     onSelect(selected, values);
     handleOpenChange(false);
   }
@@ -439,11 +452,38 @@ export function TemplatePicker({
   const canConfirm =
     !!selected &&
     !!slots &&
+    !headerUploading &&
     slots.bodyVars.every((_, i) => (params[i] ?? "").trim().length > 0) &&
     (slots.headerVarCount === 0 || headerText.trim().length > 0) &&
     slots.urlButtonSlots.every(
       (s) => (buttonParams[s.index] ?? "").trim().length > 0,
     );
+
+  async function handleHeaderFile(file: File | undefined) {
+    if (!file || !selected) return;
+    const kind =
+      selected.header_type?.toLowerCase() === "video"
+        ? "video"
+        : selected.header_type?.toLowerCase() === "document"
+          ? "document"
+          : "image";
+    const max = MEDIA_MAX_BYTES_BY_KIND[kind];
+    if (file.size > max) {
+      toast.error(
+        `File is ${(file.size / 1024 / 1024).toFixed(1)} MB — ${kind} limit is ${Math.round(max / 1024 / 1024)} MB.`,
+      );
+      return;
+    }
+    setHeaderUploading(true);
+    try {
+      const { publicUrl } = await uploadAccountMedia("chat-media", file);
+      setHeaderMediaUrl(publicUrl);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Image upload failed.");
+    } finally {
+      setHeaderUploading(false);
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -516,13 +556,69 @@ export function TemplatePicker({
                 bodyText={fillTemplatePlaceholders(selected.body_text, params)}
                 headerText={headerText || undefined}
                 headerMediaUrl={
-                  selected.header_media_url ||
+                  headerMediaUrl ||
                   (selected.header_type === "image"
                     ? defaultHeaderImageUrl()
                     : undefined)
                 }
               />
             </div>
+            {isMediaHeader(selected) && (
+              <div className="space-y-2">
+                <Label className="text-xs text-popover-foreground">
+                  Header image — uploaded photo is sent with this template
+                </Label>
+                <input
+                  ref={headerFileRef}
+                  type="file"
+                  accept={
+                    selected.header_type === "video"
+                      ? "video/mp4,video/3gpp"
+                      : selected.header_type === "document"
+                        ? "application/pdf,image/png,image/jpeg"
+                        : "image/png,image/jpeg,image/webp"
+                  }
+                  className="hidden"
+                  onChange={(e) => {
+                    void handleHeaderFile(e.target.files?.[0]);
+                    e.target.value = "";
+                  }}
+                />
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={headerUploading}
+                    onClick={() => headerFileRef.current?.click()}
+                    className="border-border text-popover-foreground hover:bg-muted"
+                  >
+                    {headerUploading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ImagePlus className="h-4 w-4" />
+                    )}
+                    {headerUploading ? "Uploading…" : "Upload image"}
+                  </Button>
+                  {headerMediaUrl &&
+                    headerMediaUrl !== defaultHeaderImageUrl() && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setHeaderMediaUrl(defaultMediaHeaderUrl(selected) || "")
+                        }
+                        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                      >
+                        <X className="h-3 w-3" />
+                        Use default banner
+                      </button>
+                    )}
+                </div>
+                <p className="text-[10px] text-muted-foreground">
+                  PNG or JPEG, max 5 MB. This photo appears at the top of the WhatsApp bubble.
+                </p>
+              </div>
+            )}
             {slots && slots.headerVarCount > 0 && (
               <div className="space-y-1">
                 <Label className="text-xs text-popover-foreground">

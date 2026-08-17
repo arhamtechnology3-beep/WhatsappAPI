@@ -31,6 +31,26 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-17 09:45] Feat (Inbox) — upload an image and send it with the message
+
+### Root Cause
+- Inbox attach hid the typed message, so a photo and caption could not go out together.
+- Template send skipped a custom header image (body-only first), and templates with no `{{vars}}` sent immediately with no chance to pick a photo.
+
+### Objective & Fixes
+- Inbox **+** attaches a photo above the composer; typed text is the caption; Send delivers image + caption together (inside the 24h window).
+- Template picker: **Upload image** before Send. That public URL is sent as the template IMAGE header. If Meta rejects the link, send still falls back to the approved sample.
+- After deploy: Inbox → tap **+** → Photo → type caption → Send. For templates: Templates → pick one → Upload image → Send template.
+
+### Files Modified
+- `src/components/inbox/message-composer.tsx`
+- `src/components/inbox/template-picker.tsx`
+- `src/lib/whatsapp/meta-api.ts`
+
+### Live
+- PR pending (`cursor/inbox-upload-image-send-8968`).
+- Migration required: none.
+
 ## [2026-08-16 18:20] Fix (Templates) — do not block Meta send on header image upload
 
 ### Root Cause

@@ -4,6 +4,7 @@ import { engineSendTemplate } from '@/lib/automations/meta-send'
 import { enqueueShopifyNotification, initializeCheckoutRecoverySequence, moveDealToStageName } from '@/lib/shopify/shopify-helper'
 import { authorizeCron } from '@/lib/cron/auth'
 import { findOrCreateConversation } from '@/lib/inbox/find-or-create-conversation'
+import { isCartSequenceTemplate } from '@/lib/shopify/sequence-dedupe'
 
 export async function GET(request: Request) {
   const denied = authorizeCron(request)
@@ -108,6 +109,40 @@ export async function GET(request: Request) {
             .single()
 
           const ownerUserId = account?.owner_user_id || job.account_id
+
+          const { data: claimedJob } = await supabase
+            .from('whatsapp_send_jobs')
+            .update({
+              attempts: nextAttempt,
+              updated_at: new Date().toISOString(),
+            } as any)
+            .eq('id', job.id)
+            .eq('attempts', job.attempts)
+            .in('status', ['pending', 'failed'])
+            .select('id')
+            .maybeSingle()
+          if (!claimedJob) continue
+
+          if (isCartSequenceTemplate(job.template_name || '')) {
+            const { data: cartDrip } = await supabase
+              .from('shopify_recovery_tracking')
+              .select('id')
+              .eq('contact_id', job.contact_id)
+              .eq('status', 'in_progress')
+              .limit(1)
+              .maybeSingle()
+            if (cartDrip) {
+              await supabase
+                .from('whatsapp_send_jobs')
+                .update({
+                  status: 'sent',
+                  last_error: 'skipped_sequence_owns_cart_drip',
+                  updated_at: new Date().toISOString(),
+                } as any)
+                .eq('id', job.id)
+              continue
+            }
+          }
 
           // Find or create conversation
           const conv = await findOrCreateConversation(supabase, {

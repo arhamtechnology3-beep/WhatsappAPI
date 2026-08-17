@@ -172,7 +172,11 @@ export async function alignShopifyAutomations(
     if (existing?.id) {
       const { error } = await db
         .from('shopify_automation_rules')
-        .update(row)
+        .update({
+          template_name: row.template_name,
+          template_variable_mapping: row.template_variable_mapping,
+          meta_approval_status: row.meta_approval_status,
+        })
         .eq('id', existing.id)
       if (error) throw error
     } else {
@@ -240,7 +244,11 @@ export async function alignShopifyAutomations(
       if (existingStep?.id) {
         const { error } = await db
           .from('shopify_automation_sequence_steps')
-          .update(stepRow)
+          .update({
+            template_name: stepRow.template_name,
+            template_variable_mapping: stepRow.template_variable_mapping,
+            meta_approval_status: stepRow.meta_approval_status,
+          })
           .eq('id', existingStep.id)
         if (error) throw error
       } else {

@@ -5,6 +5,15 @@ import { createShopifyDiscountCode } from '@/lib/shopify/discount-generator'
 import { authorizeCron } from '@/lib/cron/auth'
 import { sequenceStepSendDecision } from '@/lib/shopify/automation-bindings'
 import { findOrCreateConversation } from '@/lib/inbox/find-or-create-conversation'
+import {
+  shouldStopBrowseDrip,
+  shouldStopCartDrip,
+} from '@/lib/shopify/recovery-conversion'
+import {
+  duplicateTrackingIdsToStop,
+  metadataWithSentStep,
+  stepAlreadySent,
+} from '@/lib/shopify/sequence-dedupe'
 
 export async function GET(request: Request) {
   const denied = authorizeCron(request)
@@ -30,7 +39,24 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: true })
 
     if (trackings && trackings.length > 0) {
+      const extraIds = duplicateTrackingIdsToStop(
+        trackings.map((t: any) => ({
+          id: t.id,
+          contact_id: t.contact_id,
+          sequence_id: t.sequence_id,
+          created_at: t.created_at,
+        })),
+      )
+      if (extraIds.length > 0) {
+        await supabase
+          .from('shopify_recovery_tracking')
+          .update({ status: 'stopped', updated_at: new Date().toISOString() })
+          .in('id', extraIds)
+      }
+
       for (const tracking of trackings) {
+        if (extraIds.includes(tracking.id)) continue
+
         const contact: any = tracking.contacts
         const sequence: any = tracking.shopify_automation_sequences
 
@@ -113,6 +139,29 @@ export async function GET(request: Request) {
           continue
         }
         if (!step) continue
+
+        const claimedAt = new Date().toISOString()
+        const lockUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString()
+        const { data: claimed } = await supabase
+          .from('shopify_recovery_tracking')
+          .update({
+            next_send_at: lockUntil,
+            updated_at: claimedAt,
+          })
+          .eq('id', tracking.id)
+          .eq('status', 'in_progress')
+          .eq('current_step', tracking.current_step)
+          .lte('next_send_at', now)
+          .select('id')
+          .maybeSingle()
+        if (!claimed) continue
+
+        const alreadySentThisStep = stepAlreadySent(tracking.metadata, tracking.current_step)
+        if (alreadySentThisStep) {
+          await advanceOrComplete(supabase, tracking, sequence.id, tracking.discount_code)
+          sequencesProcessed++
+          continue
+        }
 
         // 5) COMPLIANCE: OPT-IN CHECK
         // Step 1 cart abandoned reminder is transactional (uses 24h window), but Step 2, 3, and all browse reminders require marketing opt-in consent
@@ -241,14 +290,26 @@ export async function GET(request: Request) {
             messagesSent++
           } catch (sendErr) {
             console.error('[shopify-sequence-cron] send failed, will retry next run:', sendErr)
+            await supabase
+              .from('shopify_recovery_tracking')
+              .update({ next_send_at: claimedAt, updated_at: new Date().toISOString() })
+              .eq('id', tracking.id)
+              .eq('status', 'in_progress')
+              .eq('current_step', tracking.current_step)
             continue
           }
         } else {
           console.error('[shopify-sequence-cron] no conversation for tracking', tracking.id)
+          await supabase
+            .from('shopify_recovery_tracking')
+            .update({ next_send_at: claimedAt, updated_at: new Date().toISOString() })
+            .eq('id', tracking.id)
+            .eq('status', 'in_progress')
+            .eq('current_step', tracking.current_step)
           continue
         }
 
-        // Advance or complete sequence
+        tracking.metadata = metadataWithSentStep(tracking.metadata, tracking.current_step)
         await advanceOrComplete(supabase, tracking, sequence.id, discountCode)
         sequencesProcessed++
       }
@@ -291,6 +352,7 @@ async function advanceOrComplete(
         current_step: nextStepOrder,
         next_send_at: nextSendAt,
         discount_code: discountCode,
+        metadata: tracking.metadata || {},
         updated_at: new Date().toISOString(),
       })
       .eq('id', tracking.id)
@@ -301,6 +363,7 @@ async function advanceOrComplete(
       .update({
         status: 'completed',
         discount_code: discountCode,
+        metadata: tracking.metadata || {},
         updated_at: new Date().toISOString(),
       })
       .eq('id', tracking.id)

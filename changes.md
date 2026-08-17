@@ -31,6 +31,33 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-17 18:45] Fix (Automations) — cart step 3 sends once, not a burst
+
+### Root Cause
+- One customer cart can create several `shopify_recovery_tracking` rows (checkout id, token, and cart_token). When step 3 became due, each row sent `wacrm_cart_reminder_step3_v2` at the same time.
+- Overlapping cron runs (every minute) sent the same tracking again before `current_step` advanced.
+- Align-automations was overwriting the Shopify App delays (30 min / 24 h / 48 h) with recipe defaults.
+
+### Objective & Fixes
+- Claim a tracking row before Meta send so a second cron cannot send the same step.
+- Keep one in-progress drip per contact + sequence; stop extras. Cart queue jobs are skipped when the sequence already owns the contact.
+- Preserve existing step/rule delays and active toggles on align.
+- After deploy: apply migration `049`. Step 3 should deliver one WhatsApp message. Order confirmed / shipped / delivered rules are unchanged.
+
+### Files Modified
+- `src/app/api/shopify/cron/sequences/route.ts`
+- `src/app/api/shopify/cron/route.ts`
+- `src/lib/shopify/shopify-helper.ts`
+- `src/lib/shopify/sequence-dedupe.ts`
+- `src/lib/shopify/sequence-dedupe.test.ts`
+- `src/lib/shopify/automation-bindings.ts`
+- `supabase/migrations/049_one_recovery_drip_per_contact.sql`
+- `changes.md`
+
+### Live
+- PR on `cursor/cart-step3-once-8968`.
+- Migration required: `supabase/migrations/049_one_recovery_drip_per_contact.sql`.
+
 ## [2026-08-17 12:40] Feat (Flows) — Order Status Tracking looks up Shopify in chat
 
 ### Root Cause

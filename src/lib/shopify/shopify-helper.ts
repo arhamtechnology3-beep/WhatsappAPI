@@ -448,6 +448,20 @@ export async function enqueueShopifyNotification(
     if (!recipientPhone) {
       return { status: 'error', message: 'contact has no phone number' }
     }
+
+    if (triggerType === 'cart_abandoned') {
+      const { data: cartSeq } = await supabase
+        .from('shopify_automation_sequences')
+        .select('id')
+        .eq('account_id', accountId)
+        .eq('trigger_type', 'cart_abandoned')
+        .eq('is_active', true)
+        .maybeSingle()
+      if (cartSeq) {
+        return { status: 'enqueued' }
+      }
+    }
+
     const events = TRIGGER_EVENT_MAP[triggerType] || []
 
     let enqueuedCount = 0
@@ -620,6 +634,16 @@ export async function initializeCheckoutRecoverySequence(
     sequence = { ...sequence, is_active: true }
   }
 
+  // One cart drip per contact — Shopify may upsert the same cart under
+  // checkout id, token, and cart_token as separate rows.
+  await supabase
+    .from('shopify_recovery_tracking')
+    .update({ status: 'stopped', updated_at: new Date().toISOString() })
+    .eq('contact_id', contactId)
+    .eq('sequence_id', sequence.id)
+    .eq('status', 'in_progress')
+    .neq('shopify_checkout_id', checkout.id)
+
   // Load step 1 to get delay
   const { data: step } = await supabase
     .from('shopify_automation_sequence_steps')
@@ -646,6 +670,7 @@ export async function initializeCheckoutRecoverySequence(
     })
 
   if (insErr) {
+    if (insErr.code === '23505') return
     console.error('Error inserting shopify_recovery_tracking:', insErr)
   }
 }

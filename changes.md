@@ -64,8 +64,8 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 - `changes.md`
 
 ### Live
-- PR on `cursor/flow-shopify-order-status-8968`.
-- Migration required: `supabase/migrations/048_order_tracking_shopify_lookup.sql` (updates `bot_templates`; existing flow graphs are patched at runtime and on Save / re-activate).
+- On `main`: `7be1304` (Hostinger `whatsapp.arhamtechnology.com`). PR #35.
+- Migration required: `supabase/migrations/048_order_tracking_shopify_lookup.sql` (applied on production `bot_templates`; existing flow graphs are patched at runtime and on Save / re-activate).
 
 ## [2026-08-17 11:50] Fix (Inbox) — template Upload image always shows for Festival
 

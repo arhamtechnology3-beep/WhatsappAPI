@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
 import { validateFlowForActivation } from '@/lib/flows/validate'
+import {
+  needsOrderTrackingShopifyPatch,
+  toFlowNodeInserts,
+} from '@/lib/flows/order-tracking-patch'
 
 /**
  * POST /api/flows/[id]/activate
@@ -55,6 +59,26 @@ export async function POST(
   const admin = supabaseAdmin()
 
   if (status === 'active') {
+    const { data: existingNodes } = await admin
+      .from('flow_nodes')
+      .select('*')
+      .eq('flow_id', id)
+    if (needsOrderTrackingShopifyPatch(existingNodes ?? [])) {
+      const { error: delErr } = await admin
+        .from('flow_nodes')
+        .delete()
+        .eq('flow_id', id)
+      if (delErr) {
+        return NextResponse.json({ error: delErr.message }, { status: 500 })
+      }
+      const { error: insErr } = await admin
+        .from('flow_nodes')
+        .insert(toFlowNodeInserts(id, existingNodes ?? []))
+      if (insErr) {
+        return NextResponse.json({ error: insErr.message }, { status: 500 })
+      }
+    }
+
     // Re-load with the full payload the validator needs.
     const [{ data: flow }, { data: nodes }] = await Promise.all([
       admin

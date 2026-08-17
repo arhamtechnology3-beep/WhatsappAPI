@@ -74,6 +74,13 @@ export const SetTagNodeConfigSchema = z.object({
   next_node_key: z.string(),
 });
 
+export const HttpFetchNodeConfigSchema = z.object({
+  kind: z.enum(["shopify_order"]).optional(),
+  order_var_key: z.string().optional(),
+  found_next: z.string(),
+  not_found_next: z.string(),
+});
+
 export const HandoffNodeConfigSchema = z.object({
   note: z.string().optional(),
   assign_to: z.string().optional(),
@@ -93,6 +100,7 @@ export const FlowNodeSchema = z.object({
     "collect_input",
     "condition",
     "set_tag",
+    "http_fetch",
     "handoff",
     "end",
   ]),
@@ -177,6 +185,12 @@ export function validateFlowGraph(json: any): { success: true; data: any } | { s
         case "set_tag": {
           const parsed = SetTagNodeConfigSchema.parse(cfg);
           targets.push(parsed.next_node_key);
+          break;
+        }
+        case "http_fetch": {
+          const parsed = HttpFetchNodeConfigSchema.parse(cfg);
+          targets.push(parsed.found_next);
+          targets.push(parsed.not_found_next);
           break;
         }
         case "handoff": {

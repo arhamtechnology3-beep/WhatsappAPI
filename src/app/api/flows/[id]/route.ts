@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { expandOrderTrackingShopifyLookup } from '@/lib/flows/order-tracking-patch'
 
 /**
  * GET   /api/flows/[id]  — fetch one flow with its nodes.
@@ -67,7 +68,10 @@ export async function GET(
   if (!flow) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
-  return NextResponse.json({ flow, nodes: nodes ?? [] })
+  return NextResponse.json({
+    flow,
+    nodes: expandOrderTrackingShopifyLookup(nodes ?? []),
+  })
 }
 
 interface PutBody {
@@ -144,7 +148,7 @@ export async function PUT(
     }
     if (body.nodes.length > 0) {
       const { error: insErr } = await admin.from('flow_nodes').insert(
-        body.nodes.map((n) => ({
+        expandOrderTrackingShopifyLookup(body.nodes).map((n) => ({
           flow_id: id,
           node_key: n.node_key,
           node_type: n.node_type,

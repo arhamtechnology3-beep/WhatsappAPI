@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/flows/admin-client";
+import {
+  expandOrderTrackingShopifyLookup,
+  needsOrderTrackingShopifyPatch,
+  toFlowNodeInserts,
+} from "@/lib/flows/order-tracking-patch";
 
 export async function POST(
   request: Request,
@@ -65,6 +70,21 @@ export async function POST(
         return NextResponse.json({ error: updateErr.message }, { status: 500 });
       }
 
+      const { data: existingNodes } = await admin
+        .from("flow_nodes")
+        .select("*")
+        .eq("flow_id", existingFlow.id);
+      if (needsOrderTrackingShopifyPatch(existingNodes ?? [])) {
+        await admin.from("flow_nodes").delete().eq("flow_id", existingFlow.id);
+        const { error: patchErr } = await admin
+          .from("flow_nodes")
+          .insert(toFlowNodeInserts(existingFlow.id, existingNodes ?? []));
+        if (patchErr) {
+          console.error("Error patching order-tracking nodes:", patchErr);
+          return NextResponse.json({ error: patchErr.message }, { status: 500 });
+        }
+      }
+
       return NextResponse.json({ success: true, flow_id: existingFlow.id });
     }
 
@@ -106,8 +126,17 @@ export async function POST(
     }
 
     // Create flow nodes
+    const templateNodes = expandOrderTrackingShopifyLookup(
+      (flowJson.nodes || []) as Array<{
+        node_key: string
+        node_type: string
+        config: Record<string, unknown>
+        position_x?: number
+        position_y?: number
+      }>,
+    )
     const { error: insertNodesErr } = await admin.from("flow_nodes").insert(
-      (flowJson.nodes || []).map((n: any, idx: number) => ({
+      templateNodes.map((n, idx: number) => ({
         flow_id: newFlow.id,
         node_key: n.node_key,
         node_type: n.node_type,

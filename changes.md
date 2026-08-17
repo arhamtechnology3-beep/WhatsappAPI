@@ -31,6 +31,42 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-17 12:40] Feat (Flows) — Order Status Tracking looks up Shopify in chat
+
+### Root Cause
+- The Order Status Tracking flow collected `vars.order_no` then immediately handed off to an agent. Customers only saw “Checking details…” and waited for a human.
+
+### Objective & Fixes
+- After the order number, a Shopify lookup node fetches the order (local `shopify_orders`, then the contact’s Admin orders, then REST `name=` search) and sends payment, delivery, items, total, and tracking in WhatsApp.
+- **Talk to agent** only after they see details (or if they tap **Other Query** on the greeting). **All good** ends the run.
+- Engine also rewrites the old graph in memory so live chats work after deploy even before the canvas is saved. Open the flow and Save (or re-activate the bot template) to persist the new nodes.
+- After deploy: WhatsApp “order status” → Check Status → `1006` → order details in chat, then All good / Talk to agent.
+
+### Files Modified
+- `src/lib/shopify/shopify-order-lookup.ts`
+- `src/lib/shopify/shopify-order-lookup.test.ts`
+- `src/lib/flows/order-tracking-patch.ts`
+- `src/lib/flows/order-tracking-patch.test.ts`
+- `src/lib/flows/engine.ts`
+- `src/lib/flows/types.ts`
+- `src/lib/flows/validate.ts`
+- `src/lib/flows/zod-schema.ts`
+- `src/lib/flows/edges.ts`
+- `src/app/api/flows/[id]/route.ts`
+- `src/app/api/flows/[id]/activate/route.ts`
+- `src/app/api/bots/templates/[key]/activate/route.ts`
+- `src/components/flows/shared.tsx`
+- `src/components/flows/flow-canvas.tsx`
+- `src/components/flows/flow-builder.tsx`
+- `src/components/flows/flow-editor-state.tsx`
+- `src/components/flows/forms/node-config-form.tsx`
+- `supabase/migrations/048_order_tracking_shopify_lookup.sql`
+- `changes.md`
+
+### Live
+- PR on `cursor/flow-shopify-order-status-8968`.
+- Migration required: `supabase/migrations/048_order_tracking_shopify_lookup.sql` (updates `bot_templates`; existing flow graphs are patched at runtime and on Save / re-activate).
+
 ## [2026-08-17 11:50] Fix (Inbox) — template Upload image always shows for Festival
 
 ### Root Cause

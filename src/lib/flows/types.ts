@@ -174,6 +174,17 @@ export interface SetTagNodeConfig {
 }
 
 // Terminal nodes carry no config — they just stop the run.
+export interface HttpFetchNodeConfig {
+  /** Built-in integrations. Only `shopify_order` is implemented. */
+  kind?: 'shopify_order'
+  /** flow_runs.vars key holding the typed order id. Default `order_no`. */
+  order_var_key?: string
+  /** Advance here when Shopify returns an order. */
+  found_next: string
+  /** Advance here when no matching order exists. */
+  not_found_next: string
+}
+
 export type EndNodeConfig = Record<string, never>;
 
 /**
@@ -193,6 +204,7 @@ export type FlowNodeConfig =
   | { node_type: "collect_input"; config: CollectInputNodeConfig }
   | { node_type: "condition"; config: ConditionNodeConfig }
   | { node_type: "set_tag"; config: SetTagNodeConfig }
+  | { node_type: "http_fetch"; config: HttpFetchNodeConfig }
   | { node_type: "handoff"; config: HandoffNodeConfig }
   | { node_type: "end"; config: EndNodeConfig };
 

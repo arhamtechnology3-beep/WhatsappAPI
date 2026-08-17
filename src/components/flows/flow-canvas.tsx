@@ -124,7 +124,10 @@ function slotColor(nodeType: NodeType, slotId: string, fallback: string) {
   if (nodeType === 'condition' && slotId === 'true') {
     return nodeColors('start').solid;
   }
-  if (nodeType === 'condition' && slotId === 'false') {
+  if (nodeType === 'http_fetch' && slotId === 'found') {
+    return nodeColors('start').solid;
+  }
+  if (nodeType === 'http_fetch' && slotId === 'not_found') {
     return nodeColors('handoff').solid;
   }
   return fallback;
@@ -691,6 +694,7 @@ const ADD_NODE_TYPES: NodeType[] = [
   'collect_input',
   'condition',
   'set_tag',
+  'http_fetch',
   'handoff',
   'end',
 ];

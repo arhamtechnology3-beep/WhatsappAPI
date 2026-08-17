@@ -188,6 +188,47 @@ export function NodeConfigForm({
         />
       );
 
+    case "http_fetch":
+      return (
+        <>
+          <p className="text-xs text-muted-foreground">
+            Looks up <code className="rounded bg-muted px-1">vars.order_no</code>{" "}
+            in Shopify and fills{" "}
+            <code className="rounded bg-muted px-1">{"{{vars.order_summary}}"}</code>{" "}
+            for the next message.
+          </p>
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              Order number variable
+            </label>
+            <Input
+              value={(cfg as { order_var_key?: string }).order_var_key ?? "order_no"}
+              onChange={(e) =>
+                onUpdateConfig({
+                  order_var_key: e.target.value.replace(/[^a-zA-Z0-9_]/g, ""),
+                  kind: "shopify_order",
+                })
+              }
+              className="bg-muted font-mono text-xs"
+            />
+          </div>
+          <NextNodeRow
+            value={(cfg as { found_next?: string }).found_next ?? ""}
+            allNodes={allNodes}
+            currentKey={node.node_key}
+            onChange={(v) => onUpdateConfig({ found_next: v })}
+            label="When the order is found, go to"
+          />
+          <NextNodeRow
+            value={(cfg as { not_found_next?: string }).not_found_next ?? ""}
+            allNodes={allNodes}
+            currentKey={node.node_key}
+            onChange={(v) => onUpdateConfig({ not_found_next: v })}
+            label="When no order matches, go to"
+          />
+        </>
+      );
+
     case "handoff":
       return (
         <TextRow

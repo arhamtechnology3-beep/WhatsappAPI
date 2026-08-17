@@ -25,6 +25,7 @@ import {
   MessageCircle,
   Paperclip,
   PlayCircle,
+  ShoppingBag,
   Tag,
   UserPlus,
   Workflow,
@@ -49,6 +50,7 @@ export type NodeType =
   | 'collect_input'
   | 'condition'
   | 'set_tag'
+  | 'http_fetch'
   | 'handoff'
   | 'end';
 
@@ -152,6 +154,13 @@ export const NODE_META: Record<
     blurb: 'Adds or removes a contact tag',
     category: 'logic',
   },
+  http_fetch: {
+    label: 'Shopify order lookup',
+    icon: ShoppingBag,
+    color: 'text-orange-400',
+    blurb: 'Looks up an order in Shopify and fills vars',
+    category: 'logic',
+  },
   handoff: {
     label: 'Handoff to agent',
     icon: UserPlus,
@@ -205,6 +214,7 @@ const NODE_HUE: Record<NodeType, { l: number; c: number; h: number }> = {
   collect_input: { l: 0.65, c: 0.1, h: 185 }, // teal — capture
   condition: { l: 0.72, c: 0.15, h: 65 }, // amber — a fork in the road
   set_tag: { l: 0.65, c: 0.15, h: 350 }, // pink
+  http_fetch: { l: 0.68, c: 0.14, h: 55 }, // orange — Shopify
   handoff: { l: 0.65, c: 0.17, h: 16 }, // rose — hands off
   end: { l: 0.55, c: 0.01, h: 260 }, // neutral grey — terminal
 };
@@ -408,12 +418,15 @@ export function summarizeNode(node: BuilderNode): string | null {
     case 'set_tag': {
       const mode = cfg.mode === 'remove' ? 'Remove' : 'Add';
       const tagId = typeof cfg.tag_id === 'string' ? cfg.tag_id : '';
-      // No tag name available without an async lookup here; show a
-      // short prefix of the UUID so users can disambiguate between
-      // multiple set_tag nodes at a glance.
       return tagId
         ? `${mode} tag ${tagId.slice(0, 8)}…`
         : `${mode} tag (none picked)`;
+    }
+    case 'http_fetch': {
+      const key = typeof cfg.order_var_key === 'string' && cfg.order_var_key
+        ? cfg.order_var_key
+        : 'order_no';
+      return `Shopify order from vars.${key}`;
     }
     case 'handoff': {
       const note = typeof cfg.note === 'string' ? cfg.note : '';

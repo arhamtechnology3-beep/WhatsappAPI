@@ -701,6 +701,34 @@ function validateNode(
       break;
     }
 
+    case "http_fetch": {
+      const cfg = node.config as {
+        found_next?: string;
+        not_found_next?: string;
+      };
+      for (const branch of ["found_next", "not_found_next"] as const) {
+        const key = cfg[branch];
+        if (!key) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: branch,
+            message: `Shopify lookup needs a node for "${branch === "found_next" ? "order found" : "order not found"}".`,
+          });
+        } else if (!knownKeys.has(key)) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: branch,
+            message: `Shopify lookup "${branch}" points to non-existent node "${key}".`,
+          });
+        }
+      }
+      break;
+    }
+
     case "handoff":
     case "end":
       // Terminal nodes have no outgoing edges; nothing to validate
@@ -763,6 +791,16 @@ function outgoingEdges(node: NodeInput): string[] {
       const out: string[] = [];
       if (cfg.true_next) out.push(cfg.true_next);
       if (cfg.false_next) out.push(cfg.false_next);
+      return out;
+    }
+    case "http_fetch": {
+      const cfg = node.config as {
+        found_next?: string;
+        not_found_next?: string;
+      };
+      const out: string[] = [];
+      if (cfg.found_next) out.push(cfg.found_next);
+      if (cfg.not_found_next) out.push(cfg.not_found_next);
       return out;
     }
     case "send_buttons": {

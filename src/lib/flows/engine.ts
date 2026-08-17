@@ -40,6 +40,8 @@ import {
   engineSendText,
 } from "./meta-send";
 import { decideFallback, resolveFallbackPolicy } from "./fallback";
+import { lookupShopifyOrderStatus } from "@/lib/shopify/shopify-order-lookup";
+import { expandOrderTrackingShopifyLookup } from "./order-tracking-patch";
 import {
   type CollectInputNodeConfig,
   type ConditionNodeConfig,
@@ -55,13 +57,9 @@ import {
   type SendMessageNodeConfig,
   type SetTagNodeConfig,
   type StartNodeConfig,
+  type HttpFetchNodeConfig,
   type KeywordTriggerConfig,
 } from "./types";
-
-// ============================================================
-// Pure helpers — extracted so engine.test.ts can exercise them
-// without a Supabase / Meta mock.
-// ============================================================
 
 /**
  * Given a node + the customer's reply_id, return the next_node_key
@@ -116,7 +114,8 @@ export function isAutoAdvancing(node_type: string): boolean {
     node_type === "send_message" ||
     node_type === "send_media" ||
     node_type === "condition" ||
-    node_type === "set_tag"
+    node_type === "set_tag" ||
+    node_type === "http_fetch"
   );
 }
 
@@ -238,7 +237,10 @@ async function loadAllNodes(
     return new Map();
   }
   const map = new Map<string, FlowNodeRow>();
-  for (const row of (data ?? []) as FlowNodeRow[]) {
+  const patched = expandOrderTrackingShopifyLookup(
+    (data ?? []) as FlowNodeRow[],
+  );
+  for (const row of patched) {
     map.set(row.node_key, row);
   }
   return map;
@@ -631,6 +633,41 @@ async function advanceFromNodeKey(
         return { outcome: "completed" };
       }
       currentKey = cfg.next_node_key;
+      continue;
+    }
+    if (node.node_type === "http_fetch") {
+      const cfg = node.config as unknown as HttpFetchNodeConfig;
+      const orderVar = cfg.order_var_key || "order_no";
+      const query = String(run.vars?.[orderVar] ?? "");
+      try {
+        const result = await lookupShopifyOrderStatus({
+          query,
+          accountId: run.account_id,
+          contactId: run.contact_id,
+        });
+        run.vars = { ...(run.vars || {}), ...result.vars };
+        await db
+          .from("flow_runs")
+          .update({
+            vars: run.vars,
+            last_advanced_at: new Date().toISOString(),
+          })
+          .eq("id", run.id);
+        currentKey = result.found ? cfg.found_next : cfg.not_found_next;
+      } catch (err) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "shopify_lookup_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+        run.vars = {
+          ...(run.vars || {}),
+          order_found: "false",
+          order_summary:
+            "Shopify se order details nahi aa paaye. Thodi der baad try karein, ya Talk to agent.",
+        };
+        await db.from("flow_runs").update({ vars: run.vars }).eq("id", run.id);
+        currentKey = cfg.not_found_next;
+      }
       continue;
     }
     if (node.node_type === "collect_input") {

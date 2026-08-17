@@ -55,8 +55,8 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 - `changes.md`
 
 ### Live
-- PR on `cursor/cart-step3-once-8968`.
-- Migration required: `supabase/migrations/049_one_recovery_drip_per_contact.sql`.
+- On `main`: `dc899d1` (Hostinger). PR #36.
+- Migration required: `supabase/migrations/049_one_recovery_drip_per_contact.sql` (run in production SQL editor).
 
 ## [2026-08-17 12:40] Feat (Flows) — Order Status Tracking looks up Shopify in chat
 

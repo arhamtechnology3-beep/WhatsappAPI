@@ -115,7 +115,7 @@ interface SequenceStep {
 
 interface AutomationSequence {
   id: string
-  trigger_type: 'cart_abandoned' | 'browse_abandoned'
+  trigger_type: 'cart_abandoned' | 'browse_abandoned' | 'shopify_customer_created'
   sequence_name: string
   is_active: boolean
   steps: SequenceStep[]
@@ -685,6 +685,7 @@ const DEFAULT_SAMPLE_VALUES: Record<string, string[]> = {
   wacrm_order_shipped_v2: ['Jesal Patel', '1234'],
   wacrm_order_delivered_v2: ['Jesal Patel', '1234'],
   wacrm_festival_broadcast_v2: ['Jesal Patel'],
+  wacrm_shop_now_followup_v1: ['Jesal Patel'],
 }
 
 function getAutoSampleValues(templateName: string, varCount: number): string[] {
@@ -1939,6 +1940,10 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
                                   <CardTitle className="text-sm font-bold flex items-center gap-2">
                                     🔔 {seq.trigger_type === 'browse_abandoned'
                                       ? `Browse Abandoned Nudge (Step ${step.step_order})`
+                                      : seq.trigger_type === 'shopify_customer_created'
+                                        ? (step.step_order === 1
+                                          ? 'New Shopify contact — festival (30 min)'
+                                          : 'Shop-now follow-up (5 hr, 9:30 AM–8:30 PM)')
                                       : `Step ${step.step_order}: ${
                                           step.step_order === 1
                                             ? "Abandoned Cart Reminder"
@@ -1950,6 +1955,10 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
                                   <CardDescription className="text-xs text-muted-foreground leading-relaxed">
                                     {seq.trigger_type === 'browse_abandoned'
                                       ? "Fires when a customer views a product page but does not add to cart."
+                                      : seq.trigger_type === 'shopify_customer_created'
+                                        ? (step.step_order === 1
+                                          ? 'customers/create → wait 30 minutes → wacrm_festival_broadcast_v2.'
+                                          : 'Five hours later, only between 9:30 AM and 8:30 PM IST. Image + Shop Now CTA. Stops if they place an order.')
                                       : step.step_order === 1
                                         ? "First recovery nudge sent quickly to recover the checkout."
                                         : step.step_order === 2

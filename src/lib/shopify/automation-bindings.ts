@@ -46,6 +46,22 @@ export const SHOPIFY_SEQUENCE_BINDINGS = [
       { stepOrder: 1, templateName: 'wacrm_browse_abandoned_v2' },
     ],
   },
+  {
+    sequenceTrigger: 'shopify_customer_created',
+    sequenceName: 'New Shopify Contact Welcome',
+    steps: [
+      {
+        stepOrder: 1,
+        templateName: 'wacrm_festival_broadcast_v2',
+        delayMinutes: 30,
+      },
+      {
+        stepOrder: 2,
+        templateName: 'wacrm_shop_now_followup_v1',
+        delayMinutes: 300,
+      },
+    ],
+  },
 ] as const
 
 export function approvalFromTemplateStatus(status: string | null | undefined): AutomationApproval {
@@ -228,10 +244,14 @@ export async function alignShopifyAutomations(
     for (const step of binding.steps) {
       const recipe = recipeByName(step.templateName)
       const approval = approvalFromTemplateStatus(statusByName.get(step.templateName))
+      const delayMinutes =
+        'delayMinutes' in step && typeof step.delayMinutes === 'number'
+          ? step.delayMinutes
+          : (recipe?.default_delay_minutes ?? 0)
       const stepRow = {
         template_name: step.templateName,
         template_variable_mapping: [...(recipe?.variables ?? ['customer_name'])],
-        delay_minutes_from_previous_step: recipe?.default_delay_minutes ?? 0,
+        delay_minutes_from_previous_step: delayMinutes,
         meta_approval_status: approval,
         is_active: true,
       }

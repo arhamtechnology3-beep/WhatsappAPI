@@ -676,6 +676,65 @@ export async function initializeCheckoutRecoverySequence(
 }
 
 /**
+ * Festival + shop-now drip for a brand-new Shopify customer (customers/create).
+ * Not used on bulk sync or customer update.
+ */
+export async function startShopifyCustomerWelcomeDrip(
+  supabase: SupabaseClient,
+  accountId: string,
+  contact: { id: string; phone?: string | null },
+): Promise<void> {
+  if (!contact.phone?.trim()) return
+
+  const createdAt = Date.parse(String((contact as { created_at?: string }).created_at || ''))
+  if (Number.isFinite(createdAt) && Date.now() - createdAt > 5 * 60 * 1000) {
+    return
+  }
+
+  const { data: sequence } = await supabase
+    .from('shopify_automation_sequences')
+    .select('id, is_active')
+    .eq('account_id', accountId)
+    .eq('trigger_type', 'shopify_customer_created')
+    .maybeSingle()
+
+  if (!sequence?.id || !sequence.is_active) return
+
+  const { data: existing } = await supabase
+    .from('shopify_recovery_tracking')
+    .select('id')
+    .eq('contact_id', contact.id)
+    .eq('sequence_id', sequence.id)
+    .in('status', ['in_progress', 'converted', 'completed'])
+    .limit(1)
+    .maybeSingle()
+  if (existing) return
+
+  const { data: step } = await supabase
+    .from('shopify_automation_sequence_steps')
+    .select('delay_minutes_from_previous_step')
+    .eq('sequence_id', sequence.id)
+    .eq('step_order', 1)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  const delay = step?.delay_minutes_from_previous_step ?? 30
+  const nextSendAt = new Date(Date.now() + delay * 60000).toISOString()
+
+  const { error } = await supabase.from('shopify_recovery_tracking').insert({
+    account_id: accountId,
+    contact_id: contact.id,
+    sequence_id: sequence.id,
+    current_step: 1,
+    status: 'in_progress',
+    next_send_at: nextSendAt,
+  })
+  if (error && error.code !== '23505') {
+    console.error('[shopify-helper] welcome drip insert failed:', error)
+  }
+}
+
+/**
  * Automatically moves a Deal's stage by name.
  */
 export async function moveDealToStageName(

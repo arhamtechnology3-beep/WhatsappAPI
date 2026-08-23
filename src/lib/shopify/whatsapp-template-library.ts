@@ -32,6 +32,7 @@ export type ShopifyRecipeTrigger =
   | 'cart_abandoned_step2'
   | 'cart_abandoned_step3'
   | 'browse_abandoned'
+  | 'shopify_customer_created'
   | 'order_created'
   | 'order_fulfilled'
   | 'order_delivered'
@@ -485,6 +486,27 @@ DivyaPrabha handmade pickles — gift-ready packing.
 Shop Now se all products dekho.`,
     variables: ['customer_name'],
     default_delay_minutes: 0,
+    header_type: 'image',
+    footer_text: 'DivyaPrabha Foods',
+    buttons: [shopNow(), shopFromWhatsApp()],
+    button_url_sources: [null, null],
+    sample_values: { body: ['Jesal'] },
+  },
+  {
+    trigger_type: 'shopify_customer_created',
+    template_name: 'wacrm_shop_now_followup_v1',
+    category: 'MARKETING',
+    language: WACRM_TEMPLATE_LANGUAGE,
+    body: `Namaste {{1}}! 🛒
+Pickles abhi bhi wait kar rahe hain — WhatsApp se order karo.
+
+✅ Buy 2 x 250g pickles — FREE shipping
+✅ 10% OFF on orders ₹749+
+✅ Handmade, gift-ready packing
+
+Shop Now pe tap karo aur ghar pe mangwao.`,
+    variables: ['customer_name'],
+    default_delay_minutes: 300,
     header_type: 'image',
     footer_text: 'DivyaPrabha Foods',
     buttons: [shopNow(), shopFromWhatsApp()],

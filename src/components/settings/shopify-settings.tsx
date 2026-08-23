@@ -63,7 +63,7 @@ interface SequenceStep {
 
 interface AutomationSequence {
   id: string
-  trigger_type: 'cart_abandoned' | 'browse_abandoned'
+  trigger_type: 'cart_abandoned' | 'browse_abandoned' | 'shopify_customer_created'
   sequence_name: string
   is_active: boolean
   steps: SequenceStep[]
@@ -337,6 +337,7 @@ export function ShopifySettings() {
     switch (type) {
       case 'cart_abandoned': return 'Cart Abandonment Recovery'
       case 'browse_abandoned': return 'Browse Abandonment Recovery'
+      case 'shopify_customer_created': return 'New Shopify Contact Welcome'
       case 'order_created': return 'Order Confirmed'
       case 'cod_confirmation': return 'COD Confirmation'
       case 'order_fulfilled': return 'Order Shipped'

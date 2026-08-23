@@ -7,8 +7,9 @@ import { cronMatchesNow } from '@/lib/cron/schedule'
 
 /**
  * Drain due `automation_pending_executions` rows. Meant to be hit
- * on a schedule (Vercel Cron / external pinger) — requires a shared
- * secret via the `x-cron-secret` header to match
+ * on a schedule (in-process ticker on Hostinger, Vercel Cron, or
+ * GET /api/cron/tick) — requires a shared secret via
+ * `x-cron-secret` / Bearer / `?secret=` matching
  * `AUTOMATION_CRON_SECRET`.
  *
  * The claim step (status = 'running') serves as a simple lock so
@@ -19,7 +20,10 @@ import { cronMatchesNow } from '@/lib/cron/schedule'
 export async function GET(request: Request) {
   const denied = authorizeCron(request)
   if (denied) return denied
+  return runAutomationsCron()
+}
 
+export async function runAutomationsCron() {
   const admin = supabaseAdmin()
   const { data: due, error } = await admin
     .from('automation_pending_executions')
@@ -30,10 +34,9 @@ export async function GET(request: Request) {
     .limit(50)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!due || due.length === 0) return NextResponse.json({ processed: 0 })
 
   let processed = 0
-  for (const row of due) {
+  for (const row of due || []) {
     const { data: claim } = await admin
       .from('automation_pending_executions')
       .update({ status: 'running' })

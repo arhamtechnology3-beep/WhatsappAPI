@@ -9,7 +9,10 @@ import { isCartSequenceTemplate } from '@/lib/shopify/sequence-dedupe'
 export async function GET(request: Request) {
   const denied = authorizeCron(request)
   if (denied) return denied
+  return runShopifyAbandonedCron()
+}
 
+export async function runShopifyAbandonedCron() {
   const supabase = supabaseAdmin()
   const thresholdMinutes = parseInt(process.env.ABANDONED_CART_THRESHOLD_MINUTES || '30')
   const thresholdDate = new Date(Date.now() - thresholdMinutes * 60 * 1000).toISOString()

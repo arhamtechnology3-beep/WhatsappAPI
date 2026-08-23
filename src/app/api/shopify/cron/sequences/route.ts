@@ -18,7 +18,10 @@ import {
 export async function GET(request: Request) {
   const denied = authorizeCron(request)
   if (denied) return denied
+  return runShopifySequenceCron()
+}
 
+export async function runShopifySequenceCron() {
   const supabase = supabaseAdmin()
   const now = new Date().toISOString()
 

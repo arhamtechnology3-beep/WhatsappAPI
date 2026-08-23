@@ -40,6 +40,7 @@ describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
         'wacrm_order_delivered_v2',
         'wacrm_cod_confirmation_v2',
         'wacrm_festival_broadcast_v2',
+        'wacrm_shop_now_followup_v1',
       ]),
     )
   })

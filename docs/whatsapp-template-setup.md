@@ -11,7 +11,7 @@ Pre-configured **DivyaPrabha Foods** recipes (Farm Didi-style Hinglish, image he
 3. Template **names must match exactly**. Language: `en_US`.
 4. Storefront buttons: `https://divyaprabhafoods.com/` and collection `https://divyaprabhafoods.com/collections/all-products` (never `*.myshopify.com`). Marketing offers: Buy 2 x 250g pickles FREE shipping, 10% OFF on ₹749+, FREE shipping above ₹599 — no 3% prepaid.
 5. Do **not** put raw URLs in the body. Marketing checkout/product buttons use `https://divyaprabhafoods.com/{{1}}`. Utility **Track Order** must be a static URL `https://divyaprabhafoods.com/account/orders` (no `{{1}}`, empty suffix) — Meta returns **Invalid parameter** otherwise.
-6. Opening **Settings → Templates** or **Shopify Store** aligns automations to these names and copies Meta **Approved** onto rules/steps. Festival `wacrm_festival_broadcast_v2` is for Broadcasts, not a Shopify trigger.
+6. Opening **Settings → Templates** or **Shopify Store** aligns automations to these names and copies Meta **Approved** onto rules/steps. Festival `wacrm_festival_broadcast_v2` is also step 1 of the new Shopify-customer welcome drip (30 min after `customers/create`).
 7. **Sync from Meta** only refreshes templates already in wacrm. It will not re-import deleted `wacrm_*` names.
 
 ---
@@ -28,7 +28,8 @@ Pre-configured **DivyaPrabha Foods** recipes (Farm Didi-style Hinglish, image he
 | `wacrm_order_confirmed_v2` | UTILITY | Approved | immediate | Prepaid order |
 | `wacrm_order_shipped_v2` | UTILITY | Approved | immediate | Shipped |
 | `wacrm_order_delivered_v2` | UTILITY | Approved | immediate | Delivered |
-| `wacrm_festival_broadcast_v2` | MARKETING | Approved | manual | Broadcasts |
+| `wacrm_festival_broadcast_v2` | MARKETING | Approved | 30 min | New Shopify contact (also Broadcasts) |
+| `wacrm_shop_now_followup_v1` | MARKETING | Draft until submitted | 5 hr (9:30 AM–8:30 PM IST) | New Shopify contact step 2 |
 
 ### Cart #1 body (example)
 
@@ -51,6 +52,7 @@ Full copy lives in `src/lib/shopify/whatsapp-template-library.ts`.
 
 - Cart drip stops when **that checkout** is recovered (`cart_token` match on `orders/create`). A later order from the same customer does **not** cancel a different open cart.
 - Browse drip stops if the contact adds to cart or places an order after the browse session.
+- New Shopify-customer welcome drip stops if they place an order after the drip started. The 5-hour shop-now message only sends 9:30 AM–8:30 PM IST.
 
 ---
 

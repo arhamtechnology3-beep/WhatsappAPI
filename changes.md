@@ -31,6 +31,35 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-23 17:40] Feat (Automations) — festival + shop-now drip for new Shopify contacts
+
+### Root Cause
+- `wacrm_festival_broadcast_v2` was Broadcasts-only. New Shopify customers were not messaged automatically.
+
+### Objective & Fixes
+- `customers/create` starts a 2-step drip: festival template after 30 minutes, then `wacrm_shop_now_followup_v1` (image + Shop Now CTA) after 5 hours.
+- Follow-up only sends 9:30 AM–8:30 PM IST; if due at night it waits until 9:30 AM.
+- Drip stops if they place an order. Cart / browse / order rules are unchanged.
+- Install recipes, then submit `wacrm_shop_now_followup_v1` to Meta. Festival is already Approved.
+- After deploy: apply `050_shopify_welcome_festival_drip.sql`.
+
+### Files Modified
+- `src/lib/shopify/whatsapp-template-library.ts`
+- `src/lib/shopify/automation-bindings.ts`
+- `src/lib/shopify/shopify-helper.ts`
+- `src/lib/shopify/send-window.ts`
+- `src/app/api/webhooks/shopify/customers-create/route.ts`
+- `src/app/api/shopify/cron/sequences/route.ts`
+- `src/app/(dashboard)/shopify/page.tsx`
+- `src/components/settings/shopify-settings.tsx`
+- `supabase/migrations/050_shopify_welcome_festival_drip.sql`
+- `docs/whatsapp-template-setup.md`
+- `changes.md`
+
+### Live
+- PR on `cursor/shopify-welcome-festival-drip-8968`.
+- Migration required: `supabase/migrations/050_shopify_welcome_festival_drip.sql`.
+
 ## [2026-08-23 17:50] Fix (Automations) — delayed jobs run without a dashboard login
 
 ### Root Cause
@@ -60,7 +89,7 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 - `changes.md`
 
 ### Live
-- PR on `cursor/always-on-automations-cron-8968`.
+- Merged PR #38 on `main`.
 - Migration required: none.
 
 ## [2026-08-17 18:45] Fix (Automations) — cart step 3 sends once, not a burst

@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import {
   getShopifyAccountContext,
   matchOrCreateShopifyContact,
+  startShopifyCustomerWelcomeDrip,
 } from '@/lib/shopify/shopify-helper'
 
 async function handleCustomerWebhook(request: Request, topic: string) {
@@ -36,6 +37,10 @@ async function handleCustomerWebhook(request: Request, topic: string) {
       last_name: payload.last_name || null,
       marketing_opt_in: acceptsMarketing,
     })
+
+    if (contact?.id) {
+      await startShopifyCustomerWelcomeDrip(supabase, accountId, contact)
+    }
 
     await supabase.from('shopify_webhook_logs').insert({
       account_id: accountId,

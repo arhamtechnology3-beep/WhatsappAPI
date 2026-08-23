@@ -10,6 +10,10 @@ import {
   shouldStopCartDrip,
 } from '@/lib/shopify/recovery-conversion'
 import {
+  clampToIstSendWindow,
+  shouldClampWelcomeFollowup,
+} from '@/lib/shopify/send-window'
+import {
   duplicateTrackingIdsToStop,
   metadataWithSentStep,
   stepAlreadySent,
@@ -104,6 +108,15 @@ export async function runShopifySequenceCron() {
             addedToCartAfterStart: !!laterCheckout,
             orderedAfterStart: !!laterOrder,
           })
+        } else if (triggerType === 'shopify_customer_created') {
+          const { data: laterOrder } = await supabase
+            .from('shopify_orders')
+            .select('id')
+            .eq('contact_id', tracking.contact_id)
+            .gte('created_at', tracking.created_at)
+            .limit(1)
+            .maybeSingle()
+          isConverted = !!laterOrder
         }
 
         if (isConverted) {
@@ -143,6 +156,26 @@ export async function runShopifySequenceCron() {
         }
         if (!step) continue
 
+        if (
+          shouldClampWelcomeFollowup({
+            triggerType,
+            currentStep: tracking.current_step,
+          })
+        ) {
+          const clamped = clampToIstSendWindow(new Date())
+          if (clamped.getTime() - Date.now() > 60_000) {
+            await supabase
+              .from('shopify_recovery_tracking')
+              .update({
+                next_send_at: clamped.toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', tracking.id)
+              .eq('status', 'in_progress')
+            continue
+          }
+        }
+
         const claimedAt = new Date().toISOString()
         const lockUntil = new Date(Date.now() + 15 * 60 * 1000).toISOString()
         const { data: claimed } = await supabase
@@ -168,7 +201,10 @@ export async function runShopifySequenceCron() {
 
         // 5) COMPLIANCE: OPT-IN CHECK
         // Step 1 cart abandoned reminder is transactional (uses 24h window), but Step 2, 3, and all browse reminders require marketing opt-in consent
-        const requiresOptIn = tracking.current_step > 1 || sequence.trigger_type === 'browse_abandoned'
+        const requiresOptIn =
+          tracking.current_step > 1 ||
+          sequence.trigger_type === 'browse_abandoned' ||
+          sequence.trigger_type === 'shopify_customer_created'
         const hasConsent = !!(contact?.whatsapp_marketing_opt_in || contact?.marketing_opt_in)
         if (requiresOptIn && !hasConsent) {
           // Stop tracking sequence immediately if contact did not opt in
@@ -207,7 +243,7 @@ export async function runShopifySequenceCron() {
 
         // Generate dynamic discount code if this is the final step
         let discountCode = tracking.discount_code
-        if (tracking.current_step === 3 && !discountCode) {
+        if (tracking.current_step === 3 && sequence.trigger_type === 'cart_abandoned' && !discountCode) {
           const storeDomain = process.env.SHOPIFY_STORE_DOMAIN || process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN || ''
           const token = process.env.SHOPIFY_ADMIN_API_TOKEN || ''
           discountCode = await createShopifyDiscountCode(storeDomain, token)
@@ -249,6 +285,8 @@ export async function runShopifySequenceCron() {
             templateParams = [customerName, productName, discountCode || 'WELCOME10']
           } else if (tn.includes('cart_abandoned') || tn.includes('cart_reminder_step2')) {
             templateParams = [customerName, productName]
+          } else if (tn.includes('festival_broadcast') || tn.includes('shop_now_followup')) {
+            templateParams = [customerName]
           } else if (tn.includes('browse_abandoned')) {
             templateParams = [customerName, productName]
           }
@@ -347,13 +385,27 @@ async function advanceOrComplete(
     .maybeSingle()
 
   if (nextStep) {
-    // Advance to next step
-    const nextSendAt = new Date(Date.now() + nextStep.delay_minutes_from_previous_step * 60000).toISOString()
+    let nextSendAt = new Date(
+      Date.now() + (nextStep.delay_minutes_from_previous_step || 0) * 60000,
+    )
+    const { data: seqRow } = await supabase
+      .from('shopify_automation_sequences')
+      .select('trigger_type')
+      .eq('id', sequenceId)
+      .maybeSingle()
+    if (
+      shouldClampWelcomeFollowup({
+        triggerType: seqRow?.trigger_type || '',
+        currentStep: nextStepOrder,
+      })
+    ) {
+      nextSendAt = clampToIstSendWindow(nextSendAt)
+    }
     await supabase
       .from('shopify_recovery_tracking')
       .update({
         current_step: nextStepOrder,
-        next_send_at: nextSendAt,
+        next_send_at: nextSendAt.toISOString(),
         discount_code: discountCode,
         metadata: tracking.metadata || {},
         updated_at: new Date().toISOString(),

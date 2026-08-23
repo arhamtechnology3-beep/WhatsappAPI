@@ -1,13 +1,20 @@
 import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 
+export function cronSecretConfigured(): boolean {
+  return Boolean(
+    process.env.AUTOMATION_CRON_SECRET?.trim() || process.env.CRON_SECRET?.trim(),
+  )
+}
+
 /**
  * Authorize scheduled GET cron routes.
  *
- * Accepts either:
+ * Accepts:
  *   - `x-cron-secret: $AUTOMATION_CRON_SECRET` (external pingers)
  *   - `Authorization: Bearer $CRON_SECRET` (Vercel Cron; Vercel sets
  *     CRON_SECRET automatically when that env var is present)
+ *   - `?secret=` or `?cron_secret=` (Hostinger / wget cannot always set headers)
  *
  * AUTOMATION_CRON_SECRET and CRON_SECRET may be the same value.
  */
@@ -26,8 +33,13 @@ export function authorizeCron(request: Request): NextResponse | null {
   const bearer = auth.toLowerCase().startsWith('bearer ')
     ? auth.slice(7).trim()
     : ''
+  const querySecret = queryCronSecret(request)
 
-  if (secretsEqual(headerSecret, expected) || secretsEqual(bearer, expected)) {
+  if (
+    secretsEqual(headerSecret, expected) ||
+    secretsEqual(bearer, expected) ||
+    secretsEqual(querySecret, expected)
+  ) {
     return null
   }
 
@@ -38,6 +50,19 @@ export function authorizeCron(request: Request): NextResponse | null {
   }
 
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+}
+
+function queryCronSecret(request: Request): string {
+  try {
+    const url = new URL(request.url)
+    return (
+      url.searchParams.get('secret')?.trim() ||
+      url.searchParams.get('cron_secret')?.trim() ||
+      ''
+    )
+  } catch {
+    return ''
+  }
 }
 
 function secretsEqual(supplied: string, expected: string): boolean {

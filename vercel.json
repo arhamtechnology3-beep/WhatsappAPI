@@ -1,5 +1,6 @@
 {
   "crons": [
+    { "path": "/api/cron/tick", "schedule": "* * * * *" },
     { "path": "/api/shopify/cron", "schedule": "* * * * *" },
     { "path": "/api/shopify/cron/sequences", "schedule": "* * * * *" },
     { "path": "/api/automations/cron", "schedule": "* * * * *" },

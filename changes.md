@@ -60,6 +60,38 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 - PR on `cursor/shopify-welcome-festival-drip-8968`.
 - Migration required: `supabase/migrations/050_shopify_welcome_festival_drip.sql`.
 
+## [2026-08-23 17:50] Fix (Automations) — delayed jobs run without a dashboard login
+
+### Root Cause
+- Cart drips, wait steps, and sequence sends only run when something GETs the cron routes. Those schedules lived in `vercel.json`, but live is Hostinger Node, so Vercel Cron never fired.
+- Visiting the dashboard woke the Node process, which looked like “automations only work when I am logged in.” A laptop being off is unrelated; jobs must run on Hostinger.
+
+### Objective & Fixes
+- `src/instrumentation.ts` starts a 1-minute in-process ticker on `next start` (skipped on Vercel).
+- `GET /api/cron/tick` runs all four workers. Hostinger hPanel should hit it every minute (header or `?secret=`).
+- Time-based automations no longer skip when the wait-step queue is empty.
+- After deploy: set `AUTOMATION_CRON_SECRET` on Hostinger, restart Node, add the hPanel cron. See `docs/hostinger-cron.md`.
+
+### Files Modified
+- `src/instrumentation.ts`
+- `src/lib/cron/auth.ts`
+- `src/lib/cron/auth.test.ts`
+- `src/lib/cron/in-process.ts`
+- `src/lib/cron/tick.ts`
+- `src/app/api/cron/tick/route.ts`
+- `src/app/api/shopify/cron/route.ts`
+- `src/app/api/shopify/cron/sequences/route.ts`
+- `src/app/api/automations/cron/route.ts`
+- `src/app/api/flows/cron/route.ts`
+- `vercel.json`
+- `docs/hostinger-cron.md`
+- `.env.local.example`
+- `changes.md`
+
+### Live
+- Merged PR #38 on `main`.
+- Migration required: none.
+
 ## [2026-08-17 18:45] Fix (Automations) — cart step 3 sends once, not a burst
 
 ### Root Cause

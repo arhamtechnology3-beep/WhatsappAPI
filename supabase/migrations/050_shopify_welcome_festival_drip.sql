@@ -47,10 +47,10 @@ WHERE s.trigger_type = 'shopify_customer_created'
 
 UPDATE shopify_automation_sequence_steps st
 SET meta_approval_status = 'approved'
-FROM shopify_automation_sequences s
-JOIN message_templates t
-  ON t.account_id = s.account_id
- AND t.name = st.template_name
- AND upper(t.status) = 'APPROVED'
+FROM shopify_automation_sequences s,
+     message_templates t
 WHERE st.sequence_id = s.id
-  AND s.trigger_type = 'shopify_customer_created';
+  AND s.trigger_type = 'shopify_customer_created'
+  AND t.account_id = s.account_id
+  AND t.name = st.template_name
+  AND upper(t.status) = 'APPROVED';

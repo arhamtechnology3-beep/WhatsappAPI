@@ -31,6 +31,23 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-08-24 00:15] Fix (Build) — restore missing import so Hostinger deploy succeeds
+
+### Root Cause
+- `template-picker.tsx` called `extractVariableIndices` without importing it. `next build` TypeScript step failed; Hostinger deploys for PR #37 and #38 showed Build failed.
+
+### Objective & Fixes
+- Import `extractVariableIndices` from `@/lib/whatsapp/template-validators`.
+- After merge: click Redeploy on Hostinger or wait for auto-deploy from `main`.
+
+### Files Modified
+- `src/components/inbox/template-picker.tsx`
+- `changes.md`
+
+### Live
+- PR on `cursor/hostinger-build-fix-8968`.
+- Migration required: none.
+
 ## [2026-08-23 17:40] Feat (Automations) — festival + shop-now drip for new Shopify contacts
 
 ### Root Cause

@@ -39,6 +39,7 @@ import {
   templateHasMediaHeader,
   resolveTemplateHeaderKind,
 } from "@/lib/shopify/whatsapp-template-library";
+import { extractVariableIndices } from "@/lib/whatsapp/template-validators";
 
 export interface TemplateSendValues {
   body: string[];

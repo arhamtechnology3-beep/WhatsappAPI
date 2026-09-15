@@ -12,6 +12,7 @@ import {
   isUniqueViolation,
   type ExistingContact,
 } from '@/lib/contacts/dedupe';
+import { hasWhatsAppPhone, toMetaPhone } from '@/lib/whatsapp/phone-utils';
 import {
   Dialog,
   DialogContent,
@@ -129,8 +130,14 @@ export function ContactForm({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!phone.trim()) {
-      toast.error('Phone number is required');
+    if (!phone.trim() && !email.trim()) {
+      toast.error('Enter a phone number or an email');
+      return;
+    }
+
+    const canonicalPhone = phone.trim() ? toMetaPhone(phone) : '';
+    if (phone.trim() && !hasWhatsAppPhone(canonicalPhone)) {
+      toast.error('Enter a valid WhatsApp number, e.g. 919820368269');
       return;
     }
 
@@ -158,7 +165,7 @@ export function ContactForm({
           .from('contacts')
           .update({
             name: name.trim() || null,
-            phone: phone.trim(),
+            phone: canonicalPhone,
             email: email.trim() || null,
             company: company.trim() || null,
             whatsapp_marketing_opt_in: whatsappMarketingOptIn,
@@ -173,7 +180,7 @@ export function ContactForm({
             user_id: user.id,
             account_id: accountId,
             name: name.trim() || null,
-            phone: phone.trim(),
+            phone: canonicalPhone,
             email: email.trim() || null,
             company: company.trim() || null,
             whatsapp_marketing_opt_in: whatsappMarketingOptIn,
@@ -260,7 +267,10 @@ export function ContactForm({
 
           <div className="space-y-2">
             <Label htmlFor="cf-phone" className="text-muted-foreground">
-              Phone <span className="text-red-400">*</span>
+              Phone{' '}
+              <span className="text-muted-foreground font-normal">
+                (required for WhatsApp)
+              </span>
             </Label>
             <Input
               id="cf-phone"
@@ -269,9 +279,12 @@ export function ContactForm({
                 setPhone(e.target.value);
                 if (dupMatch) setDupMatch(null);
               }}
-              onBlur={checkDuplicate}
-              placeholder="+1 234 567 8900"
+              placeholder="919820368269"
               className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
+              onBlur={() => {
+                if (phone.trim()) setPhone(toMetaPhone(phone));
+                void checkDuplicate();
+              }}
             />
             {dupMatch ? (
               <div
@@ -301,7 +314,8 @@ export function ContactForm({
               </div>
             ) : (
               <p className="text-xs text-muted-foreground">
-                Include country code, e.g. +1 for US
+                Saved for WhatsApp as digits with country code, no + or spaces
+                (India: 919820368269).
               </p>
             )}
           </div>

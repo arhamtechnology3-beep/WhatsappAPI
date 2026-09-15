@@ -143,8 +143,16 @@ export async function GET(request: Request) {
         last_name: customer.last_name,
         email: customer.email,
         phone: customer.phone,
-        orders_count: customer.orders_count,
-        total_spent: customer.total_spent,
+        orders_count: Math.max(customer.orders_count, orders.length),
+        total_spent: (() => {
+          const fromCustomer = Number(customer.total_spent)
+          if (fromCustomer > 0) return String(fromCustomer)
+          const fromOrders = orders.reduce(
+            (sum, o) => sum + Number(o.total_price),
+            0,
+          )
+          return String(fromOrders)
+        })(),
         currency: customer.currency,
         default_address: customer.default_address,
       } : null,

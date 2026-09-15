@@ -72,48 +72,62 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
   } | null>(null);
   const [expandedOrderId, setExpandedOrderId] = useState<number | null>(null);
 
-  const fetchContactData = useCallback(async () => {
-    if (!contact) return;
+  // Load deals, notes, and tags when the selected contact changes.
+  useEffect(() => {
+    if (!contact) {
+      setDeals([]);
+      setNotes([]);
+      setTags([]);
+      return;
+    }
+
+    const contactId = contact.id;
+    let cancelled = false;
+
+    setDeals([]);
+    setNotes([]);
+    setTags([]);
 
     const supabase = createClient();
 
-    // Fetch deals, notes, and tags in parallel
-    const [dealsRes, notesRes, tagsRes] = await Promise.all([
-      supabase
-        .from("deals")
-        .select("*, stage:pipeline_stages(*)")
-        .eq("contact_id", contact.id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("contact_notes")
-        .select("*")
-        .eq("contact_id", contact.id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("contact_tags")
-        .select("id, tag_id, tags(*)")
-        .eq("contact_id", contact.id),
-    ]);
+    void (async () => {
+      const [dealsRes, notesRes, tagsRes] = await Promise.all([
+        supabase
+          .from("deals")
+          .select("*, stage:pipeline_stages(*)")
+          .eq("contact_id", contactId)
+          .eq("status", "open")
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("contact_notes")
+          .select("*")
+          .eq("contact_id", contactId)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("contact_tags")
+          .select("id, tag_id, tags(*)")
+          .eq("contact_id", contactId),
+      ]);
 
-    if (dealsRes.data) setDeals(dealsRes.data);
-    if (notesRes.data) setNotes(notesRes.data);
-    if (tagsRes.data) {
-      const mapped = tagsRes.data
-        .filter((ct: Record<string, unknown>) => ct.tags)
-        .map((ct: Record<string, unknown>) => ({
-          ...(ct.tags as Tag),
-          contact_tag_id: ct.id as string,
-        }));
-      setTags(mapped);
-    }
-  }, [contact]);
+      if (cancelled) return;
 
-  // Load on contact change. setContactData/setTags run inside async
-  // Supabase callbacks, not synchronously in the effect body.
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchContactData();
-  }, [fetchContactData]);
+      if (dealsRes.data) setDeals(dealsRes.data);
+      if (notesRes.data) setNotes(notesRes.data);
+      if (tagsRes.data) {
+        const mapped = tagsRes.data
+          .filter((ct: Record<string, unknown>) => ct.tags)
+          .map((ct: Record<string, unknown>) => ({
+            ...(ct.tags as Tag),
+            contact_tag_id: ct.id as string,
+          }));
+        setTags(mapped);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contact?.id]);
 
   // Fetch Shopify Customer Data on contact change
   useEffect(() => {
@@ -125,32 +139,42 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
     }
 
     const contactId = contact.id;
+    let cancelled = false;
 
     async function fetchShopifyCustomer() {
       setShopifyLoading(true);
       setShopifyError(null);
+      setShopifyData(null);
       try {
         const res = await fetch(`/api/shopify/customer?contactId=${contactId}`);
         if (!res.ok) {
           throw new Error("Failed to fetch Shopify customer details");
         }
         const data = await res.json();
+        if (cancelled) return;
         if (data.success) {
           setShopifyData(data);
         } else {
           setShopifyError(data.error || "Failed to load Shopify customer data");
         }
       } catch (err: unknown) {
+        if (cancelled) return;
         console.error(err);
         const errMsg = err instanceof Error ? err.message : "An error occurred while fetching Shopify data";
         setShopifyError(errMsg);
       } finally {
-        setShopifyLoading(false);
+        if (!cancelled) {
+          setShopifyLoading(false);
+        }
       }
     }
 
     fetchShopifyCustomer();
-  }, [contact]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contact?.id]);
 
   const formatCurrency = useCallback((amount: number, currency: string) => {
     try {
@@ -321,20 +345,33 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
               <p className="px-1 text-xs text-muted-foreground">No Shopify customer profile found.</p>
             )}
 
-            {shopifyData?.customer && (
+            {shopifyData?.customer && (() => {
+              const orderCount = Math.max(
+                shopifyData.customer.orders_count,
+                shopifyData.orders.length,
+              );
+              const computedTotal =
+                Number(shopifyData.customer.total_spent) > 0
+                  ? Number(shopifyData.customer.total_spent)
+                  : shopifyData.orders.reduce(
+                      (sum, o) => sum + Number(o.total_price),
+                      0,
+                    );
+
+              return (
               <div className="space-y-3">
                 {/* Metrics Grid */}
                 <div className="grid grid-cols-2 gap-2">
                   <div className="rounded-lg border border-border bg-muted/40 p-2 text-center">
                     <p className="text-[9px] uppercase font-semibold text-muted-foreground tracking-wider">Orders</p>
                     <p className="text-base font-bold text-foreground mt-0.5">
-                      {shopifyData.customer.orders_count}
+                      {orderCount}
                     </p>
                   </div>
                   <div className="rounded-lg border border-border bg-muted/40 p-2 text-center">
                     <p className="text-[9px] uppercase font-semibold text-muted-foreground tracking-wider">Total Spent</p>
                     <p className="text-base font-bold text-foreground mt-0.5">
-                      {formatCurrency(Number(shopifyData.customer.total_spent), shopifyData.customer.currency)}
+                      {formatCurrency(computedTotal, shopifyData.customer.currency)}
                     </p>
                   </div>
                 </div>
@@ -422,7 +459,8 @@ export function ContactSidebar({ contact }: ContactSidebarProps) {
                   </div>
                 )}
               </div>
-            )}
+              );
+            })()}
           </div>
 
           {/* Divider */}

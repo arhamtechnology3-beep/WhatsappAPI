@@ -5,6 +5,8 @@ import {
   isValidE164,
   phoneVariants,
   isRecipientNotAllowedError,
+  isUndeliverableRecipientError,
+  hasWhatsAppPhone,
 } from '@/lib/whatsapp/phone-utils'
 import { supabaseAdmin } from './admin-client'
 import {
@@ -14,6 +16,9 @@ import {
   recipeByName,
   resolveHeaderMediaUrl,
 } from '@/lib/shopify/whatsapp-template-library'
+import { resolveContactShopifyHeaderImage } from '@/lib/shopify/product-image'
+import { toCustomerStoreUrl } from '@/lib/shopify/storefront-url'
+import { renderTemplateBody } from '@/lib/whatsapp/render-template-body'
 
 // ------------------------------------------------------------
 // Automation-side Meta sender.
@@ -53,6 +58,8 @@ interface SendTemplateArgs {
     product_url?: string
     tracking_url?: string
   }
+  /** Prefer this over contacts.phone when the job already resolved a number. */
+  toPhone?: string
 }
 
 export async function engineSendText(args: SendTextArgs): Promise<{ whatsapp_message_id: string }> {
@@ -68,19 +75,6 @@ export async function engineSendTemplate(
 type SendInput =
   | (SendTextArgs & { kind: 'text' })
   | (SendTemplateArgs & { kind: 'template' })
-
-function getProductImageUrlFromLineItems(lineItems: any): string | null {
-  if (!Array.isArray(lineItems) || lineItems.length === 0) return null
-  const firstItem = lineItems[0]
-  if (!firstItem) return null
-  const url =
-    firstItem.image_url ||
-    firstItem.image ||
-    firstItem.featured_image?.url ||
-    firstItem.variant?.image?.src ||
-    null
-  return url
-}
 
 async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: string }> {
   const db = supabaseAdmin()
@@ -102,11 +96,13 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   if (contactErr || !contact) {
     throw new Error('contact not found for this account')
   }
-  if (!contact.phone?.trim()) {
+  const rawPhone =
+    (input.kind === 'template' ? input.toPhone : undefined) || contact.phone
+  if (!hasWhatsAppPhone(rawPhone)) {
     throw new Error('contact has no phone number')
   }
 
-  const sanitized = sanitizePhoneForMeta(contact.phone)
+  const sanitized = sanitizePhoneForMeta(rawPhone)
   if (!isValidE164(sanitized)) {
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
@@ -154,8 +150,12 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         }
       }
 
+      const rewrittenParams = (input.params || []).map((p) =>
+        /myshopify\.com/i.test(String(p)) ? toCustomerStoreUrl(String(p)) : p,
+      )
+
       const messageParams: any = {
-        body: input.params,
+        body: rewrittenParams,
       }
 
       if (/^wacrm_cod_confirmation/.test(input.templateName)) {
@@ -194,41 +194,14 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         }
       }
 
-      // If the template has an image header, resolve the product image URL dynamically
       if (templateRow?.header_type === 'image') {
-        let resolvedImageUrl: string | null = null
-
-        // 1. Try checkout line items
-        const { data: checkout } = await db
-          .from('shopify_checkouts')
-          .select('line_items')
-          .eq('contact_id', input.contactId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-
-        if (checkout?.line_items) {
-          resolvedImageUrl = getProductImageUrlFromLineItems(checkout.line_items)
-        }
-
-        // 2. Try order line items
-        if (!resolvedImageUrl) {
-          const { data: order } = await db
-            .from('shopify_orders')
-            .select('line_items')
-            .eq('contact_id', input.contactId)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-
-          if (order?.line_items) {
-            resolvedImageUrl = getProductImageUrlFromLineItems(order.line_items)
-          }
-        }
-
+        const productImage = await resolveContactShopifyHeaderImage(
+          db,
+          input.contactId,
+        )
         messageParams.headerMediaUrl = resolveHeaderMediaUrl(
           templateRow,
-          resolvedImageUrl,
+          productImage,
         )
       }
 
@@ -240,7 +213,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
         to: phone,
         templateName: input.templateName,
         language: templateRow?.language || input.language || 'en_US',
-        params: input.params,
+        params: rewrittenParams,
         template: templateRow || undefined,
         messageParams,
         wabaId: config.waba_id || undefined,
@@ -263,7 +236,8 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   let workingPhone = sanitized
   let waMessageId = ''
   let lastError: unknown = null
-  for (const v of variants) {
+  for (let i = 0; i < variants.length; i++) {
+    const v = variants[i]
     try {
       waMessageId = await attempt(v)
       workingPhone = v
@@ -271,18 +245,19 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       break
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      // #131030 = "recipient not in allowed list" (Meta sandbox restriction).
-      // ALL format variants of the same number will fail identically — stop
-      // retrying immediately and surface the error once, not 4 times.
       if (isRecipientNotAllowedError(msg)) {
         console.warn(
           `[meta-send] #131030 sandbox restriction — phone ${v} is not in Meta's test recipient list. ` +
           `Add it at: https://developers.facebook.com/apps → WhatsApp → API Setup → Test numbers.`
         )
         lastError = err
-        break // bail — other variants will fail identically
+        break
       }
-      throw err // any other error (bad token, template error, etc.) bubbles up immediately
+      if (isUndeliverableRecipientError(msg) && i < variants.length - 1) {
+        lastError = err
+        continue
+      }
+      throw err
     }
   }
   if (lastError) throw lastError
@@ -301,11 +276,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   if (input.kind === 'template') {
     // Render interpolated body text so the inbox bubble and list preview display full message content
     const templateBody = (input as any)._templateRow?.body_text || `Template: ${input.templateName}`
-    const paramsList = input.params || []
-    content_text = templateBody.replace(/\{\{(\d+)\}\}/g, (_: string, raw: string) => {
-      const idx = Number(raw) - 1
-      return paramsList[idx] ?? `{{${raw}}}`
-    })
+    content_text = renderTemplateBody(templateBody, input.params || [])
   }
 
   const templateRow = (input as any)._templateRow
@@ -330,9 +301,9 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     status: 'sent',
   })
   if (msgErr) {
-    // Meta already has the message; record the DB error but don't pretend
-    // the send failed. The engine wraps this in a log line.
-    throw new Error(`sent to Meta but DB insert failed: ${msgErr.message}`)
+    console.error(
+      `[meta-send] sent to Meta (${waMessageId}) but DB insert failed: ${msgErr.message}`,
+    )
   }
 
   await db

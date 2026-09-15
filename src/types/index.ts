@@ -198,6 +198,8 @@ export interface Message {
   status: MessageStatus;
   created_at: string;
   reply_to_message_id?: string;
+  /** Meta webhook error when status is `failed` (e.g. #131026 undeliverable). */
+  error_message?: string | null;
   /**
    * Only set when `content_type === 'interactive'` — the stable id of
    * the button or list row the customer tapped. The Flows engine uses

@@ -5,6 +5,9 @@ import {
   matchOrCreateShopifyContact,
 } from '@/lib/shopify/shopify-helper'
 import { applyShopifyCors, shopifyCorsPreflight } from '@/lib/shopify/cors'
+import { hasWhatsAppPhone } from '@/lib/whatsapp/phone-utils'
+import { fetchShopifyProductImage } from '@/lib/shopify/product-image'
+import { toCustomerStoreUrl } from '@/lib/shopify/storefront-url'
 
 export async function OPTIONS(request: Request) {
   return shopifyCorsPreflight(request)
@@ -16,7 +19,7 @@ export async function POST(request: Request) {
 
   try {
     const payload = await request.json()
-    const { customer_id, email, phone, first_name, last_name, product_id, product_title, price, product_url } = payload
+    const { customer_id, email, phone, first_name, last_name, product_id, product_title, price, product_url, image_url } = payload
 
     if (!customer_id && !email && !phone) {
       const res = NextResponse.json({ success: false, message: 'Unidentifiable visitor, skipped' })
@@ -35,6 +38,15 @@ export async function POST(request: Request) {
 
     if (!contact) {
       const res = NextResponse.json({ success: false, message: 'Could not resolve contact' })
+      return applyShopifyCors(res, origin)
+    }
+
+    if (!hasWhatsAppPhone(contact.phone)) {
+      const res = NextResponse.json({
+        success: true,
+        skipped: true,
+        message: 'Email-only contact — browse recovery requires a mobile number',
+      })
       return applyShopifyCors(res, origin)
     }
 
@@ -85,6 +97,10 @@ export async function POST(request: Request) {
 
     const nextSendAt = new Date(Date.now() + step.delay_minutes_from_previous_step * 60000).toISOString()
 
+    const productImage =
+      (typeof image_url === 'string' && image_url.startsWith('http') && image_url) ||
+      (await fetchShopifyProductImage({ productId: product_id }))
+
     await supabase
       .from('shopify_recovery_tracking')
       .insert({
@@ -98,7 +114,8 @@ export async function POST(request: Request) {
           product_id,
           product_title,
           price: String(price),
-          product_url,
+          product_url: product_url ? toCustomerStoreUrl(product_url) : product_url,
+          image_url: productImage || null,
         },
       })
 

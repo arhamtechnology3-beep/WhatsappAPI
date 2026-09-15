@@ -6,6 +6,8 @@ import {
   createOrUpdateShopifyDeal,
   initializeCheckoutRecoverySequence,
 } from '@/lib/shopify/shopify-helper'
+import { withShopifyProductImages } from '@/lib/shopify/product-image'
+import { toCustomerStoreUrl } from '@/lib/shopify/storefront-url'
 import { applyShopifyCors, shopifyCorsPreflight } from '@/lib/shopify/cors'
 
 export async function OPTIONS(request: Request) {
@@ -75,9 +77,7 @@ export async function POST(request: Request) {
       currency || 'INR'
     )
 
-    // Build checkout url
-    const storeDomain = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN || process.env.SHOPIFY_STORE_DOMAIN || ''
-    const abandonedUrl = `https://${storeDomain}/cart`
+    const abandonedUrl = toCustomerStoreUrl(null, 'https://divyaprabhafoods.com/cart')
 
     // Upsert shopify_checkouts
     const { error: upsertErr } = await supabase
@@ -94,7 +94,7 @@ export async function POST(request: Request) {
         abandoned_checkout_url: abandonedUrl,
         total_price: totalPriceNum,
         currency: currency || 'INR',
-        line_items: line_items || [],
+        line_items: await withShopifyProductImages(line_items || []),
         status: 'open',
         updated_at: new Date().toISOString(),
       }, { onConflict: 'shopify_checkout_id' })

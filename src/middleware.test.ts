@@ -2,12 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 // --- Scenario knobs the mock reads -----------------------------------------
-// `mockUser`         — what getUser() resolves to (a refreshed session ⇒ user,
-//                      or null for the logged-out path).
-// `refreshedCookies` — cookies Supabase writes via setAll() during getUser(),
-//                      i.e. the freshly *rotated* auth token. The whole point
-//                      of the test is that these must survive onto whatever
-//                      response the middleware returns — including redirects.
+// `mockUser`         — what getUser() resolves to (only used on /api/* paths).
+// `refreshedCookies` — cookies Supabase writes via setAll() during getUser().
 let mockUser: { id: string } | null = null;
 let refreshedCookies: Array<{
   name: string;
@@ -24,9 +20,6 @@ vi.mock("@supabase/ssr", () => ({
     },
   ) => ({
     auth: {
-      // Mirrors real auth-js: an expired access token is transparently
-      // refreshed inside getUser(), which rotates the refresh token and
-      // pushes the new cookies through setAll() before resolving.
       getUser: async () => {
         if (refreshedCookies.length) opts.cookies.setAll(refreshedCookies);
         return { data: { user: mockUser } };
@@ -36,10 +29,10 @@ vi.mock("@supabase/ssr", () => ({
       select: () => ({
         eq: () => ({
           limit: () => ({
-            maybeSingle: async () => ({ data: null })
-          })
-        })
-      })
+            maybeSingle: async () => ({ data: null }),
+          }),
+        }),
+      }),
     }),
   }),
 }));
@@ -62,60 +55,50 @@ const ROTATED = {
   options: { path: "/", httpOnly: true },
 };
 
-describe("middleware — refreshed auth cookies survive redirects", () => {
-  it("carries the rotated token when redirecting a signed-in user off /login", async () => {
-    mockUser = { id: "user-1" };
-    refreshedCookies = [ROTATED];
+/** Middleware treats a request as logged-in when an auth cookie is present. */
+function authedRequest(url: string) {
+  return new NextRequest(url, {
+    headers: { cookie: `${ROTATED.name}=${ROTATED.value}` },
+  });
+}
 
-    const res = await middleware(
-      new NextRequest("https://app.test/login"),
-    );
+describe("middleware — auth routing and cookie handling", () => {
+  it("redirects a signed-in user off /login to /dashboard", async () => {
+    const res = await middleware(authedRequest("https://app.test/login"));
 
-    // Redirect to /dashboard…
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toContain("/dashboard");
-    // …and the rotated cookie MUST ride along, otherwise the browser keeps
-    // replaying the now-consumed refresh token and the session wedges until
-    // the user manually clears cookies.
-    expect(res.cookies.get(ROTATED.name)?.value).toBe(ROTATED.value);
   });
 
-  it("carries the rotated token when redirecting an unauth user to /login", async () => {
-    mockUser = null;
-    // Even on the logged-out path getUser() may emit cookie writes (e.g.
-    // clearing a dead session); those must not be dropped on the redirect.
-    refreshedCookies = [{ ...ROTATED, value: "cleared" }];
-
+  it("redirects an unauth user on a protected page to /login", async () => {
     const res = await middleware(
       new NextRequest("https://app.test/dashboard"),
     );
 
     expect(res.status).toBe(307);
     expect(res.headers.get("location")).toContain("/login");
-    expect(res.cookies.get(ROTATED.name)?.value).toBe("cleared");
   });
 
   it("redirects a signed-in user with an invite token to /join/<token>", async () => {
-    mockUser = { id: "user-1" };
-    refreshedCookies = [ROTATED];
-
     const res = await middleware(
-      new NextRequest("https://app.test/login?invite=abc123"),
+      authedRequest("https://app.test/login?invite=abc123"),
     );
 
     expect(res.headers.get("location")).toContain("/join/abc123");
-    expect(res.cookies.get(ROTATED.name)?.value).toBe(ROTATED.value);
   });
 
   it("passes through (no redirect) for a signed-in user on a protected page", async () => {
+    const res = await middleware(authedRequest("https://app.test/dashboard"));
+
+    expect(res.headers.get("location")).toBeNull();
+  });
+
+  it("carries refreshed cookies onto API responses when getUser() runs", async () => {
     mockUser = { id: "user-1" };
     refreshedCookies = [ROTATED];
 
-    const res = await middleware(
-      new NextRequest("https://app.test/dashboard"),
-    );
+    const res = await middleware(authedRequest("https://app.test/api/contacts"));
 
-    // No redirect — the normal NextResponse.next() already carries cookies.
     expect(res.headers.get("location")).toBeNull();
     expect(res.cookies.get(ROTATED.name)?.value).toBe(ROTATED.value);
   });

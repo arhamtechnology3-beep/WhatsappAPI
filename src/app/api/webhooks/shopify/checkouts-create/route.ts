@@ -7,6 +7,8 @@ import {
   createOrUpdateShopifyDeal,
   initializeCheckoutRecoverySequence,
 } from '@/lib/shopify/shopify-helper'
+import { withShopifyProductImages } from '@/lib/shopify/product-image'
+import { toCustomerStoreUrl } from '@/lib/shopify/storefront-url'
 
 export async function POST(request: Request) {
   const rawBody = await request.text()
@@ -40,10 +42,12 @@ export async function POST(request: Request) {
     const lastName = payload.customer?.last_name || payload.billing_address?.last_name || payload.shipping_address?.last_name || null
     const name = [firstName, lastName].filter(Boolean).join(' ') || payload.billing_address?.name || null
     const cartToken = payload.cart_token || null
-    const abandonedUrl = payload.abandoned_checkout_url || null
+    const abandonedUrl = payload.abandoned_checkout_url
+      ? toCustomerStoreUrl(payload.abandoned_checkout_url)
+      : null
     const totalPrice = parseFloat(payload.total_price || '0')
     const currency = payload.currency || 'USD'
-    const lineItems = payload.line_items || []
+    const lineItems = await withShopifyProductImages(payload.line_items || [])
     
     // Resolve contact
     const customerPayload = {

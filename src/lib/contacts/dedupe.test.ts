@@ -22,8 +22,9 @@ describe("normalizeKey", () => {
     expect(normalizeKey("15551234567")).toBe("15551234567");
   });
 
-  it("collapses different formats of the same number to one key", () => {
-    expect(normalizeKey("+44 7911 123456")).toBe(normalizeKey("447911123456"));
+  it("collapses Indian +91 spaced and 10-digit local numbers", () => {
+    expect(normalizeKey("+91 98203 68269")).toBe("919820368269");
+    expect(normalizeKey("9820368269")).toBe("919820368269");
   });
 });
 

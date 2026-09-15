@@ -233,7 +233,10 @@ export function ImportModal({
       const existingPhones = new Set(
         (existingRows ?? [])
           .map(
-            (r) => (r as { phone_normalized: string | null }).phone_normalized
+            (r) =>
+              normalizeKey(
+                (r as { phone_normalized: string | null }).phone_normalized || '',
+              ) || (r as { phone_normalized: string | null }).phone_normalized,
           )
           .filter((p): p is string => !!p)
       );
@@ -282,7 +285,7 @@ export function ImportModal({
         const rows = chunk.map((row) => ({
           user_id: user.id,
           account_id: accountId,
-          phone: row.phone,
+          phone: normalizeKey(row.phone) || row.phone,
           name: row.name || null,
           email: row.email || null,
           company: row.company || null,

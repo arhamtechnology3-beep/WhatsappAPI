@@ -30,6 +30,7 @@ import {
 import { useCan } from "@/hooks/use-can";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { formatWhatsAppErrorMessage } from "@/lib/whatsapp/format-error-message";
 import {
   uploadAccountMedia,
   deleteAccountMedia,
@@ -93,6 +94,8 @@ interface MediaDraft {
 interface MessageComposerProps {
   conversationId: string;
   sessionExpired: boolean;
+  /** Last outbound Meta hold (131048/131049/131056) — do not push another marketing send. */
+  marketingHoldCode?: number | null;
   onSend: (text: string, replyToId?: string) => void;
   onSendMedia: (payload: SendMediaPayload) => void;
   onOpenTemplates: () => void;
@@ -114,6 +117,7 @@ const OPUS_ENCODER_PATH = "/opus/encoderWorker.min.js";
 export function MessageComposer({
   conversationId,
   sessionExpired,
+  marketingHoldCode,
   onSend,
   onSendMedia,
   onOpenTemplates,
@@ -401,7 +405,13 @@ export function MessageComposer({
           />
         </div>
       )}
-      {sessionExpired && (
+      {marketingHoldCode ? (
+        <div className="mb-2 rounded-lg bg-red-500/10 px-3 py-2">
+          <p className="text-xs text-red-400">
+            {formatWhatsAppErrorMessage(`#${marketingHoldCode}`)}
+          </p>
+        </div>
+      ) : sessionExpired ? (
         <div className="mb-2 flex items-center justify-between rounded-lg bg-amber-500/10 px-3 py-2">
           <p className="text-xs text-amber-400">
             24-hour session expired. Send a template — you can upload a photo on the template first.
@@ -416,7 +426,7 @@ export function MessageComposer({
             Templates
           </Button>
         </div>
-      )}
+      ) : null}
 
       {/* Hidden file inputs driven by the attach menu. */}
       <input
@@ -575,6 +585,8 @@ export function MessageComposer({
             placeholder={
               readOnly
                 ? "Read-only — viewers can browse but not reply"
+                : marketingHoldCode
+                  ? "WhatsApp is holding marketing — do not retry this template"
                 : sessionExpired
                   ? "Session expired - use a template"
                   : draft && draft.kind !== "audio"

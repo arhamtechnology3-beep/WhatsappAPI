@@ -40,6 +40,7 @@ import {
   resolveTemplateHeaderKind,
 } from "@/lib/shopify/whatsapp-template-library";
 import { extractVariableIndices } from "@/lib/whatsapp/template-validators";
+import { toCustomerStoreUrl } from "@/lib/shopify/storefront-url";
 
 export interface TemplateSendValues {
   body: string[];
@@ -134,8 +135,8 @@ export function TemplatePicker({
     totalPrice: "",
     checkoutUrl: "",
     storeName: "DivyaPrabha Foods",
-    dynamicOffer: "🎁 10% DISCOUNT & FREE SHIPPING!",
-    discountCode: "WELCOME10",
+    dynamicOffer: "🎁 Special offer waiting at checkout!",
+    discountCode: "",
     orderNumber: "#1001",
     trackingUrl: "",
   });
@@ -155,6 +156,11 @@ export function TemplatePicker({
       let fetchedDiscountCode = "";
       let fetchedOrderNumber = "";
       let fetchedTrackingUrl = "";
+      let shopifyDiscount: {
+        code: string
+        percentOff: number | null
+        minSubtotal: number | null
+      } | null = null
 
       // 1. Fetch Contact info if missing first name
       if (contactId && !fetchedFirstName) {
@@ -186,10 +192,7 @@ export function TemplatePicker({
             fetchedTotalPrice = Number(checkout.total_price);
           }
           if (checkout.abandoned_checkout_url) {
-            fetchedCheckoutUrl = checkout.abandoned_checkout_url.replace(
-              "divyaprabhafoods.myshopify.com",
-              "divyaprabhafoods.com"
-            );
+            fetchedCheckoutUrl = toCustomerStoreUrl(checkout.abandoned_checkout_url);
           }
           if (checkout.discount_code) {
             fetchedDiscountCode = checkout.discount_code;
@@ -223,14 +226,25 @@ export function TemplatePicker({
         }
       }
 
-      // 4. Calculate dynamic offer based on cart price
-      let dynamicOffer = "🎁 10% DISCOUNT & FREE SHIPPING!";
-      if (fetchedTotalPrice >= 749) {
-        dynamicOffer = "🎉 10% Discount & FREE Shipping auto-applied at checkout!";
-      } else if (fetchedTotalPrice >= 599) {
-        dynamicOffer = `🚚 FREE Shipping auto-applied at checkout! (Add items worth ₹${749 - fetchedTotalPrice} for 10% OFF)`;
+      try {
+        const res = await fetch("/api/shopify/discounts/active");
+        const payload = await res.json().catch(() => ({}));
+        if (res.ok && payload?.discount?.code) {
+          shopifyDiscount = payload.discount;
+        }
+      } catch {
+        // Store discount is best-effort — checkout code still fills the slot.
+      }
+
+      const discountCode = shopifyDiscount?.code || fetchedDiscountCode || "";
+      const pct = shopifyDiscount?.percentOff ?? 10;
+      const min = shopifyDiscount?.minSubtotal ?? 749;
+      const withCode = discountCode ? ` with code ${discountCode}` : "";
+      let dynamicOffer = `🎁 ${pct}% OFF${withCode} on orders above ₹${min}!`;
+      if (fetchedTotalPrice >= min) {
+        dynamicOffer = `🎉 ${pct}% OFF${withCode} — apply at checkout!`;
       } else if (fetchedTotalPrice > 0) {
-        dynamicOffer = `✨ Add items worth ₹${599 - fetchedTotalPrice} to get FREE Shipping & ₹${749 - fetchedTotalPrice} for 10% OFF!`;
+        dynamicOffer = `✨ Add items worth ₹${Math.max(0, Math.ceil(min - fetchedTotalPrice))} for ${pct}% OFF${withCode} (min ₹${min})!`;
       }
 
       if (isMounted) {
@@ -241,7 +255,7 @@ export function TemplatePicker({
           checkoutUrl: fetchedCheckoutUrl || "https://divyaprabhafoods.com/",
           storeName: "DivyaPrabha Foods",
           dynamicOffer,
-          discountCode: fetchedDiscountCode || "WELCOME10",
+          discountCode,
           orderNumber: fetchedOrderNumber || "#1001",
           trackingUrl: fetchedTrackingUrl || fetchedCheckoutUrl || "https://divyaprabhafoods.com/",
         });

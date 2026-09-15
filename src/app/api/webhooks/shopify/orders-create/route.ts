@@ -5,10 +5,17 @@ import {
   getShopifyAccountContext,
   matchOrCreateShopifyContact,
   resolvePipelineAndStages,
-  markDealAsWon,
   enqueueShopifyNotification,
   moveDealToStageName,
 } from '@/lib/shopify/shopify-helper'
+import { withShopifyProductImages } from '@/lib/shopify/product-image'
+import {
+  extractShopifyCustomerIdentity,
+  isShopifyCodOrder,
+  recoverMissingShopifyPhone,
+} from '@/lib/shopify/order-notify'
+import { scheduleImmediateWhatsAppJobs } from '@/lib/whatsapp/process-send-jobs'
+import { hasWhatsAppPhone } from '@/lib/whatsapp/phone-utils'
 
 export async function POST(request: Request) {
   const rawBody = await request.text()
@@ -31,28 +38,36 @@ export async function POST(request: Request) {
     // Parse order attributes
     const orderId = String(payload.id)
     const orderNumber = String(payload.order_number)
-    const email = payload.email || payload.customer?.email || payload.billing_address?.email || null
-    const phone = payload.phone || payload.customer?.phone || payload.billing_address?.phone || payload.shipping_address?.phone || null
+    const identity = extractShopifyCustomerIdentity(payload)
+    let email = identity.email
+    let phone = identity.phone
+    if (!hasWhatsAppPhone(phone)) {
+      phone = (await recoverMissingShopifyPhone(payload)) || phone
+    }
     const cartToken = payload.cart_token || null
     const totalPrice = parseFloat(payload.total_price || '0')
     const currency = payload.currency || 'USD'
     const financialStatus = payload.financial_status || null
     const fulfillmentStatus = payload.fulfillment_status || 'unfulfilled'
-    const lineItems = payload.line_items || []
-    
-    const acceptsMarketing = 
-      payload.customer?.sms_marketing_consent?.state === 'subscribed' ||
-      payload.customer?.sms_marketing_consent?.state === 'opt_in' ||
-      payload.buyer_accepts_marketing === true ||
-      payload.customer?.accepts_marketing === true
+    let lineItems: unknown = payload.line_items || []
+    try {
+      lineItems = await withShopifyProductImages(lineItems)
+    } catch (err) {
+      console.warn(
+        '[shopify-webhook] orders-create: product image enrich failed, continuing:',
+        err instanceof Error ? err.message : err,
+      )
+    }
+
+    const acceptsMarketing = identity.acceptsMarketing
 
     // Resolve contact
     const customerPayload = {
       id: payload.customer?.id,
       email,
       phone,
-      first_name: payload.customer?.first_name,
-      last_name: payload.customer?.last_name,
+      first_name: identity.firstName,
+      last_name: identity.lastName,
       marketing_opt_in: acceptsMarketing,
     }
 
@@ -128,14 +143,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // Detect if Cash on Delivery (COD) order
-    const isCod = 
-      payload.gateway === 'cash_on_delivery' ||
-      payload.payment_gateway_names?.includes('cash_on_delivery') ||
-      payload.payment_gateway_names?.includes('cod') ||
-      payload.payment_gateway_names?.some((name: string) => 
-        name.toLowerCase().includes('cod') || name.toLowerCase().includes('delivery')
-      ) || false
+    const isCod = isShopifyCodOrder(payload)
 
     // Insert shopify_orders
     const { error: orderError } = await supabase
@@ -158,33 +166,38 @@ export async function POST(request: Request) {
       throw orderError
     }
 
-    // Enqueue order_created (confirmed) notification
-    const customerFirstName = payload.customer?.first_name || contact.name || 'Customer'
+    const customerFirstName = identity.firstName || contact.name || 'Customer'
+    const sendPhone = phone || contact.phone || ''
 
     const notifyRes = await enqueueShopifyNotification(
       supabase,
       accountId,
       contact.id,
-      phone || '',
+      sendPhone,
       'order_created',
       {
         customer_name: customerFirstName,
         order_number: orderNumber,
         total_price: totalPrice.toFixed(2),
         is_cod: isCod,
+        shopify_order_id: orderId,
       }
     )
 
-    // Log webhook execution
+    scheduleImmediateWhatsAppJobs(notifyRes.jobIds || [])
+
     await supabase.from('shopify_webhook_logs').insert({
       account_id: accountId,
       topic,
       payload,
       status: notifyRes.status === 'error' ? 'failed' : (notifyRes.status === 'skipped_not_activated' ? 'skipped_not_activated' : 'success'),
-      error_message: notifyRes.status === 'skipped_not_activated' ? 'skipped_not_activated' : (notifyRes.message || null),
+      error_message:
+        notifyRes.status === 'skipped_not_activated'
+          ? (notifyRes.message || 'skipped_not_activated')
+          : (notifyRes.message || null),
     })
 
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, jobs: notifyRes.jobIds?.length || 0 })
   } catch (err: any) {
     console.error(`[shopify-webhook] error in ${topic}:`, err)
     if (accountId) {

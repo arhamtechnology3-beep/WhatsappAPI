@@ -300,7 +300,14 @@ export async function POST() {
       if (existing?.id) {
         const { error: updErr } = await supabase
           .from('message_templates')
-          .update(row)
+          .update({
+            ...row,
+            // Meta sync does not return a public header URL. Keep whatever
+            // we already stored so image-header sends keep working.
+            header_media_url:
+              (existing as { header_media_url?: string | null }).header_media_url ??
+              null,
+          })
           .eq('id', existing.id)
         if (updErr) {
           errors.push({

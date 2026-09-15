@@ -28,7 +28,8 @@ import {
   Globe,
   UserCheck,
   Eye,
-  Users as UsersIcon
+  Users as UsersIcon,
+  Send,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -39,6 +40,7 @@ import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import { SHOPIFY_TEMPLATE_LIBRARY } from "@/lib/shopify/whatsapp-template-library"
 import { extractVariableIndices } from "@/lib/whatsapp/template-validators"
+import { formatWhatsAppErrorMessage } from "@/lib/whatsapp/format-error-message"
 import InboxPage from "@/app/(dashboard)/inbox/page"
 import PipelinesPage from "@/app/(dashboard)/pipelines/page"
 import Image from "next/image"
@@ -99,6 +101,16 @@ interface WebhookLog {
   topic: string
   status: 'success' | 'failed' | 'skipped_not_activated'
   error_message?: string
+  created_at: string
+}
+
+interface SendJob {
+  id: string
+  template_name: string
+  recipient_phone: string
+  status: 'pending' | 'sent' | 'failed'
+  last_error: string | null
+  attempts: number
   created_at: string
 }
 
@@ -166,6 +178,8 @@ export default function ShopifyDashboardPage() {
   const [checkouts, setCheckouts] = useState<Checkout[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const [webhookLogs, setWebhookLogs] = useState<WebhookLog[]>([])
+  const [sendJobs, setSendJobs] = useState<SendJob[]>([])
+  const [resendingJobId, setResendingJobId] = useState<string | null>(null)
   const [sequences, setSequences] = useState<AutomationSequence[]>([])
   const [currentPlan, setCurrentPlan] = useState<'basic' | 'growth' | 'scale'>('growth')
 
@@ -282,6 +296,15 @@ export default function ShopifyDashboardPage() {
         .limit(8)
       if (logsErr) throw logsErr
       setWebhookLogs(logsData || [])
+
+      const { data: jobsData, error: jobsErr } = await supabase
+        .from('whatsapp_send_jobs')
+        .select('id, template_name, recipient_phone, status, last_error, attempts, created_at')
+        .eq('account_id', accountId)
+        .order('created_at', { ascending: false })
+        .limit(20)
+      if (jobsErr) throw jobsErr
+      setSendJobs((jobsData || []) as SendJob[])
 
       // 4. Fetch custom template texts from local DB (do not auto-seed)
       const mapping: Record<string, CustomTemplate> = {}
@@ -465,6 +488,48 @@ export default function ShopifyDashboardPage() {
   const totalSentBroadcasts = broadcastsList.reduce((sum, b) => sum + (b.total_recipients || 0), 0)
   const totalDeliveredBroadcasts = broadcastsList.reduce((sum, b) => sum + (b.delivered_count || 0), 0)
   const totalFailedBroadcasts = broadcastsList.reduce((sum, b) => sum + (b.failed_count || ((b.total_recipients || 0) - (b.delivered_count || 0))), 0)
+
+  const handleResendWhatsApp = async (jobId: string) => {
+    setResendingJobId(jobId)
+    try {
+      const res = await fetch('/api/shopify/notifications/resend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: jobId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to resend WhatsApp message.')
+      }
+      toast.success(data.already_sent ? 'Already delivered to WhatsApp.' : 'WhatsApp message sent.')
+      loadData()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Error resending WhatsApp.')
+    } finally {
+      setResendingJobId(null)
+    }
+  }
+
+  const handleResendOrderWhatsApp = async (shopifyOrderId: string) => {
+    setResendingJobId(shopifyOrderId)
+    try {
+      const res = await fetch('/api/shopify/orders/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shopify_order_id: shopifyOrderId }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to send order WhatsApp.')
+      }
+      toast.success('Order WhatsApp sent.')
+      loadData()
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Error sending order WhatsApp.')
+    } finally {
+      setResendingJobId(null)
+    }
+  }
 
   const handleManualNotification = async (checkoutId: string) => {
     try {
@@ -721,7 +786,7 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
           btnText = 'Complete Checkout'
         }
         buttons = [
-          { type: 'URL', text: btnText, url: 'https://divyaprabhafoods.com' }
+          { type: 'URL', text: btnText, url: 'https://divyaprabhafoods.com/' }
         ]
       }
       
@@ -1106,37 +1171,52 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
               {/* COD Statuses sidebar list */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm font-semibold">COD Order confirmations</CardTitle>
-                  <CardDescription className="text-xs">Real-time COD verification status tracker.</CardDescription>
+                  <CardTitle className="text-sm font-semibold">Recent orders</CardTitle>
+                  <CardDescription className="text-xs">
+                    COD verification plus one-click WhatsApp confirmation for any missed order.
+                  </CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
-                  {orders.filter(o => o.financial_status?.startsWith('cod_')).length === 0 ? (
-                    <div className="text-center py-8 text-xs text-muted-foreground">No cash-on-delivery orders logged yet.</div>
+                  {orders.length === 0 ? (
+                    <div className="text-center py-8 text-xs text-muted-foreground">No Shopify orders logged yet.</div>
                   ) : (
                     <div className="divide-y divide-border">
-                      {orders
-                        .filter(o => o.financial_status?.startsWith('cod_'))
-                        .map((order) => (
-                          <div key={order.id} className="p-3 text-xs flex justify-between items-center hover:bg-muted/40">
+                      {orders.slice(0, 12).map((order) => (
+                          <div key={order.id} className="p-3 text-xs flex justify-between items-center hover:bg-muted/40 gap-2">
                             <div>
                               <p className="font-semibold text-foreground">Order #{order.order_number}</p>
-                              <p className="text-[10px] text-muted-foreground">{order.customer_name}</p>
+                              <p className="text-[10px] text-muted-foreground">{order.customer_name} · {order.customer_phone}</p>
                             </div>
-                            <div className="text-right">
+                            <div className="text-right space-y-1">
                               <Badge
                                 className={
                                   order.financial_status === 'cod_confirmed'
                                     ? 'bg-green-500/10 text-green-500 border-none'
                                     : order.financial_status === 'cod_pending'
                                       ? 'bg-amber-500/10 text-amber-500 border-none animate-pulse'
-                                      : 'bg-destructive/10 text-destructive border-none'
+                                      : order.financial_status === 'paid'
+                                        ? 'bg-green-500/10 text-green-500 border-none'
+                                        : 'bg-muted text-muted-foreground border-none'
                                 }
                               >
-                                {order.financial_status === 'cod_confirmed' ? 'Confirmed' : (order.financial_status === 'cod_pending' ? 'Pending Action' : 'Cancelled')}
+                                {order.financial_status === 'cod_confirmed' ? 'COD Confirmed' : (order.financial_status === 'cod_pending' ? 'COD Pending' : (order.financial_status || 'order'))}
                               </Badge>
                               <p className="text-[9px] text-muted-foreground mt-0.5">
                                 {order.total_price.toLocaleString('en-IN', { style: 'currency', currency: order.currency || 'INR' })}
                               </p>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-6 text-[10px] px-2"
+                                disabled={resendingJobId === order.shopify_order_id}
+                                onClick={() => handleResendOrderWhatsApp(order.shopify_order_id)}
+                              >
+                                {resendingJobId === order.shopify_order_id ? (
+                                  <Loader2 className="size-3 animate-spin" />
+                                ) : (
+                                  'Send WhatsApp'
+                                )}
+                              </Button>
                             </div>
                           </div>
                         ))}
@@ -2709,6 +2789,85 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
                             </div>
                           </div>
                         ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* WhatsApp delivery feed */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Send className="size-4" />
+                      WhatsApp order messages
+                    </CardTitle>
+                    <CardDescription>
+                      Every order/shipment template queued for WhatsApp. Failed rows can be resent immediately.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {sendJobs.length === 0 ? (
+                      <div className="text-center py-6 text-sm text-muted-foreground">
+                        No WhatsApp send jobs yet. New Shopify orders should appear here within seconds.
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="border-y border-border bg-muted/30 text-muted-foreground font-semibold">
+                              <th className="py-2.5 px-4">Template</th>
+                              <th className="py-2.5 px-4">To</th>
+                              <th className="py-2.5 px-4">Status</th>
+                              <th className="py-2.5 px-4">Error</th>
+                              <th className="py-2.5 px-4">When</th>
+                              <th className="py-2.5 px-4"></th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-border">
+                            {sendJobs.map((job) => (
+                              <tr key={job.id} className="hover:bg-muted/10 text-foreground">
+                                <td className="py-2.5 px-4 font-mono">{job.template_name}</td>
+                                <td className="py-2.5 px-4">{job.recipient_phone || '—'}</td>
+                                <td className="py-2.5 px-4">
+                                  <Badge
+                                    className={
+                                      job.status === 'sent'
+                                        ? 'bg-green-500/10 text-green-500 border-none'
+                                        : job.status === 'pending'
+                                          ? 'bg-amber-500/10 text-amber-500 border-none'
+                                          : 'bg-destructive/10 text-destructive border-none'
+                                    }
+                                  >
+                                    {job.status}
+                                  </Badge>
+                                </td>
+                                <td className="py-2.5 px-4 truncate max-w-xs text-muted-foreground">
+                                  {formatWhatsAppErrorMessage(job.last_error) || '—'}
+                                </td>
+                                <td className="py-2.5 px-4 text-muted-foreground">
+                                  {new Date(job.created_at).toLocaleString()}
+                                </td>
+                                <td className="py-2.5 px-4 text-right">
+                                  {job.status !== 'sent' && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="h-7 text-[10px]"
+                                      disabled={resendingJobId === job.id}
+                                      onClick={() => handleResendWhatsApp(job.id)}
+                                    >
+                                      {resendingJobId === job.id ? (
+                                        <Loader2 className="size-3 animate-spin" />
+                                      ) : (
+                                        'Resend'
+                                      )}
+                                    </Button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     )}
                   </CardContent>

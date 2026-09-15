@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from 'sonner';
 import type { Contact, Tag, ContactTag } from '@/types';
+import { toCustomerStoreUrl } from '@/lib/shopify/storefront-url';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -285,7 +286,7 @@ export default function ContactsPage() {
       const checkoutUrlMap: Record<string, string> = {};
       checkoutsData?.forEach((co) => {
         if (co.contact_id && co.abandoned_checkout_url) {
-          checkoutUrlMap[co.contact_id] = co.abandoned_checkout_url;
+          checkoutUrlMap[co.contact_id] = toCustomerStoreUrl(co.abandoned_checkout_url);
         }
       });
 

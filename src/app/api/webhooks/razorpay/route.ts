@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/automations/admin-client";
 import { sendTemplateMessage } from "@/lib/whatsapp/meta-api";
 import { decrypt } from "@/lib/whatsapp/encryption";
+import { toMetaPhone } from "@/lib/whatsapp/phone-utils";
 
 export async function POST(request: Request) {
   try {
@@ -44,11 +45,7 @@ export async function POST(request: Request) {
         const orderId = payment.order_id || payment.id;
         const email = payment.email || "";
 
-        // Normalize phone number (digits only, strip country prefix if duplicate)
-        let phone = rawPhone.replace(/\D/g, "");
-        if (phone.length === 10) {
-          phone = `91${phone}`; // Default to Indian country code
-        }
+        const phone = toMetaPhone(rawPhone);
 
         if (phone) {
           // Fetch WhatsApp Config

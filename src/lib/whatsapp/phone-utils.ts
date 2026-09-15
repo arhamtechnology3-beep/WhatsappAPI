@@ -4,8 +4,7 @@
  * e.g. "+370 63949836" → "37063949836"
  */
 export function sanitizePhoneForMeta(phone: string): string {
-  if (!phone) return ''
-  return phone.replace(/\D/g, '')
+  return toMetaPhone(phone)
 }
 
 /**
@@ -22,7 +21,8 @@ export function normalizePhone(phone: string): string {
  * Indian 10-digit mobiles (start 6–9) get a 91 country code so
  * "+91 98203 68269", "9820368269", and "919820368269" are the same key.
  */
-export function toMetaPhone(phone: string): string {
+export function toMetaPhone(phone?: string | null): string {
+  if (!phone) return ''
   let digits = normalizePhone(phone)
   if (!digits) return ''
   if (digits.startsWith('00')) digits = digits.slice(2)
@@ -125,4 +125,17 @@ export function phoneVariants(sanitized: string): string[] {
  */
 export function isRecipientNotAllowedError(message: string): boolean {
   return /131030|not in allowed list|not in the allowed list/i.test(message)
+}
+
+export function isUndeliverableRecipientError(message: string): boolean {
+  return /131026|undeliverable/i.test(message)
+}
+
+/**
+ * True when a contact can be messaged on WhatsApp. Email-only rows stay
+ * on the Contacts page; they must not enter inbox / send jobs.
+ */
+export function hasWhatsAppPhone(phone?: string | null): boolean {
+  const digits = toMetaPhone(phone)
+  return digits.length >= 8 && isValidE164(digits)
 }

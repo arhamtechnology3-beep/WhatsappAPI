@@ -6,6 +6,8 @@ import {
   matchOrCreateShopifyContact,
   enqueueShopifyNotification,
 } from '@/lib/shopify/shopify-helper'
+import { extractShopifyCustomerIdentity } from '@/lib/shopify/order-notify'
+import { scheduleImmediateWhatsAppJobs } from '@/lib/whatsapp/process-send-jobs'
 
 export async function POST(request: Request) {
   const rawBody = await request.text()
@@ -27,26 +29,23 @@ export async function POST(request: Request) {
 
     const orderId = String(payload.id)
     const orderNumber = String(payload.order_number)
-    const email = payload.email || payload.customer?.email || payload.billing_address?.email || null
-    const phone = payload.phone || payload.customer?.phone || payload.billing_address?.phone || payload.shipping_address?.phone || null
+    const identity = extractShopifyCustomerIdentity(payload)
+    const email = identity.email
+    const phone = identity.phone
     const financialStatus = payload.financial_status || null
     const fulfillmentStatus = payload.fulfillment_status || 'unfulfilled'
     const totalPrice = parseFloat(payload.total_price || '0')
     const currency = payload.currency || 'USD'
     
-    const acceptsMarketing = 
-      payload.customer?.sms_marketing_consent?.state === 'subscribed' ||
-      payload.customer?.sms_marketing_consent?.state === 'opt_in' ||
-      payload.buyer_accepts_marketing === true ||
-      payload.customer?.accepts_marketing === true
+    const acceptsMarketing = identity.acceptsMarketing
 
     // Resolve contact
     const customerPayload = {
       id: payload.customer?.id,
       email,
       phone,
-      first_name: payload.customer?.first_name,
-      last_name: payload.customer?.last_name,
+      first_name: identity.firstName,
+      last_name: identity.lastName,
       marketing_opt_in: acceptsMarketing,
     }
 
@@ -87,106 +86,62 @@ export async function POST(request: Request) {
         .eq('id', dealId)
     }
 
-    const customerFirstName = payload.customer?.first_name || contact.name || 'Customer'
+    const customerFirstName = identity.firstName || contact?.name || 'Customer'
+    const sendPhone = phone || contact?.phone || ''
     let lastStatus: 'success' | 'skipped_not_activated' | 'failed' = 'skipped_not_activated'
     let lastMessage = ''
+    const jobIds: string[] = []
 
-    // 1) Trigger Order Cancelled
-    const hasBecomeCancelled = isCancelled && existingOrder?.financial_status !== 'voided'
-    if (hasBecomeCancelled) {
-      const res = await enqueueShopifyNotification(
-        supabase,
-        accountId,
-        contact.id,
-        phone || '',
-        'order_cancelled',
-        {
-          customer_name: customerFirstName,
-          order_number: orderNumber,
-        }
-      )
+    const recordNotify = (res: { status: string; message?: string; jobIds?: string[] }) => {
+      if (res.jobIds?.length) jobIds.push(...res.jobIds)
       if (res.status === 'enqueued') lastStatus = 'success'
       if (res.status === 'error') {
         lastStatus = 'failed'
-        lastMessage += `Cancel: ${res.message || 'error'}. `
+        lastMessage += `${res.message || 'error'}. `
+      } else if (res.status === 'skipped_not_activated' && res.message) {
+        lastMessage += `${res.message}. `
       }
     }
 
-    // 2) Trigger Refunded
-    const isRefunded = financialStatus === 'refunded' || financialStatus === 'partially_refunded'
-    const wasRefunded = existingOrder?.financial_status === 'refunded' || existingOrder?.financial_status === 'partially_refunded'
-    const hasBecomeRefunded = isRefunded && !wasRefunded
-    if (hasBecomeRefunded) {
-      const res = await enqueueShopifyNotification(
-        supabase,
-        accountId,
-        contact.id,
-        phone || '',
-        'payment_refunded',
-        {
+    if (contact?.id) {
+      const notify = (
+        trigger: 'order_cancelled' | 'payment_refunded' | 'payment_received' | 'order_delivered',
+        extra: Record<string, string> = {},
+      ) =>
+        enqueueShopifyNotification(supabase, accountId, contact.id, sendPhone, trigger, {
           customer_name: customerFirstName,
           order_number: orderNumber,
-          total_price: totalPrice.toFixed(2),
-        }
-      )
-      if (res.status === 'enqueued') lastStatus = 'success'
-      if (res.status === 'error') {
-        lastStatus = 'failed'
-        lastMessage += `Refund: ${res.message || 'error'}. `
+          shopify_order_id: orderId,
+          ...extra,
+        })
+
+      const hasBecomeCancelled = isCancelled && existingOrder?.financial_status !== 'voided'
+      if (hasBecomeCancelled) {
+        recordNotify(await notify('order_cancelled'))
+      }
+
+      const isRefunded = financialStatus === 'refunded' || financialStatus === 'partially_refunded'
+      const wasRefunded = existingOrder?.financial_status === 'refunded' || existingOrder?.financial_status === 'partially_refunded'
+      if (isRefunded && !wasRefunded) {
+        recordNotify(await notify('payment_refunded', { total_price: totalPrice.toFixed(2) }))
+      }
+
+      if (financialStatus === 'paid' && existingOrder?.financial_status !== 'paid') {
+        recordNotify(await notify('payment_received', { total_price: totalPrice.toFixed(2) }))
+      }
+
+      if (fulfillmentStatus === 'fulfilled' && existingOrder?.fulfillment_status !== 'fulfilled') {
+        recordNotify(await notify('order_delivered'))
       }
     }
 
-    // 3) Trigger Payment Received (Paid)
-    const isPaid = financialStatus === 'paid'
-    const wasPaid = existingOrder?.financial_status === 'paid'
-    const hasBecomePaid = isPaid && !wasPaid
-    if (hasBecomePaid) {
-      const res = await enqueueShopifyNotification(
-        supabase,
-        accountId,
-        contact.id,
-        phone || '',
-        'payment_received',
-        {
-          customer_name: customerFirstName,
-          order_number: orderNumber,
-          total_price: totalPrice.toFixed(2),
-        }
-      )
-      if (res.status === 'enqueued') lastStatus = 'success'
-      if (res.status === 'error') {
-        lastStatus = 'failed'
-        lastMessage += `Paid: ${res.message || 'error'}. `
-      }
-    }
+    scheduleImmediateWhatsAppJobs(jobIds)
 
-    // 4) Handle order_delivered trigger when fulfillment status transitions to fulfilled
-    const hasBecomeFulfilled = fulfillmentStatus === 'fulfilled' && existingOrder?.fulfillment_status !== 'fulfilled'
-    if (hasBecomeFulfilled) {
-      const res = await enqueueShopifyNotification(
-        supabase,
-        accountId,
-        contact.id,
-        phone || '',
-        'order_delivered',
-        {
-          customer_name: customerFirstName,
-          order_number: orderNumber,
-        }
-      )
-      if (res.status === 'enqueued') lastStatus = 'success'
-      if (res.status === 'error') {
-        lastStatus = 'failed'
-        lastMessage += `Delivered: ${res.message || 'error'}. `
-      }
-    }
-
-    // Log success or skipped
     await supabase.from('shopify_webhook_logs').insert({
       account_id: accountId,
       topic,
       payload,
-      status: lastStatus === 'failed' ? 'failed' : (lastStatus === 'skipped_not_activated' ? 'skipped_not_activated' : 'success'),
+      status: lastStatus,
       error_message: lastMessage || (lastStatus === 'skipped_not_activated' ? 'skipped_not_activated' : null),
     })
 

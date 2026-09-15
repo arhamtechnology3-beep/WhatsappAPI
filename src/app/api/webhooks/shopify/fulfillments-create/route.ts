@@ -5,6 +5,7 @@ import {
   getShopifyAccountContext,
   enqueueShopifyNotification,
 } from '@/lib/shopify/shopify-helper'
+import { scheduleImmediateWhatsAppJobs } from '@/lib/whatsapp/process-send-jobs'
 
 export async function POST(request: Request) {
   const rawBody = await request.text()
@@ -73,9 +74,11 @@ export async function POST(request: Request) {
           customer_name: customerFirstName,
           order_number: orderNumber,
           tracking_url: trackingUrl || 'Not Available',
+          shopify_order_id: shopifyOrderId,
         }
       )
       notifyRes = { status: res.status, message: res.message }
+      scheduleImmediateWhatsAppJobs(res.jobIds || [])
     }
 
     // Log success or skipped

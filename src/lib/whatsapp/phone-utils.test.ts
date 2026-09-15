@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  toMetaPhone,
+  hasWhatsAppPhone,
   isRecipientNotAllowedError,
+  isUndeliverableRecipientError,
   isValidE164,
   normalizePhone,
   phoneVariants,
@@ -26,6 +29,24 @@ describe("sanitizePhoneForMeta", () => {
     const cleaned = "14155551212";
     expect(sanitizePhoneForMeta(cleaned)).toBe(cleaned);
   });
+
+  it("stores Indian numbers as Meta digits with country code", () => {
+    expect(sanitizePhoneForMeta("+91 98203 68269")).toBe("919820368269");
+    expect(sanitizePhoneForMeta("9820368269")).toBe("919820368269");
+    expect(sanitizePhoneForMeta("09820368269")).toBe("919820368269");
+    expect(sanitizePhoneForMeta("919820368269")).toBe("919820368269");
+  });
+});
+
+describe("toMetaPhone", () => {
+  it("leaves non-Indian international numbers as digits only", () => {
+    expect(toMetaPhone("+370 639 49836")).toBe("37063949836");
+  });
+
+  it("returns empty for blank input", () => {
+    expect(toMetaPhone(null)).toBe("");
+    expect(toMetaPhone("   ")).toBe("");
+  });
 });
 
 describe("toMetaPhone", () => {
@@ -37,11 +58,11 @@ describe("toMetaPhone", () => {
 });
 
 describe("normalizePhone", () => {
-  it("matches sanitizePhoneForMeta byte-for-byte (shared canonical form)", () => {
-    const samples = ["+370 12345", "abc-555-DEF", "", "0044 7000 0000 0000"];
-    for (const s of samples) {
-      expect(normalizePhone(s)).toBe(sanitizePhoneForMeta(s));
-    }
+  it("strips non-digits without adding a country code", () => {
+    expect(normalizePhone("+370 12345")).toBe("37012345");
+    expect(normalizePhone("abc-555-DEF")).toBe("555");
+    expect(normalizePhone("")).toBe("");
+    expect(normalizePhone("0044 7000 0000 0000")).toBe("0044700000000000");
   });
 });
 
@@ -71,9 +92,9 @@ describe("phonesMatch", () => {
     expect(phonesMatch("1234567", "9991234567")).toBe(false);
   });
 
-  it("ignores formatting noise on both sides", () => {
-    expect(phonesMatch("+370 6 394 9836", "37063949836")).toBe(true);
-    expect(phonesMatch("(415) 555-1212", "+1 415-555-1212")).toBe(true);
+  it("treats spaced +91 and bare 10-digit Indian mobiles as the same number", () => {
+    expect(phonesMatch("+91 98203 68269", "9820368269")).toBe(true);
+    expect(phonesMatch("919820368269", "09820368269")).toBe(true);
   });
 });
 
@@ -174,5 +195,37 @@ describe("isRecipientNotAllowedError", () => {
       false,
     );
     expect(isRecipientNotAllowedError("")).toBe(false);
+  });
+});
+
+describe("isUndeliverableRecipientError", () => {
+  it("matches Meta error code 131026", () => {
+    expect(
+      isUndeliverableRecipientError(
+        "(#131026) Message undeliverable",
+      ),
+    ).toBe(true);
+  });
+
+  it("does not match sandbox or unrelated errors", () => {
+    expect(isUndeliverableRecipientError("(#131030) not in allowed list")).toBe(
+      false,
+    );
+    expect(isUndeliverableRecipientError("(#100) Invalid parameter")).toBe(false);
+  });
+});
+
+describe("hasWhatsAppPhone", () => {
+  it("is false for blank / email-only placeholders", () => {
+    expect(hasWhatsAppPhone("")).toBe(false);
+    expect(hasWhatsAppPhone(null)).toBe(false);
+    expect(hasWhatsAppPhone("   ")).toBe(false);
+    expect(hasWhatsAppPhone("123")).toBe(false);
+  });
+
+  it("is true for a real E.164-like number", () => {
+    expect(hasWhatsAppPhone("919769104020")).toBe(true);
+    expect(hasWhatsAppPhone("+91 97691 04020")).toBe(true);
+    expect(hasWhatsAppPhone("9769104020")).toBe(true);
   });
 });

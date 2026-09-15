@@ -146,6 +146,15 @@ vi.mock('@/lib/whatsapp/meta-api', () => ({
   sendMediaMessage: vi.fn(),
 }))
 
+vi.mock('@/lib/shopify/active-discount', () => ({
+  fetchActiveShopifyDiscount: vi.fn(async () => null),
+}))
+
+vi.mock('@/lib/shopify/product-image', () => ({
+  resolveContactShopifyHeaderImage: vi.fn(async () => null),
+  fetchShopifyCatalogHeaderImage: vi.fn(async () => null),
+}))
+
 import { POST } from './route'
 
 function postContactTemplate(overrides: Record<string, unknown> = {}) {

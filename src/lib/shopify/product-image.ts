@@ -130,6 +130,17 @@ export function extractProductImageUrlFromLineItems(lineItems: unknown): string 
   return null
 }
 
+export function extractProductTitleFromLineItems(lineItems: unknown): string {
+  if (!Array.isArray(lineItems) || lineItems.length === 0) return ''
+  for (const raw of lineItems) {
+    if (!raw || typeof raw !== 'object') continue
+    const item = raw as Record<string, unknown>
+    const title = item.title || item.name
+    if (typeof title === 'string' && title.trim()) return title.trim()
+  }
+  return ''
+}
+
 export function extractProductIdFromLineItems(lineItems: unknown): string | null {
   if (!Array.isArray(lineItems) || lineItems.length === 0) return null
   for (const raw of lineItems) {

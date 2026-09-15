@@ -26,8 +26,11 @@ Pre-configured **DivyaPrabha Foods** recipes (Farm Didi-style Hinglish, image he
 | `wacrm_cart_reminder_step3_v2` | MARKETING | Approved | 24 h | Cart drip step 3 |
 | `wacrm_cod_confirmation_v2` | UTILITY | Approved | immediate | COD order |
 | `wacrm_order_confirmed_v2` | UTILITY | Approved | immediate | Prepaid order |
-| `wacrm_order_shipped_v2` | UTILITY | Approved | immediate | Shipped |
+| `wacrm_order_shipped_v2` | UTILITY | Approved | immediate | Shipped / first courier scan |
+| `wacrm_order_in_transit_v1` | UTILITY | Draft until submitted | immediate | Shiprocket / Delhivery / AfterShip pickup |
+| `wacrm_order_ofd_v1` | UTILITY | Draft until submitted | immediate | Out for delivery |
 | `wacrm_order_delivered_v2` | UTILITY | Approved | immediate | Delivered |
+| `wacrm_order_ndr_v1` | UTILITY | Draft until submitted | immediate | Failed delivery (NDR) |
 | `wacrm_festival_broadcast_v2` | MARKETING | Approved | 30 min | New Shopify contact (also Broadcasts) |
 | `wacrm_shop_now_followup_v1` | MARKETING | Draft until submitted | 5 hr (9:30 AM–8:30 PM IST) | New Shopify contact step 2 |
 
@@ -58,4 +61,11 @@ Full copy lives in `src/lib/shopify/whatsapp-template-library.ts`.
 
 ## Not in this version
 
-Carousel / catalog cards, Shiprocket OFD–Delivered–NDR, back-in-stock, price-drop, replenishment, and VIP winback are not wired yet.
+Carousel / catalog cards, back-in-stock, price-drop, replenishment, and VIP winback are not wired yet.
+
+## Logistics WhatsApp (Shiprocket, Delhivery, AfterShip)
+
+1. Apply `051_logistics_whatsapp_integrations.sql`.
+2. Integrations → connect the partner → copy the webhook URL into that dashboard.
+3. Install recipes and submit `wacrm_order_in_transit_v1`, `wacrm_order_ofd_v1`, `wacrm_order_ndr_v1`. Until they are Approved, in-transit falls back to `wacrm_order_shipped_v2`.
+4. AfterShip covers Bluedart, DTDC, Xpressbees, India Post and other slugs from one webhook.

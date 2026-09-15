@@ -88,8 +88,7 @@ export async function processWhatsAppSendJobs(opts?: {
       .update({
         attempts: nextAttempt,
         last_error: 'sending',
-        updated_at: new Date().toISOString(),
-      } as Record<string, unknown>)
+      })
       .eq('id', job.id)
       .eq('attempts', job.attempts || 0)
       .in('status', ['pending', 'failed'])
@@ -120,8 +119,7 @@ export async function processWhatsAppSendJobs(opts?: {
             .update({
               status: 'sent',
               last_error: 'skipped_sequence_owns_cart_drip',
-              updated_at: new Date().toISOString(),
-            } as Record<string, unknown>)
+            })
             .eq('id', job.id)
           processed++
           continue
@@ -142,8 +140,7 @@ export async function processWhatsAppSendJobs(opts?: {
             status: 'failed',
             attempts: 3,
             last_error: 'skipped: contact has no mobile number',
-            updated_at: new Date().toISOString(),
-          } as Record<string, unknown>)
+          })
           .eq('id', job.id)
         failed++
         continue
@@ -181,8 +178,7 @@ export async function processWhatsAppSendJobs(opts?: {
           status: 'sent',
           attempts: nextAttempt,
           last_error: null,
-          updated_at: new Date().toISOString(),
-        } as Record<string, unknown>)
+        })
         .eq('id', job.id)
 
       if (job.workflow_log_id) {

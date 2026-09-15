@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { sendMediaMessage, uploadMediaFromUrl } from "./meta-api";
+import { sendMediaMessage } from "./meta-api";
 
 // Capture the JSON body each helper POSTs to Meta so we can assert the
 // exact payload shape per media kind without hitting the network.
@@ -75,60 +75,5 @@ describe("sendMediaMessage — payload shape", () => {
     await expect(
       sendMediaMessage({ ...BASE, link: "", kind: "image" }),
     ).rejects.toThrow(/requires a link/);
-  });
-});
-
-describe("uploadMediaFromUrl", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-  });
-
-  it("uploads jpeg bytes to /media and returns the id", async () => {
-    const jpeg = new Uint8Array([0xff, 0xd8, 0xff, ...Array(40).fill(0)]);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string | URL) => {
-        const href = String(url);
-        if (href.includes("cdn.example.com")) {
-          return {
-            ok: true,
-            headers: new Headers({ "content-type": "image/jpeg" }),
-            arrayBuffer: async () => jpeg.buffer,
-          } as Response;
-        }
-        expect(href).toContain("/media");
-        return {
-          ok: true,
-          json: async () => ({ id: "MEDIA123" }),
-        } as Response;
-      }),
-    );
-
-    await expect(
-      uploadMediaFromUrl({
-        phoneNumberId: "test-phone",
-        accessToken: "test-token",
-        sourceUrl: "https://cdn.example.com/pickle.jpg",
-      }),
-    ).resolves.toBe("MEDIA123");
-  });
-
-  it("rejects webp that Meta cannot use as a template header", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({
-        ok: true,
-        headers: new Headers({ "content-type": "image/webp" }),
-        arrayBuffer: async () => new Uint8Array(40).buffer,
-      })),
-    );
-
-    await expect(
-      uploadMediaFromUrl({
-        phoneNumberId: "test-phone",
-        accessToken: "test-token",
-        sourceUrl: "https://cdn.example.com/a.webp",
-      }),
-    ).rejects.toThrow(/Unsupported header image type/);
   });
 });

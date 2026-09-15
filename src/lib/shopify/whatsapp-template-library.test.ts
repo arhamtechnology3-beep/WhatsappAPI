@@ -41,6 +41,9 @@ describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
         'wacrm_cod_confirmation_v2',
         'wacrm_festival_broadcast_v2',
         'wacrm_shop_now_followup_v1',
+        'wacrm_order_in_transit_v1',
+        'wacrm_order_ofd_v1',
+        'wacrm_order_ndr_v1',
       ]),
     )
   })
@@ -70,6 +73,8 @@ describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
     for (const name of [
       'wacrm_order_confirmed_v2',
       'wacrm_order_shipped_v2',
+      'wacrm_order_in_transit_v1',
+      'wacrm_order_ofd_v1',
     ]) {
       const recipe = SHOPIFY_TEMPLATE_LIBRARY.find((r) => r.template_name === name)!
       const track = recipe.buttons.find((b) => b.type === 'URL' && b.text === 'Track Order')

@@ -67,8 +67,11 @@ export async function GET() {
       // Clean up sensitive data before returning to frontend
       const cleanConfig = { ...(merchantConfig?.config || {}) };
       delete cleanConfig.encrypted_secret;
+      delete cleanConfig.encrypted_password;
+      delete cleanConfig.encrypted_token;
       delete cleanConfig.keySecret;
       delete cleanConfig.password;
+      delete cleanConfig.api_key;
       delete cleanConfig.clientSecret;
 
       return {
@@ -81,7 +84,7 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ integrations: results });
+    return NextResponse.json({ integrations: results, account_id: accountId });
   } catch (err: any) {
     console.error("[GET /api/integrations] error:", err.message || err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

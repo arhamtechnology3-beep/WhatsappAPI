@@ -97,6 +97,22 @@ const CashfreeIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
+const LOGISTICS_KEYS = new Set(['shiprocket', 'delhivery', 'aftership']);
+
+const DelhiveryIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" className={className} xmlns="http://www.w3.org/2000/svg">
+    <rect width="24" height="24" rx="6" fill="#E02020" />
+    <path d="M6 12h12M12 6v12" stroke="#FFF" strokeWidth="2.2" strokeLinecap="round" />
+  </svg>
+);
+
+const AfterShipIcon = ({ className }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" className={className} xmlns="http://www.w3.org/2000/svg">
+    <rect width="24" height="24" rx="6" fill="#FF6B2C" />
+    <path d="M7 16l5-9 5 9H7z" fill="#FFF" />
+  </svg>
+);
+
 export default function IntegrationsPage() {
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
@@ -117,6 +133,10 @@ export default function IntegrationsPage() {
   const [cashfreeClientSecret, setCashfreeClientSecret] = useState('');
   const [cashfreeEnvironment, setCashfreeEnvironment] = useState('SANDBOX');
 
+  const [delhiveryToken, setDelhiveryToken] = useState('');
+  const [aftershipKey, setAftershipKey] = useState('');
+  const [accountId, setAccountId] = useState('');
+
   const [submitting, setSubmitting] = useState(false);
 
   const fetchIntegrations = useCallback(async (silent = false) => {
@@ -126,6 +146,7 @@ export default function IntegrationsPage() {
       if (res.ok) {
         const data = await res.json();
         setIntegrations(data.integrations || []);
+        if (data.account_id) setAccountId(data.account_id);
 
         // Sync currently open drawer if any details refreshed
         if (selectedIntegration) {
@@ -159,6 +180,10 @@ export default function IntegrationsPage() {
     } else if (integration.key === 'generic_webhook') {
       setWebhookTrigger('payment.captured');
       setWebhookTarget('');
+    } else if (integration.key === 'delhivery') {
+      setDelhiveryToken('');
+    } else if (integration.key === 'aftership') {
+      setAftershipKey('');
     } else if (integration.key === 'cashfree') {
       setCashfreeClientId(integration.config.clientId || '');
       setCashfreeClientSecret('');
@@ -179,6 +204,10 @@ export default function IntegrationsPage() {
         body = { email: shiprocketEmail, password: shiprocketPassword };
       } else if (selectedIntegration.key === 'generic_webhook') {
         body = { trigger_event: webhookTrigger, target_url: webhookTarget };
+      } else if (selectedIntegration.key === 'delhivery') {
+        body = { apiToken: delhiveryToken };
+      } else if (selectedIntegration.key === 'aftership') {
+        body = { apiKey: aftershipKey };
       } else if (selectedIntegration.key === 'cashfree') {
         body = { clientId: cashfreeClientId, clientSecret: cashfreeClientSecret, environment: cashfreeEnvironment };
       }
@@ -244,6 +273,12 @@ export default function IntegrationsPage() {
     toast.success('Webhook URL copied to clipboard');
   };
 
+  const logisticsWebhookUrl = (key: string) => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const q = accountId ? `?account_id=${encodeURIComponent(accountId)}` : '';
+    return `${origin}/api/webhooks/${key}${q}`;
+  };
+
   const renderIcon = (key: string, sizeClass = 'size-8') => {
     switch (key) {
       case 'shopify':
@@ -252,6 +287,10 @@ export default function IntegrationsPage() {
         return <RazorpayIcon className={sizeClass} />;
       case 'shiprocket':
         return <ShiprocketIcon className={sizeClass} />;
+      case 'delhivery':
+        return <DelhiveryIcon className={sizeClass} />;
+      case 'aftership':
+        return <AfterShipIcon className={sizeClass} />;
       case 'generic_webhook':
         return <WebhookIcon className={`${sizeClass} text-indigo-500`} />;
       case 'cashfree':
@@ -459,6 +498,30 @@ export default function IntegrationsPage() {
                   {selectedIntegration.description}
                 </p>
 
+                {LOGISTICS_KEYS.has(selectedIntegration.key) && (
+                  <div className="space-y-2 p-3 rounded-lg bg-muted/30 border border-border">
+                    <h4 className="font-bold text-foreground">WhatsApp tracking webhook</h4>
+                    <p className="text-muted-foreground leading-relaxed">
+                      Paste this URL in {selectedIntegration.name} webhooks. Pickup, out-for-delivery,
+                      delivered, and failed-delivery scans send the customer a WhatsApp with product
+                      image and Track Order.
+                    </p>
+                    <code className="block mt-1 font-mono p-2 bg-card rounded text-foreground text-[10px] border border-border break-all">
+                      {logisticsWebhookUrl(selectedIntegration.key)}
+                    </code>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-[10px]"
+                      onClick={() => copyToClipboard(logisticsWebhookUrl(selectedIntegration.key))}
+                    >
+                      <Copy className="size-3 mr-1" />
+                      Copy webhook URL
+                    </Button>
+                  </div>
+                )}
+
                 {selectedIntegration.status === 'connected' && (
                   <Alert className="bg-emerald-500/5 border-emerald-500/20 text-emerald-700">
                     <div className="flex items-center gap-2">
@@ -568,6 +631,55 @@ export default function IntegrationsPage() {
                       className="w-full bg-primary hover:bg-primary/95 text-primary-foreground font-semibold text-xs py-2 shadow-xs"
                     >
                       {submitting ? 'Authenticating...' : selectedIntegration.status === 'connected' ? 'Update Credentials' : 'Connect Shiprocket'}
+                    </Button>
+                  </form>
+                )}
+
+                {selectedIntegration.key === 'delhivery' && (
+                  <form onSubmit={handleConnect} className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground font-semibold">API Token</Label>
+                      <Input
+                        type="password"
+                        value={delhiveryToken}
+                        onChange={(e) => setDelhiveryToken(e.target.value)}
+                        placeholder={selectedIntegration.status === 'connected' ? '••••••••••••••••' : 'Delhivery API token'}
+                        required={selectedIntegration.status !== 'connected'}
+                        className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-9 text-xs"
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      disabled={submitting}
+                      className="w-full bg-primary hover:bg-primary/95 text-primary-foreground font-semibold text-xs py-2 shadow-xs"
+                    >
+                      {submitting ? 'Saving...' : selectedIntegration.status === 'connected' ? 'Update Token' : 'Connect Delhivery'}
+                    </Button>
+                  </form>
+                )}
+
+                {selectedIntegration.key === 'aftership' && (
+                  <form onSubmit={handleConnect} className="space-y-4">
+                    <div className="space-y-1.5">
+                      <Label className="text-muted-foreground font-semibold">API Key</Label>
+                      <Input
+                        type="password"
+                        value={aftershipKey}
+                        onChange={(e) => setAftershipKey(e.target.value)}
+                        placeholder={selectedIntegration.status === 'connected' ? '••••••••••••••••' : 'AfterShip API key'}
+                        required={selectedIntegration.status !== 'connected'}
+                        className="bg-muted border-border text-foreground placeholder:text-muted-foreground h-9 text-xs"
+                      />
+                      <p className="text-[10px] text-muted-foreground">
+                        Covers Bluedart, DTDC, Xpressbees, India Post and other AfterShip couriers.
+                      </p>
+                    </div>
+                    <Button
+                      type="submit"
+                      disabled={submitting}
+                      className="w-full bg-primary hover:bg-primary/95 text-primary-foreground font-semibold text-xs py-2 shadow-xs"
+                    >
+                      {submitting ? 'Saving...' : selectedIntegration.status === 'connected' ? 'Update Key' : 'Connect AfterShip'}
                     </Button>
                   </form>
                 )}

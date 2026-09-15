@@ -8,7 +8,7 @@ import {
   enqueueShopifyNotification,
   moveDealToStageName,
 } from '@/lib/shopify/shopify-helper'
-import { withShopifyProductImages } from '@/lib/shopify/product-image'
+import { withShopifyProductImages, extractProductTitleFromLineItems } from '@/lib/shopify/product-image'
 import {
   extractShopifyCustomerIdentity,
   isShopifyCodOrder,
@@ -179,6 +179,7 @@ export async function POST(request: Request) {
         customer_name: customerFirstName,
         order_number: orderNumber,
         total_price: totalPrice.toFixed(2),
+        product_name: extractProductTitleFromLineItems(lineItems),
         is_cod: isCod,
         shopify_order_id: orderId,
       }

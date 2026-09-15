@@ -97,6 +97,47 @@ export async function POST(
         email: email.trim(),
         encrypted_password: encrypt(password.trim()),
       };
+    } else if (key === "delhivery") {
+      const { apiToken } = body;
+      if (!apiToken?.trim()) {
+        return NextResponse.json({ error: "Delhivery API token is required" }, { status: 400 });
+      }
+      const token = apiToken.trim();
+      try {
+        const probe = await fetch(
+          "https://track.delhivery.com/api/kinko/v1/fetch/package/json/?waybill=0",
+          { headers: { Authorization: `Token ${token}`, Accept: "application/json" } },
+        );
+        if (probe.status === 401 || probe.status === 403) {
+          return NextResponse.json({ error: "Invalid Delhivery API token" }, { status: 400 });
+        }
+      } catch {
+        // Token stored anyway — webhook URL still works without a live probe.
+      }
+      connectionLabel = "Delhivery API";
+      configData = { encrypted_token: encrypt(token) };
+    } else if (key === "aftership") {
+      const { apiKey } = body;
+      if (!apiKey?.trim()) {
+        return NextResponse.json({ error: "AfterShip API key is required" }, { status: 400 });
+      }
+      const keyVal = apiKey.trim();
+      try {
+        const probe = await fetch("https://api.aftership.com/tracking/2024-04/couriers", {
+          headers: {
+            "as-api-key": keyVal,
+            "aftership-api-key": keyVal,
+            Accept: "application/json",
+          },
+        });
+        if (probe.status === 401 || probe.status === 403) {
+          return NextResponse.json({ error: "Invalid AfterShip API key" }, { status: 400 });
+        }
+      } catch {
+        // Token stored anyway — webhook URL still works without a live probe.
+      }
+      connectionLabel = "AfterShip";
+      configData = { encrypted_token: encrypt(keyVal) };
     } else if (key === "cashfree") {
       const { clientId, clientSecret, environment } = body;
       if (!clientId?.trim() || !clientSecret?.trim()) {

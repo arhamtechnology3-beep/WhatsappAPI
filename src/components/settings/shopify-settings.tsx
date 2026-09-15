@@ -342,6 +342,9 @@ export function ShopifySettings() {
       case 'cod_confirmation': return 'COD Confirmation'
       case 'order_fulfilled': return 'Order Shipped'
       case 'order_delivered': return 'Order Delivered'
+      case 'shipment_in_transit': return 'In Transit'
+      case 'shipment_ofd': return 'Out for Delivery'
+      case 'shipment_ndr': return 'Delivery failed (NDR)'
       default: return type
     }
   }

@@ -17,12 +17,33 @@ export interface ShopifyCustomerPayload {
 }
 
 /**
- * Resolves the default account and owner user ID for single-tenant wacrm setups.
+ * Resolves the account that can send Shopify WhatsApp.
+ * Multiple `accounts` rows make `limit(1)` non-deterministic and can
+ * attach store webhooks to a tenant with no WABA.
  */
 export async function getShopifyAccountContext(supabase: SupabaseClient): Promise<{
   accountId: string
   userId: string
 }> {
+  const { data: wa } = await supabase
+    .from('whatsapp_config')
+    .select('account_id, user_id')
+    .not('account_id', 'is', null)
+    .limit(1)
+    .maybeSingle()
+
+  if (wa?.account_id) {
+    const { data: linked } = await supabase
+      .from('accounts')
+      .select('id, owner_user_id')
+      .eq('id', wa.account_id)
+      .maybeSingle()
+    return {
+      accountId: wa.account_id,
+      userId: linked?.owner_user_id || wa.user_id,
+    }
+  }
+
   const { data, error } = await supabase
     .from('accounts')
     .select('id, owner_user_id')
@@ -405,10 +426,24 @@ const TRIGGER_EVENT_MAP: Record<string, string[]> = {
   order_created: ['order_created'],
   order_fulfilled: ['fulfillment_shipped'],
   order_delivered: ['delivered'],
+  shipment_in_transit: [],
+  shipment_ofd: [],
+  shipment_ndr: [],
   order_cancelled: ['order_cancelled'],
   payment_refunded: ['payment_refunded'],
   payment_received: ['payment_received'],
-};
+}
+
+const LAST_RESORT_TEMPLATES: Partial<Record<string, string[]>> = {
+  order_created: ['wacrm_order_confirmed_v2'],
+  order_fulfilled: ['wacrm_order_shipped_v2'],
+  shipment_in_transit: ['wacrm_order_in_transit_v1', 'wacrm_order_shipped_v2'],
+  shipment_ofd: ['wacrm_order_ofd_v1'],
+  shipment_ndr: ['wacrm_order_ndr_v1'],
+  order_delivered: ['wacrm_order_delivered_v2'],
+}
+
+const DISPATCH_TRIGGERS = new Set(['order_fulfilled', 'shipment_in_transit']);
 
 function getVariablesForTemplate(templateName: string, key: string): string[] {
   const recipe = recipeByName(templateName)
@@ -431,6 +466,9 @@ export type ShopifyNotifyTrigger =
   | 'order_created'
   | 'order_fulfilled'
   | 'order_delivered'
+  | 'shipment_in_transit'
+  | 'shipment_ofd'
+  | 'shipment_ndr'
   | 'order_cancelled'
   | 'payment_refunded'
   | 'payment_received'
@@ -443,8 +481,11 @@ export interface ShopifyNotifyData {
   order_number?: string
   total_price?: string
   tracking_url?: string
+  courier_name?: string
+  awb?: string
   is_cod?: boolean
   shopify_order_id?: string
+  ndr_bucket?: string
 }
 
 export interface EnqueueNotificationResult {
@@ -514,21 +555,21 @@ async function insertOrReuseSendJob(
             status: 'pending',
             attempts: 0,
             last_error: null,
-            recipient_phone: row.recipient_phone,
             template_params: row.template_params,
             run_at: row.run_at,
-            updated_at: new Date().toISOString(),
-          } as Record<string, unknown>)
+          })
           .eq('id', existing.id)
       }
       return existing.id
     }
   }
 
+  // Production `whatsapp_send_jobs` has no recipient_phone / updated_at
+  // (027 + 048). Writing those columns returns PGRST204 and the order
+  // WhatsApp is skipped. Phone is read from contacts at send time.
   const payload = {
     account_id: row.account_id,
     contact_id: row.contact_id,
-    recipient_phone: row.recipient_phone,
     template_name: row.template_name,
     template_params: row.template_params,
     status: 'pending',
@@ -576,6 +617,18 @@ function notifyIdempotencyKey(
   templateName: string,
   data: ShopifyNotifyData,
 ): string | null {
+  if (DISPATCH_TRIGGERS.has(triggerType) && data.shopify_order_id) {
+    return `shipment_dispatched:${data.shopify_order_id}`
+  }
+  if (triggerType === 'shipment_ofd' && data.shopify_order_id) {
+    return `shipment_ofd:${data.shopify_order_id}`
+  }
+  if (triggerType === 'order_delivered' && data.shopify_order_id) {
+    return `shipment_delivered:${data.shopify_order_id}`
+  }
+  if (triggerType === 'shipment_ndr' && data.shopify_order_id) {
+    return `shipment_ndr:${data.shopify_order_id}:${data.ndr_bucket || 'ndr'}`
+  }
   if (data.shopify_order_id) {
     return `${triggerType}:${data.shopify_order_id}:${templateName}`
   }
@@ -722,7 +775,7 @@ export async function enqueueShopifyNotification(
           ? codRule.template_variable_mapping
           : ['customer_name', 'order_number', 'total_price']
         await queueJob({
-          templateName: codRule.template_name,
+          templateName: canonicalRecipeName(codRule.template_name),
           templateKey: 'cod_confirmation',
           templateParams: mapTemplateParams(mapping, data),
           delayMinutes: codRule.delay_minutes ?? 0,
@@ -750,7 +803,7 @@ export async function enqueueShopifyNotification(
           ? rule.template_variable_mapping
           : []
         await queueJob({
-          templateName: rule.template_name,
+          templateName: canonicalRecipeName(rule.template_name),
           templateKey: ruleTrigger,
           templateParams: mapTemplateParams(mapping, data),
           delayMinutes: rule.delay_minutes ?? 0,
@@ -758,19 +811,40 @@ export async function enqueueShopifyNotification(
       }
     }
 
-    // Transactional order messages must never silently drop if workflows/rules
-    // were paused. Queue the utility confirmation (and COD extra) as last resort.
-    if (jobIds.length === 0 && triggerType === 'order_created') {
-      await queueJob({
-        templateName: canonicalRecipeName('wacrm_order_confirmed_v1'),
-        templateKey: 'order_confirmation',
-        templateParams: mapTemplateParams(
-          ['customer_name', 'order_number', 'total_price'],
-          data,
-        ),
-        delayMinutes: 0,
-      })
-      if (data.is_cod) {
+    // Transactional order + shipment messages must never silently drop if
+    // workflows/rules were paused. Queue the utility recipe as last resort.
+    if (jobIds.length === 0) {
+      const lastResortNames = LAST_RESORT_TEMPLATES[triggerType] || []
+      let chosen = lastResortNames[0] ? canonicalRecipeName(lastResortNames[0]) : ''
+      if (lastResortNames.length > 1) {
+        const { data: approved } = await supabase
+          .from('message_templates')
+          .select('name, status')
+          .eq('account_id', accountId)
+          .in('name', lastResortNames.map((n) => canonicalRecipeName(n)))
+        const approvedSet = new Set(
+          (approved || [])
+            .filter((row) => String(row.status || '').toUpperCase() === 'APPROVED')
+            .map((row) => row.name),
+        )
+        chosen =
+          lastResortNames
+            .map((n) => canonicalRecipeName(n))
+            .find((n) => approvedSet.has(n)) || chosen
+      }
+      if (chosen) {
+        const recipe = recipeByName(chosen)
+        await queueJob({
+          templateName: chosen,
+          templateKey: triggerType,
+          templateParams: mapTemplateParams(
+            recipe ? [...recipe.variables] : ['customer_name', 'order_number', 'total_price'],
+            data,
+          ),
+          delayMinutes: 0,
+        })
+      }
+      if (triggerType === 'order_created' && data.is_cod) {
         await queueJob({
           templateName: canonicalRecipeName('wacrm_cod_confirmation_v1'),
           templateKey: 'cod_confirmation',

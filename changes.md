@@ -31,6 +31,41 @@ Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Te
 
 ---
 
+## [2026-09-16 02:20] Feat (Logistics) — Shiprocket + Delhivery + AfterShip WhatsApp tracking
+
+### Root Cause
+- New Shopify orders and courier scans did not send a consistent WhatsApp journey. Shiprocket webhook used a missing `wacrm_shipping_update` template and `hello_world` fallback. Other couriers were not in Integrations.
+
+### Objective & Fixes
+- Order placed → confirmation (image + Track/Shop). COD still gets the Yes/Cancel extra.
+- Courier scans map to in-transit, out-for-delivery, delivered, NDR. Product image + CTA. Same pipeline for **Shiprocket, Delhivery, AfterShip** (Bluedart / DTDC / Xpressbees / India Post via AfterShip).
+- Integrations cards for Delhivery and AfterShip, each with a copyable webhook URL.
+- Shopify `fulfilled` no longer sends the delivered template (that is shipped). Delivered comes from the courier.
+- Install recipes, then submit the three new UTILITY drafts. Apply `051_logistics_whatsapp_integrations.sql`.
+
+### Files Modified
+- `src/lib/shiprocket/status.ts`
+- `src/lib/shiprocket/status.test.ts`
+- `src/lib/logistics/adapters.ts`
+- `src/lib/logistics/notify.ts`
+- `src/app/api/webhooks/shiprocket/route.ts`
+- `src/app/api/webhooks/delhivery/route.ts`
+- `src/app/api/webhooks/aftership/route.ts`
+- `src/app/api/integrations/route.ts`
+- `src/app/api/integrations/[key]/connect/route.ts`
+- `src/app/(dashboard)/integrations/page.tsx`
+- `src/lib/shopify/shopify-helper.ts`
+- `src/lib/shopify/whatsapp-template-library.ts`
+- `src/app/api/webhooks/shopify/orders-create/route.ts`
+- `src/app/api/webhooks/shopify/orders-updated/route.ts`
+- `supabase/migrations/051_logistics_whatsapp_integrations.sql`
+- `docs/whatsapp-template-setup.md`
+- `changes.md`
+
+### Live
+- Not pushed.
+- Migration required: `supabase/migrations/051_logistics_whatsapp_integrations.sql`
+
 ## [2026-08-24 00:15] Fix (Build) — restore missing import so Hostinger deploy succeeds
 
 ### Root Cause

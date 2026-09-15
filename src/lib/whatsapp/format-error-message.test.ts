@@ -17,9 +17,9 @@ describe('formatWhatsAppErrorMessage', () => {
 
   it('does not treat media upload #131053 as an opt-out', () => {
     const formatted = formatWhatsAppErrorMessage('#131053 — Media upload error')
-    expect(formatted).toContain('#131053')
-    expect(formatted.toLowerCase()).not.toContain('opted out')
-    expect(formatted.toLowerCase()).toContain('header image')
+    expect(formatted!).toContain('#131053')
+    expect(formatted!.toLowerCase()).not.toContain('opted out')
+    expect(formatted!.toLowerCase()).toContain('header image')
   })
 
   it('maps #131050 to marketing opt-out', () => {

@@ -36,6 +36,9 @@ export type ShopifyRecipeTrigger =
   | 'order_created'
   | 'order_fulfilled'
   | 'order_delivered'
+  | 'shipment_in_transit'
+  | 'shipment_ofd'
+  | 'shipment_ndr'
   | 'broadcast'
 
 export type RecipeUrlSource =
@@ -446,6 +449,68 @@ Fridge zaroori nahi — dry jar, sookhe chamach se nikalein, swad mahino tak rah
     ],
     button_url_sources: [null, null],
     sample_values: { body: ['Jesal', '1001'] },
+  },
+  {
+    trigger_type: 'shipment_in_transit',
+    template_name: 'wacrm_order_in_transit_v1',
+    category: 'UTILITY',
+    language: WACRM_TEMPLATE_LANGUAGE,
+    body: `Namaste {{1}}! Order #{{2}} courier ke saath nikal gaya hai 🚚
+
+Courier: {{3}}
+AWB: {{4}}
+
+✅ Freshness sealed
+✅ Track button se live status dekho`,
+    variables: ['customer_name', 'order_number', 'courier_name', 'awb'],
+    default_delay_minutes: 0,
+    header_type: 'image',
+    footer_text: 'DivyaPrabha Foods',
+    buttons: [trackOrder(), shopFromWhatsApp()],
+    button_url_sources: [null, null],
+    sample_values: { body: ['Jesal', '1001', 'Delhivery', '123456789012'] },
+  },
+  {
+    trigger_type: 'shipment_ofd',
+    template_name: 'wacrm_order_ofd_v1',
+    category: 'UTILITY',
+    language: WACRM_TEMPLATE_LANGUAGE,
+    body: `Namaste {{1}}! Order #{{2}} aaj delivery ke liye nikal pada hai 🛵
+
+Courier: {{3}} aaj doorstep pe aa sakta hai.
+
+✅ Phone reachable rakhein
+✅ Track button se rider status dekho`,
+    variables: ['customer_name', 'order_number', 'courier_name'],
+    default_delay_minutes: 0,
+    header_type: 'image',
+    footer_text: 'DivyaPrabha Foods',
+    buttons: [trackOrder(), shopFromWhatsApp()],
+    button_url_sources: [null, null],
+    sample_values: { body: ['Jesal', '1001', 'Delhivery'] },
+  },
+  {
+    trigger_type: 'shipment_ndr',
+    template_name: 'wacrm_order_ndr_v1',
+    category: 'UTILITY',
+    language: WACRM_TEMPLATE_LANGUAGE,
+    body: `Namaste {{1}}, order #{{2}} aaj deliver nahi ho paya 📦
+
+Courier: {{3}} dobara attempt karega.
+
+✅ Phone on rakhein
+✅ Address clear rakhein
+✅ Reply karke next slot bata sakte hain`,
+    variables: ['customer_name', 'order_number', 'courier_name'],
+    default_delay_minutes: 0,
+    header_type: 'image',
+    footer_text: 'DivyaPrabha Foods',
+    buttons: [
+      { type: 'QUICK_REPLY', text: 'Try today' },
+      { type: 'QUICK_REPLY', text: 'Reschedule' },
+    ],
+    button_url_sources: [null, null],
+    sample_values: { body: ['Jesal', '1001', 'Delhivery'] },
   },
   {
     trigger_type: 'order_created',

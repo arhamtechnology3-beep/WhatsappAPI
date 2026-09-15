@@ -9,7 +9,6 @@ import {
   phoneVariants,
   phonesMatch,
   sanitizePhoneForMeta,
-  toMetaPhone,
 } from "./phone-utils";
 
 describe("sanitizePhoneForMeta", () => {

@@ -299,12 +299,26 @@ export default function ShopifyDashboardPage() {
 
       const { data: jobsData, error: jobsErr } = await supabase
         .from('whatsapp_send_jobs')
-        .select('id, template_name, recipient_phone, status, last_error, attempts, created_at')
+        .select('id, template_name, status, last_error, attempts, created_at, contacts(phone)')
         .eq('account_id', accountId)
         .order('created_at', { ascending: false })
         .limit(20)
       if (jobsErr) throw jobsErr
-      setSendJobs((jobsData || []) as SendJob[])
+      setSendJobs(
+        (jobsData || []).map((job) => {
+          const linked = (job as { contacts?: { phone?: string | null } | { phone?: string | null }[] }).contacts
+          const contactPhone = Array.isArray(linked) ? linked[0]?.phone : linked?.phone
+          return {
+            id: job.id,
+            template_name: job.template_name,
+            recipient_phone: contactPhone || '',
+            status: job.status,
+            last_error: job.last_error,
+            attempts: job.attempts,
+            created_at: job.created_at,
+          } as SendJob
+        }),
+      )
 
       // 4. Fetch custom template texts from local DB (do not auto-seed)
       const mapping: Record<string, CustomTemplate> = {}

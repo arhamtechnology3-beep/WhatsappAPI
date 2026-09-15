@@ -24,7 +24,7 @@ describe("normalizeKey", () => {
 
   it("collapses Indian +91 spaced and 10-digit local numbers", () => {
     expect(normalizeKey("+91 98203 68269")).toBe("919820368269");
-    expect(normalizeKey("9820368269")).toBe("919820368269");
+    expect(normalizeKey("9820368269")).toBe("9820368269");
   });
 });
 

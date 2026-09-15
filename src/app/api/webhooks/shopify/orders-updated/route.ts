@@ -105,7 +105,7 @@ export async function POST(request: Request) {
 
     if (contact?.id) {
       const notify = (
-        trigger: 'order_cancelled' | 'payment_refunded' | 'payment_received' | 'order_delivered',
+        trigger: 'order_cancelled' | 'payment_refunded' | 'payment_received' | 'order_delivered' | 'order_fulfilled',
         extra: Record<string, string> = {},
       ) =>
         enqueueShopifyNotification(supabase, accountId, contact.id, sendPhone, trigger, {
@@ -131,7 +131,7 @@ export async function POST(request: Request) {
       }
 
       if (fulfillmentStatus === 'fulfilled' && existingOrder?.fulfillment_status !== 'fulfilled') {
-        recordNotify(await notify('order_delivered'))
+        recordNotify(await notify('order_fulfilled'))
       }
     }
 

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { verifyShopifyWebhookSignature } from '@/lib/shopify/webhook-signature'
+import { markStoreUninstalled } from '@/lib/shopify/install-store'
 
 export async function POST(request: Request) {
   const rawBody = await request.text()
@@ -16,16 +17,18 @@ export async function POST(request: Request) {
     }
 
     const supabase = supabaseAdmin()
+    await markStoreUninstalled(supabase, shop)
 
-    const { error } = await supabase
+    // Soft-suspend workspace status for legacy UI; do not wipe config.
+    await supabase
       .from('workspaces')
       .update({ status: 'suspended' })
       .eq('shopify_shop_domain', shop)
 
-    if (error) {
-      console.error('[app-uninstalled] error suspending workspace:', error.message)
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    await supabase.from('merchant_integrations').update({
+      status: 'disconnected',
+      config: { shop, uninstalled: true },
+    }).eq('integration_key', 'shopify')
 
     return NextResponse.json({ success: true })
   } catch (err: unknown) {

@@ -2,8 +2,18 @@ import { runAutomationsCron } from '@/app/api/automations/cron/route'
 import { runFlowsCron } from '@/app/api/flows/cron/route'
 import { runShopifyAbandonedCron } from '@/app/api/shopify/cron/route'
 import { runShopifySequenceCron } from '@/app/api/shopify/cron/sequences/route'
+import { reconcileTrialExpiry, runDataRetention } from '@/lib/ops/retention'
+import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { sweepOpenShipments } from '@/lib/logistics/shipment-sweep'
+import { NextResponse } from 'next/server'
 
-type JobName = 'shopify' | 'sequences' | 'automations' | 'flows'
+type JobName =
+  | 'shopify'
+  | 'sequences'
+  | 'automations'
+  | 'flows'
+  | 'identityflow'
+  | 'shipments'
 
 export type CronTickResult = {
   ok: boolean
@@ -29,9 +39,21 @@ async function runJob(name: JobName, fn: () => Promise<Response>) {
   }
 }
 
+async function runIdentityFlowCron(): Promise<Response> {
+  const supabase = supabaseAdmin()
+  const expired = await reconcileTrialExpiry(supabase)
+  const retention = await runDataRetention(supabase)
+  return NextResponse.json({ ok: true, trialsExpired: expired, retention })
+}
+
+async function runShipmentSweep(): Promise<Response> {
+  const result = await sweepOpenShipments(supabaseAdmin())
+  return NextResponse.json({ ok: true, ...result })
+}
+
 /**
  * Run every delayed-job worker once. Sequential so Hostinger's Node
- * process does not pile four Meta/Shopify bursts on the same tick.
+ * process does not pile Meta/Shopify bursts on the same tick.
  */
 export async function runAllCronJobs(): Promise<CronTickResult> {
   const jobs: CronTickResult['jobs'] = {
@@ -39,6 +61,8 @@ export async function runAllCronJobs(): Promise<CronTickResult> {
     sequences: { status: 500, body: { error: 'not-run' } },
     automations: { status: 500, body: { error: 'not-run' } },
     flows: { status: 500, body: { error: 'not-run' } },
+    identityflow: { status: 500, body: { error: 'not-run' } },
+    shipments: { status: 500, body: { error: 'not-run' } },
   }
 
   const runners: Array<[JobName, () => Promise<Response>]> = [
@@ -46,6 +70,8 @@ export async function runAllCronJobs(): Promise<CronTickResult> {
     ['sequences', runShopifySequenceCron],
     ['automations', runAutomationsCron],
     ['flows', runFlowsCron],
+    ['identityflow', runIdentityFlowCron],
+    ['shipments', runShipmentSweep],
   ]
 
   for (const [name, fn] of runners) {

@@ -25,6 +25,9 @@ import {
   Zap,
   BarChart3,
   Plug,
+  Store,
+  CreditCard,
+  ShieldCheck,
 } from "lucide-react";
 import type { AccountRole } from "@/lib/auth/roles";
 
@@ -79,6 +82,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 import { WorkspaceSwitcher } from "@/components/dashboard/workspace-switcher";
+import { StoreSwitcher } from "@/components/dashboard/store-switcher";
+import { isIdentityFlowNavEnabled } from "@/lib/identityflow/flags";
 
 interface NavItem {
   href: string;
@@ -104,6 +109,13 @@ const navItems: NavItem[] = [
   { href: "/integrations", label: "Integration", icon: Plug },
 ];
 
+const identityFlowNavItems: NavItem[] = [
+  { href: "/customers", label: "Customer 360", icon: UsersRound, beta: true },
+  { href: "/campaigns", label: "Campaigns", icon: Store, beta: true },
+  { href: "/billing", label: "Billing", icon: CreditCard, beta: true },
+  { href: "/privacy", label: "Privacy", icon: ShieldCheck, beta: true },
+];
+
 const bottomNavItems = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -116,7 +128,8 @@ interface SidebarProps {
 
 export function Sidebar({ open = false, onClose }: SidebarProps) {
   const pathname = usePathname();
-  const { profile, profileLoading, account, accountRole, signOut } = useAuth();
+  const { profile, profileLoading, account, signOut } = useAuth();
+  const identityFlowNav = isIdentityFlowNavEnabled(profile?.beta_features);
   const totalUnread = useTotalUnread();
   // Only surface the account-name strip when it actually carries
   // information. A solo user's personal account is named after them
@@ -251,6 +264,42 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
             })}
           </ul>
 
+          {identityFlowNav ? (
+            <>
+              <div className="my-4 border-t border-border" />
+              <ul className="flex flex-col gap-1">
+                {identityFlowNavItems.map((item) => {
+                  const isActive =
+                    pathname === item.href || pathname.startsWith(item.href);
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        className={cn(
+                          "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors lg:py-2",
+                          isActive
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        )}
+                      >
+                        <item.icon className="h-4 w-4" />
+                        <span className="flex-1">{item.label}</span>
+                        {item.beta ? (
+                          <span
+                            aria-label="Beta feature"
+                            className="rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300"
+                          >
+                            Beta
+                          </span>
+                        ) : null}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          ) : null}
+
           <div className="my-4 border-t border-border" />
 
           <ul className="flex flex-col gap-1">
@@ -284,8 +333,9 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
               match, so we hide it to avoid duplicating the user name
               below; for renamed or shared accounts it tells the user
               which account they're acting in. */}
-          <div className="mb-4 px-3">
+          <div className="mb-4 space-y-2 px-3">
             <WorkspaceSwitcher />
+            {identityFlowNav ? <StoreSwitcher /> : null}
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-muted/60 focus:bg-muted/60 focus:outline-none data-popup-open:bg-muted/60">

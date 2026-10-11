@@ -35,6 +35,19 @@ export interface ProcessSendJobsResult {
   failed: number
 }
 
+export const SEND_LEASE_MINUTES = 10
+
+export function sendLeaseUntil(from: number = Date.now()): string {
+  return new Date(from + SEND_LEASE_MINUTES * 60 * 1000).toISOString()
+}
+
+/** `order_created:<id>:tpl`, `shipment_dispatched:<id>`, `shipment_ndr:<id>:bucket` → `<id>`. */
+export function shopifyOrderIdFromJobKey(key: unknown): string | null {
+  if (typeof key !== 'string') return null
+  const id = key.split(':')[1]
+  return id && /^\d+$/.test(id) ? id : null
+}
+
 function isPermanentSendError(message: string): boolean {
   return (
     message.includes('contact has no phone') ||
@@ -83,15 +96,20 @@ export async function processWhatsAppSendJobs(opts?: {
 
   for (const job of jobs) {
     const nextAttempt = (job.attempts || 0) + 1
+    // status only allows pending/sent/failed (027), so the claim is a lease:
+    // pushing run_at forward hides the job from every other drainer
+    // (duplicate Shopify deliveries, cron sweep) while this one sends.
     const { data: claimed } = await supabase
       .from('whatsapp_send_jobs')
       .update({
         attempts: nextAttempt,
         last_error: 'sending',
+        run_at: sendLeaseUntil(),
       })
       .eq('id', job.id)
       .eq('attempts', job.attempts || 0)
       .in('status', ['pending', 'failed'])
+      .lte('run_at', now)
       .select('id')
       .maybeSingle()
     if (!claimed) continue
@@ -170,6 +188,7 @@ export async function processWhatsAppSendJobs(opts?: {
         templateName: job.template_name,
         params: (job.template_params as string[]) || [],
         toPhone: sendPhone,
+        shopifyOrderId: shopifyOrderIdFromJobKey(job.idempotency_key),
       })
 
       await supabase

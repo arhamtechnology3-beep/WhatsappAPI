@@ -1,18 +1,5 @@
-import { NextResponse } from 'next/server'
-import { parseShiprocketWebhook } from '@/lib/shiprocket/status'
-import { processShipmentTrackingEvent } from '@/lib/logistics/notify'
+import { handleShiprocketTrackingWebhook } from '@/lib/logistics/courier-webhook'
 
 export async function POST(request: Request) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const accountId = searchParams.get('account_id') || searchParams.get('accountId')
-    const body = await request.json().catch(() => ({}))
-    const event = parseShiprocketWebhook(body)
-    const result = await processShipmentTrackingEvent(event, { accountId })
-    return NextResponse.json(result)
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Internal server error'
-    console.error('[Shiprocket Webhook] error:', message)
-    return NextResponse.json({ error: message }, { status: 500 })
-  }
+  return handleShiprocketTrackingWebhook(request)
 }

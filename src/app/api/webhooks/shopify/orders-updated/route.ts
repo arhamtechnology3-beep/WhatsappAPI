@@ -7,7 +7,10 @@ import {
   enqueueShopifyNotification,
 } from '@/lib/shopify/shopify-helper'
 import { extractShopifyCustomerIdentity } from '@/lib/shopify/order-notify'
+import { formatItemsSummary } from '@/lib/shopify/product-image'
 import { scheduleImmediateWhatsAppJobs } from '@/lib/whatsapp/process-send-jobs'
+
+const COURIER_STATUSES = new Set(['in_transit', 'out_for_delivery', 'delivered', 'ndr'])
 
 export async function POST(request: Request) {
   const rawBody = await request.text()
@@ -24,7 +27,7 @@ export async function POST(request: Request) {
 
   try {
     const payload = JSON.parse(rawBody)
-    const { accountId: resolvedAccountId, userId } = await getShopifyAccountContext(supabase)
+    const { accountId: resolvedAccountId, userId } = await getShopifyAccountContext(supabase, request.headers.get("x-shopify-shop-domain"))
     accountId = resolvedAccountId
 
     const orderId = String(payload.id)
@@ -59,13 +62,19 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     const dealId = existingOrder?.deal_id
+    // Courier milestones are more precise than Shopify's "fulfilled".
+    const keepCourierStatus =
+      fulfillmentStatus === 'fulfilled' &&
+      COURIER_STATUSES.has(String(existingOrder?.fulfillment_status || ''))
 
     // Update order row
     const { error: orderError } = await supabase
       .from('shopify_orders')
       .update({
         financial_status: financialStatus,
-        fulfillment_status: fulfillmentStatus,
+        fulfillment_status: keepCourierStatus
+          ? existingOrder?.fulfillment_status
+          : fulfillmentStatus,
         updated_at: new Date().toISOString(),
       })
       .eq('shopify_order_id', orderId)
@@ -112,6 +121,7 @@ export async function POST(request: Request) {
           customer_name: customerFirstName,
           order_number: orderNumber,
           shopify_order_id: orderId,
+          items_summary: formatItemsSummary(payload.line_items),
           ...extra,
         })
 
@@ -130,7 +140,11 @@ export async function POST(request: Request) {
         recordNotify(await notify('payment_received', { total_price: totalPrice.toFixed(2) }))
       }
 
-      if (fulfillmentStatus === 'fulfilled' && existingOrder?.fulfillment_status !== 'fulfilled') {
+      if (
+        fulfillmentStatus === 'fulfilled' &&
+        existingOrder?.fulfillment_status !== 'fulfilled' &&
+        !keepCourierStatus
+      ) {
         recordNotify(await notify('order_fulfilled'))
       }
     }

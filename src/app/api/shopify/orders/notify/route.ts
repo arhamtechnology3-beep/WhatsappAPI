@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { enqueueShopifyNotification } from '@/lib/shopify/shopify-helper'
 import { isShopifyCodOrder, recoverMissingShopifyPhone } from '@/lib/shopify/order-notify'
 import { processWhatsAppSendJobs } from '@/lib/whatsapp/process-send-jobs'
+import { formatItemsSummary } from '@/lib/shopify/product-image'
 import { hasWhatsAppPhone, toMetaPhone } from '@/lib/whatsapp/phone-utils'
 
 export async function POST(request: Request) {
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
     const admin = supabaseAdmin()
     const { data: order, error: orderErr } = await admin
       .from('shopify_orders')
-      .select('id, shopify_order_id, order_number, total_price, financial_status, contact_id, contacts(name, phone)')
+      .select('id, shopify_order_id, order_number, total_price, financial_status, contact_id, line_items, contacts(name, phone)')
       .eq('account_id', accountId)
       .eq('shopify_order_id', shopifyOrderId)
       .maybeSingle()
@@ -80,6 +81,7 @@ export async function POST(request: Request) {
         customer_name: String(contact?.name || 'Customer').split(' ')[0],
         order_number: String(order.order_number || ''),
         total_price: Number(order.total_price || 0).toFixed(2),
+        items_summary: formatItemsSummary(order.line_items),
         is_cod: isCod,
         shopify_order_id: String(order.shopify_order_id),
       },

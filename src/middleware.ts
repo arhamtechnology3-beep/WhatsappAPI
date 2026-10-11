@@ -1,13 +1,17 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { pickCookieTenantIds } from '@/lib/auth/active-workspace'
 import {
   WORKSPACE_COOKIE,
   hasSupabaseAuthCookie,
   workspaceCookieOptions,
 } from '@/lib/auth/workspace-cookie'
+import { REQUEST_ID_HEADER, resolveRequestId } from '@/lib/observability/request-id'
 
 export async function middleware(request: NextRequest) {
+  const requestId = resolveRequestId(request)
   let supabaseResponse = NextResponse.next({ request })
+  supabaseResponse.headers.set(REQUEST_ID_HEADER, requestId)
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -37,6 +41,7 @@ export async function middleware(request: NextRequest) {
     supabaseResponse.cookies.getAll().forEach((cookie) => {
       response.cookies.set(cookie)
     })
+    response.headers.set(REQUEST_ID_HEADER, requestId)
     return response
   }
 
@@ -61,7 +66,19 @@ export async function middleware(request: NextRequest) {
     return withAuthCookies(NextResponse.redirect(url))
   }
 
-  const protectedPaths = ['/dashboard', '/inbox', '/contacts', '/pipelines', '/broadcasts', '/automations', '/settings']
+  const protectedPaths = [
+    '/dashboard',
+    '/inbox',
+    '/contacts',
+    '/pipelines',
+    '/broadcasts',
+    '/automations',
+    '/settings',
+    '/customers',
+    '/campaigns',
+    '/billing',
+    '/privacy',
+  ]
   if (!loggedIn && protectedPaths.some(path => request.nextUrl.pathname.startsWith(path))) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
@@ -76,8 +93,13 @@ export async function middleware(request: NextRequest) {
   }
 
   if (loggedIn && request.nextUrl.pathname.startsWith('/api/')) {
-    const queryWorkspaceId = request.nextUrl.searchParams.get('workspace_id')
-    let workspaceId = queryWorkspaceId || request.cookies.get(WORKSPACE_COOKIE)?.value
+    // Never copy workspace_id / store_id / organization_id from the query
+    // string into cookies — those IDs are not authorization.
+    const picked = pickCookieTenantIds({
+      query: request.nextUrl.searchParams,
+      cookieWorkspaceId: request.cookies.get(WORKSPACE_COOKIE)?.value,
+    })
+    let workspaceId = picked.workspaceId
     if (!workspaceId) {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {

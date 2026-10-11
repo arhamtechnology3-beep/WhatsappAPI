@@ -8,7 +8,11 @@ import {
   enqueueShopifyNotification,
   moveDealToStageName,
 } from '@/lib/shopify/shopify-helper'
-import { withShopifyProductImages, extractProductTitleFromLineItems } from '@/lib/shopify/product-image'
+import {
+  withShopifyProductImages,
+  extractProductTitleFromLineItems,
+  formatItemsSummary,
+} from '@/lib/shopify/product-image'
 import {
   extractShopifyCustomerIdentity,
   isShopifyCodOrder,
@@ -32,7 +36,7 @@ export async function POST(request: Request) {
 
   try {
     const payload = JSON.parse(rawBody)
-    const { accountId: resolvedAccountId, userId } = await getShopifyAccountContext(supabase)
+    const { accountId: resolvedAccountId, userId } = await getShopifyAccountContext(supabase, request.headers.get("x-shopify-shop-domain"))
     accountId = resolvedAccountId
 
     // Parse order attributes
@@ -180,6 +184,7 @@ export async function POST(request: Request) {
         order_number: orderNumber,
         total_price: totalPrice.toFixed(2),
         product_name: extractProductTitleFromLineItems(lineItems),
+        items_summary: formatItemsSummary(lineItems),
         is_cod: isCod,
         shopify_order_id: orderId,
       }

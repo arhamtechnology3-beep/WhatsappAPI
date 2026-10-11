@@ -6,7 +6,21 @@ import {
   isSuspending,
   isTerminal,
   evaluateConditionPredicate,
+  normalizeOrderInput,
 } from "./engine";
+
+describe("normalizeOrderInput", () => {
+  it.each([
+    ["Order#1014", "1014"],
+    ["#1014", "1014"],
+    ["order no 1014 please", "1014"],
+    ["DP/26/1012", "DP/26/1012"],
+    ["dp/26/1012", "DP/26/1012"],
+    ["hello", "hello"],
+  ])("%s → %s", (input, expected) => {
+    expect(normalizeOrderInput(input)).toBe(expected);
+  });
+});
 
 describe("matchReplyId", () => {
   it("returns null for nodes without options", () => {

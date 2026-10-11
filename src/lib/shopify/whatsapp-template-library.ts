@@ -27,6 +27,16 @@ export function canonicalRecipeName(name: string): string {
   return RECIPE_NAME_RENAMES[name] ?? name
 }
 
+/**
+ * Richer versions of live templates. A send switches to the upgrade only
+ * once Meta has APPROVED it on the account, so nothing breaks while the
+ * new template is pending review.
+ */
+export const TEMPLATE_UPGRADES: Readonly<Record<string, string>> = {
+  wacrm_order_confirmed_v2: 'wacrm_order_confirmed_v3',
+  wacrm_order_shipped_v2: 'wacrm_order_shipped_v3',
+}
+
 export type ShopifyRecipeTrigger =
   | 'cart_abandoned'
   | 'cart_abandoned_step2'
@@ -39,6 +49,7 @@ export type ShopifyRecipeTrigger =
   | 'shipment_in_transit'
   | 'shipment_ofd'
   | 'shipment_ndr'
+  | 'shipment_delayed'
   | 'broadcast'
 
 export type RecipeUrlSource =
@@ -407,6 +418,52 @@ Hum packing shuru kar rahe hain — tracking alag message mein aayegi.
     sample_values: { body: ['Jesal', '1001', '599.00'] },
   },
   {
+    trigger_type: 'order_created',
+    template_name: 'wacrm_order_confirmed_v3',
+    category: 'UTILITY',
+    language: WACRM_TEMPLATE_LANGUAGE,
+    body: `Dhanyawad {{1}}! 🙏
+Aapka order #{{2}} confirm ho gaya hai.
+
+🛍️ Items: {{3}}
+📦 Total: ₹{{4}}
+
+Hum packing shuru kar rahe hain — tracking alag message mein aayegi.
+
+✅ Fresh & hygienically packed
+✅ Safe doorstep delivery`,
+    variables: ['customer_name', 'order_number', 'items_summary', 'total_price'],
+    default_delay_minutes: 0,
+    header_type: 'image',
+    footer_text: 'DivyaPrabha Foods',
+    buttons: [trackOrder(), shopFromWhatsApp()],
+    button_url_sources: [null, null],
+    sample_values: {
+      body: ['Jesal', '1001', 'Gor Keri (500 g) × 1, Gunda Keri × 2', '599.00'],
+    },
+  },
+  {
+    trigger_type: 'order_fulfilled',
+    template_name: 'wacrm_order_shipped_v3',
+    category: 'UTILITY',
+    language: WACRM_TEMPLATE_LANGUAGE,
+    body: `Aapka order #{{2}} ship ho gaya hai, {{1}}! 🚚
+
+🛍️ Items: {{3}}
+
+Parcel abhi raste mein hai — delivery hone par alag message aayega.
+
+✅ Freshness sealed
+✅ Track button se live status dekho`,
+    variables: ['customer_name', 'order_number', 'items_summary'],
+    default_delay_minutes: 0,
+    header_type: 'image',
+    footer_text: 'DivyaPrabha Foods',
+    buttons: [trackOrder(), shopFromWhatsApp()],
+    button_url_sources: [null, null],
+    sample_values: { body: ['Jesal', '1001', 'Gor Keri (500 g) × 1, Gunda Keri × 2'] },
+  },
+  {
     trigger_type: 'order_fulfilled',
     template_name: 'wacrm_order_shipped_v2',
     category: 'UTILITY',
@@ -513,6 +570,26 @@ Courier: {{3}} dobara attempt karega.
     sample_values: { body: ['Jesal', '1001', 'Delhivery'] },
   },
   {
+    trigger_type: 'shipment_delayed',
+    template_name: 'wacrm_order_delayed_v1',
+    category: 'UTILITY',
+    language: WACRM_TEMPLATE_LANGUAGE,
+    body: `Namaste {{1}}, order #{{2}} mein thoda delay ho gaya hai 🙏
+
+Courier: {{3}}
+Parcel raste mein hai — hum courier se follow up kar rahe hain aur jaldi deliver karwayenge.
+
+✅ Track button se live status dekho
+✅ Koi sawal ho to yahin reply karein`,
+    variables: ['customer_name', 'order_number', 'courier_name'],
+    default_delay_minutes: 0,
+    header_type: 'image',
+    footer_text: 'DivyaPrabha Foods',
+    buttons: [trackOrder(), shopFromWhatsApp()],
+    button_url_sources: [null, null],
+    sample_values: { body: ['Jesal', '1001', 'Ekart Surface'] },
+  },
+  {
     trigger_type: 'order_created',
     template_name: 'wacrm_cod_confirmation_v2',
     category: 'UTILITY',
@@ -587,6 +664,24 @@ export function recipeByName(
   return SHOPIFY_TEMPLATE_LIBRARY.find(
     (r) => r.template_name === name || r.template_name === canonical,
   )
+}
+
+const ORDER_RECIPE_TRIGGERS: ReadonlySet<ShopifyRecipeTrigger> = new Set([
+  'order_created',
+  'order_fulfilled',
+  'order_delivered',
+  'shipment_in_transit',
+  'shipment_ofd',
+  'shipment_ndr',
+  'shipment_delayed',
+])
+
+/** Order / shipment templates must show the ordered product (or the brand), never a cart or catalog pick. */
+export function isOrderTemplateName(name: string | null | undefined): boolean {
+  if (!name) return false
+  const recipe = recipeByName(name)
+  if (recipe) return ORDER_RECIPE_TRIGGERS.has(recipe.trigger_type)
+  return /^wacrm_(order|cod)_/i.test(name)
 }
 
 /** Rebuild header + CTA chrome for an inbox bubble (payload, catalog, or recipe). */

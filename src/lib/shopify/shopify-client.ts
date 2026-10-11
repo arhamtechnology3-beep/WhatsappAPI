@@ -16,7 +16,29 @@ export interface ShopifyCollectionPage<T = unknown> {
   truncated: boolean
 }
 
-function shopifyCredentials() {
+export interface ShopifyClientCredentials {
+  shopDomain: string
+  accessToken: string
+  apiVersion?: string
+}
+
+/**
+ * Env-token fallback for the current single-store Hostinger deploy.
+ * Prefer passing per-store credentials from `resolveStoreCredentials`.
+ */
+function shopifyCredentials(override?: ShopifyClientCredentials) {
+  if (override?.shopDomain && override?.accessToken) {
+    let cleanDomain = override.shopDomain.replace(/^https?:\/\//, '').replace(/\/$/, '')
+    if (cleanDomain === 'divyaprabhafoods.com' || cleanDomain === 'www.divyaprabhafoods.com') {
+      cleanDomain = 'divyaprabhafoods.myshopify.com'
+    }
+    return {
+      cleanDomain,
+      accessToken: override.accessToken,
+      apiVersion: override.apiVersion || process.env.SHOPIFY_API_VERSION || '2025-01',
+    }
+  }
+
   const storeDomain = process.env.SHOPIFY_STORE_DOMAIN
   const accessToken = process.env.SHOPIFY_ADMIN_API_TOKEN
   const apiVersion = process.env.SHOPIFY_API_VERSION || '2025-01'
@@ -33,11 +55,14 @@ function shopifyCredentials() {
   return { cleanDomain, accessToken, apiVersion }
 }
 
-export function buildShopifyAdminUrl(pathOrUrl: string): string {
+export function buildShopifyAdminUrl(
+  pathOrUrl: string,
+  credentials?: ShopifyClientCredentials,
+): string {
   if (pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
     return pathOrUrl
   }
-  const { cleanDomain, apiVersion } = shopifyCredentials()
+  const { cleanDomain, apiVersion } = shopifyCredentials(credentials)
   return `https://${cleanDomain}/admin/api/${apiVersion}/${pathOrUrl.replace(/^\//, '')}`
 }
 
@@ -58,25 +83,21 @@ export function parseShopifyLinkRelNext(linkHeader: string | null | undefined): 
 
 export async function fetchShopifyResponse(
   pathOrUrl: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  credentials?: ShopifyClientCredentials,
 ): Promise<Response> {
-  const { accessToken } = shopifyCredentials()
-  const url = buildShopifyAdminUrl(pathOrUrl)
+  const { accessToken } = shopifyCredentials(credentials)
+  const url = buildShopifyAdminUrl(pathOrUrl, credentials)
 
   const headers = new Headers(options.headers)
   headers.set('X-Shopify-Access-Token', accessToken)
   headers.set('Content-Type', 'application/json')
   headers.set('Accept', 'application/json')
 
-  console.log(`[shopify-client] Requesting URL: ${url}`)
-  console.log(`[shopify-client] Method: ${options.method || 'GET'}`)
-
   const response = await fetch(url, {
     ...options,
     headers,
   })
-
-  console.log(`[shopify-client] Response Status: ${response.status} ${response.statusText}`)
 
   if (!response.ok) {
     const errorText = await response.text()
@@ -89,21 +110,20 @@ export async function fetchShopifyResponse(
 
 export async function fetchShopify(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  credentials?: ShopifyClientCredentials,
 ): Promise<any> {
-  const response = await fetchShopifyResponse(path, options)
+  const response = await fetchShopifyResponse(path, options, credentials)
   return response.json()
 }
 
 /**
  * Follow Shopify Link `rel=next` pages until `maxPages` or the last page.
- * Pass `order=updated_at+desc` on the first request so newest records come first;
- * later pages only include `page_info` (Shopify forbids mixing `order` with it).
  */
 export async function fetchShopifyCollection<T = unknown>(
   initialPath: string,
   collectionKey: string,
-  options?: { maxPages?: number }
+  options?: { maxPages?: number; credentials?: ShopifyClientCredentials },
 ): Promise<ShopifyCollectionPage<T>> {
   const maxPages = options?.maxPages ?? 8
   const items: T[] = []
@@ -111,7 +131,7 @@ export async function fetchShopifyCollection<T = unknown>(
   let pages = 0
 
   while (next && pages < maxPages) {
-    const response = await fetchShopifyResponse(next)
+    const response = await fetchShopifyResponse(next, {}, options?.credentials)
     const json = await response.json()
     const pageItems = json?.[collectionKey]
     if (Array.isArray(pageItems)) {
@@ -126,9 +146,10 @@ export async function fetchShopifyCollection<T = unknown>(
 
 export async function fetchShopifyGraphql(
   query: string,
-  variables?: Record<string, unknown>
+  variables?: Record<string, unknown>,
+  credentials?: ShopifyClientCredentials,
 ): Promise<any> {
-  const { accessToken, cleanDomain, apiVersion } = shopifyCredentials()
+  const { accessToken, cleanDomain, apiVersion } = shopifyCredentials(credentials)
   const url = `https://${cleanDomain}/admin/api/${apiVersion}/graphql.json`
 
   const response = await fetch(url, {
@@ -202,12 +223,9 @@ type GraphqlCustomersData = {
   }
 }
 
-/**
- * Newest Shopify customers first. GraphQL is preferred; REST falls back
- * without a hard dependency on the unofficial `order=` query param.
- */
 export async function fetchLatestShopifyCustomers(
-  maxPages = 10
+  maxPages = 10,
+  credentials?: ShopifyClientCredentials,
 ): Promise<ShopifyCollectionPage<ShopifyCustomerRecord>> {
   try {
     const items: ShopifyCustomerRecord[] = []
@@ -216,7 +234,11 @@ export async function fetchLatestShopifyCustomers(
     let hasNext = true
 
     while (hasNext && pages < maxPages) {
-      const data: GraphqlCustomersData = await fetchShopifyGraphql(LATEST_CUSTOMERS_QUERY, { cursor })
+      const data: GraphqlCustomersData = await fetchShopifyGraphql(
+        LATEST_CUSTOMERS_QUERY,
+        { cursor },
+        credentials,
+      )
 
       for (const node of data.customers.nodes) {
         const id = shopifyGidToNumericId(node.id)
@@ -246,22 +268,21 @@ export async function fetchLatestShopifyCustomers(
     return await fetchShopifyCollection<ShopifyCustomerRecord>(
       '/customers.json?limit=250&order=updated_at+desc',
       'customers',
-      { maxPages }
+      { maxPages, credentials },
     )
   } catch (err) {
     console.warn('[shopify-client] REST customers order= param failed, using default list:', err)
     return fetchShopifyCollection<ShopifyCustomerRecord>(
       '/customers.json?limit=250',
       'customers',
-      { maxPages }
+      { maxPages, credentials },
     )
   }
 }
 
-/**
- * Test the connection by fetching shop details.
- */
-export async function getShopInfo(): Promise<ShopifyShopInfo> {
-  const data = await fetchShopify('/shop.json')
+export async function getShopInfo(
+  credentials?: ShopifyClientCredentials,
+): Promise<ShopifyShopInfo> {
+  const data = await fetchShopify('/shop.json', {}, credentials)
   return data.shop as ShopifyShopInfo
 }

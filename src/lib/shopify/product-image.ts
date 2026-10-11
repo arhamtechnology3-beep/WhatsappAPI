@@ -141,6 +141,31 @@ export function extractProductTitleFromLineItems(lineItems: unknown): string {
   return ''
 }
 
+/**
+ * "Gor Keri (500 g) × 1, Gunda Keri × 2" for a template body variable.
+ * Meta rejects newlines, tabs and 4+ spaces inside parameters.
+ */
+export function formatItemsSummary(lineItems: unknown, maxItems = 5): string {
+  if (!Array.isArray(lineItems)) return ''
+  const parts: string[] = []
+  for (const raw of lineItems) {
+    if (!raw || typeof raw !== 'object') continue
+    const item = raw as Record<string, unknown>
+    const title = String(item.title || item.name || '').trim()
+    if (!title) continue
+    const variant = String(item.variant_title || '').trim()
+    const label =
+      variant && variant !== 'Default Title' && !title.includes(variant)
+        ? `${title} (${variant})`
+        : title
+    const qty = Number(item.quantity) || 1
+    parts.push(`${label} × ${qty}`)
+  }
+  const shown = parts.slice(0, maxItems)
+  if (parts.length > maxItems) shown.push(`+${parts.length - maxItems} more`)
+  return shown.join(', ').replace(/\s+/g, ' ').trim()
+}
+
 export function extractProductIdFromLineItems(lineItems: unknown): string | null {
   if (!Array.isArray(lineItems) || lineItems.length === 0) return null
   for (const raw of lineItems) {
@@ -167,6 +192,73 @@ export function extractHandleFromProductUrl(productUrl: unknown): string | null 
   }
 }
 
+const CATALOG_TTL_MS = 10 * 60 * 1000
+let catalogCache: { at: number; products: Record<string, unknown>[] } | null = null
+
+/** Every published product from the public storefront, cached briefly. */
+async function storefrontCatalog(): Promise<Record<string, unknown>[]> {
+  if (catalogCache && Date.now() - catalogCache.at < CATALOG_TTL_MS) {
+    return catalogCache.products
+  }
+  const products: Record<string, unknown>[] = []
+  for (let page = 1; page <= 4; page++) {
+    const data = (await fetchStorefrontJson(
+      `/products.json?limit=250&page=${page}`,
+    )) as { products?: Record<string, unknown>[] } | null
+    const rows = data?.products || []
+    products.push(...rows)
+    if (rows.length < 250) break
+  }
+  if (products.length > 0) catalogCache = { at: Date.now(), products }
+  return products
+}
+
+export function _resetStorefrontCatalogCache(): void {
+  catalogCache = null
+}
+
+/** Variant image first (e.g. 500 g jar), else the product's main image. */
+export function imageFromCatalogProduct(
+  product: Record<string, unknown>,
+  variantId?: string | null,
+): string | null {
+  if (variantId) {
+    const variants = Array.isArray(product.variants)
+      ? (product.variants as Record<string, unknown>[])
+      : []
+    const variant = variants.find((v) => String(v.id) === variantId)
+    const featured = variant?.featured_image as Record<string, unknown> | null | undefined
+    const fromVariant = asHttpUrl(featured?.src)
+    if (fromVariant) return forMetaImageUrl(fromVariant)
+    const images = Array.isArray(product.images)
+      ? (product.images as Record<string, unknown>[])
+      : []
+    const tagged = images.find(
+      (img) =>
+        Array.isArray(img.variant_ids) &&
+        (img.variant_ids as unknown[]).map(String).includes(variantId),
+    )
+    const fromTagged = asHttpUrl(tagged?.src)
+    if (fromTagged) return forMetaImageUrl(fromTagged)
+  }
+  return imageSrcFromProduct(product)
+}
+
+/** Product image by numeric id via the public storefront (no Admin token). */
+export async function fetchStorefrontProductImageById(
+  productId: string | number | null | undefined,
+  variantId?: string | number | null,
+): Promise<string | null> {
+  const id = shopifyNumericId(productId, 'Product')
+  if (!id) return null
+  const product = (await storefrontCatalog()).find((p) => String(p.id) === id)
+  if (!product) return null
+  return imageFromCatalogProduct(
+    product,
+    shopifyNumericId(variantId, 'ProductVariant'),
+  )
+}
+
 /** Any published product image from the live store catalog (no Admin token). */
 export async function fetchShopifyCatalogHeaderImage(): Promise<string | null> {
   const data = (await fetchStorefrontJson('/products.json?limit=10')) as {
@@ -181,8 +273,16 @@ export async function fetchShopifyCatalogHeaderImage(): Promise<string | null> {
 
 export async function fetchShopifyProductImage(opts: {
   productId?: string | number | null
+  variantId?: string | number | null
   handle?: string | null
 }): Promise<string | null> {
+  if (opts.productId) {
+    const fromCatalog = await fetchStorefrontProductImageById(
+      opts.productId,
+      opts.variantId,
+    )
+    if (fromCatalog) return fromCatalog
+  }
   if (opts.handle) {
     const byHandle = (await fetchStorefrontJson(
       `/products/${encodeURIComponent(opts.handle)}.js`,
@@ -245,7 +345,11 @@ export async function withShopifyProductImages(
       typeof item.handle === 'string'
         ? item.handle
         : extractHandleFromProductUrl(item.url || item.product_url)
-    const fetched = await fetchShopifyProductImage({ productId, handle })
+    const fetched = await fetchShopifyProductImage({
+      productId,
+      variantId: item.variant_id as string | number | undefined,
+      handle,
+    })
     if (fetched) item.image_url = fetched
     out.push(item)
   }
@@ -310,4 +414,45 @@ export async function resolveContactShopifyHeaderImage(
   if (url) return url
 
   return fetchShopifyCatalogHeaderImage()
+}
+
+/**
+ * Header image for an order / shipment message: the first product of that
+ * exact order (or the contact's latest order when the id is unknown).
+ * Never falls back to an unrelated cart or catalog product — returns null
+ * so the caller can show the brand image instead.
+ */
+export async function resolveOrderHeaderImage(
+  db: SupabaseClient,
+  opts: { contactId: string; shopifyOrderId?: string | null },
+): Promise<string | null> {
+  const loadOrder = async (shopifyOrderId?: string | null) => {
+    let query = db
+      .from('shopify_orders')
+      .select('id, line_items')
+      .eq('contact_id', opts.contactId)
+    query = shopifyOrderId
+      ? query.eq('shopify_order_id', shopifyOrderId)
+      : query.order('created_at', { ascending: false })
+    const { data } = await query.limit(1).maybeSingle()
+    return data
+  }
+  // Shiprocket events sometimes key the job by AWB instead of the order id.
+  const order =
+    (opts.shopifyOrderId ? await loadOrder(opts.shopifyOrderId) : null) ||
+    (await loadOrder(null))
+  if (!order) return null
+
+  const stored = extractProductImageUrlFromLineItems(order.line_items)
+  if (stored) return stored
+
+  const enriched = await withShopifyProductImages(order.line_items)
+  const url = extractProductImageUrlFromLineItems(enriched)
+  if (url) {
+    await db
+      .from('shopify_orders')
+      .update({ line_items: enriched })
+      .eq('id', order.id)
+  }
+  return url
 }

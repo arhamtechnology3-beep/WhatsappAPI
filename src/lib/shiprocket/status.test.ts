@@ -31,6 +31,30 @@ describe('normalizeChannelOrderId', () => {
     expect(normalizeChannelOrderId('#1011')).toBe('1011')
     expect(normalizeChannelOrderId('gid://shopify/Order/7000656052438')).toBe('7000656052438')
   })
+
+  it('drops a custom order-name prefix', () => {
+    expect(normalizeChannelOrderId('DP/26/1012')).toBe('1012')
+    expect(normalizeChannelOrderId('18908909109462')).toBe('18908909109462')
+  })
+})
+
+describe('parseShiprocketWebhook — Shiprocket sample.json', () => {
+  it('reads the numeric AWB and Delivered status', () => {
+    const event = parseShiprocketWebhook({
+      awb: 59629792084,
+      current_status: 'Delivered',
+      order_id: '13905312',
+      etd: '2021-07-02 16:41:59',
+      shipment_status: 'Delivered',
+      channel_order_id: 'DP/26/1012',
+      courier_name: 'Delhivery Surface',
+      scans: [{ date: '2019-06-25 12:08:00', activity: 'SHIPMENT DELIVERED', location: 'PATIALA' }],
+    })
+    expect(event.awb).toBe('59629792084')
+    expect(event.orderId).toBe('13905312')
+    expect(normalizeChannelOrderId(event.channelOrderId)).toBe('1012')
+    expect(mapShipmentStatus(event.status)).toBe('delivered')
+  })
 })
 
 describe('parseShiprocketWebhook', () => {

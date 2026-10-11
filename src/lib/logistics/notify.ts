@@ -5,7 +5,10 @@ import {
   matchOrCreateShopifyContact,
   enqueueShopifyNotification,
 } from '@/lib/shopify/shopify-helper'
-import { extractProductTitleFromLineItems } from '@/lib/shopify/product-image'
+import {
+  extractProductTitleFromLineItems,
+  formatItemsSummary,
+} from '@/lib/shopify/product-image'
 import { scheduleImmediateWhatsAppJobs } from '@/lib/whatsapp/process-send-jobs'
 import { hasWhatsAppPhone, toMetaPhone } from '@/lib/whatsapp/phone-utils'
 import {
@@ -71,7 +74,8 @@ async function findShopifyOrder(
  */
 export async function processShipmentTrackingEvent(
   event: TrackingEvent,
-  opts?: { accountId?: string | null },
+  /** notify:false only syncs shopify_orders (stale scans found by the poller). */
+  opts?: { accountId?: string | null; notify?: boolean },
 ): Promise<ProcessShipmentResult> {
   const milestone = mapShipmentStatus(event.status)
   if (milestone === 'skip') {
@@ -92,6 +96,37 @@ export async function processShipmentTrackingEvent(
   const order = await findShopifyOrder(supabase, accountId, event)
   const linked = order?.contacts
   const contactRow = Array.isArray(linked) ? linked[0] : linked
+
+  const fulfillmentStatus =
+    milestone === 'delivered'
+      ? 'delivered'
+      : milestone === 'ofd'
+        ? 'out_for_delivery'
+        : milestone === 'ndr'
+          ? 'ndr'
+          : 'in_transit'
+
+  if (order?.id) {
+    await supabase
+      .from('shopify_orders')
+      .update({
+        fulfillment_status: fulfillmentStatus,
+        tracking_url: event.trackingUrl || order.tracking_url,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', order.id)
+  }
+
+  if (opts?.notify === false) {
+    return {
+      success: true,
+      skipped: true,
+      reason: 'status_synced_without_notify',
+      milestone,
+      awb: event.awb,
+      status: event.status,
+    }
+  }
 
   const phone =
     toMetaPhone(event.phone) ||
@@ -121,26 +156,6 @@ export async function processShipmentTrackingEvent(
     }
   }
 
-  const fulfillmentStatus =
-    milestone === 'delivered'
-      ? 'delivered'
-      : milestone === 'ofd'
-        ? 'out_for_delivery'
-        : milestone === 'ndr'
-          ? 'ndr'
-          : 'in_transit'
-
-  if (order?.id) {
-    await supabase
-      .from('shopify_orders')
-      .update({
-        fulfillment_status: fulfillmentStatus,
-        tracking_url: event.trackingUrl || order.tracking_url,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', order.id)
-  }
-
   const trigger = shipmentNotifyTrigger(milestone)
   const orderNumber = String(order?.order_number || event.channelOrderId || event.orderId || '')
   const productName = extractProductTitleFromLineItems(order?.line_items)
@@ -155,6 +170,7 @@ export async function processShipmentTrackingEvent(
       customer_name: customerName,
       order_number: orderNumber,
       product_name: productName,
+      items_summary: formatItemsSummary(order?.line_items),
       tracking_url: event.trackingUrl,
       courier_name: event.courier || event.source,
       awb: event.awb,

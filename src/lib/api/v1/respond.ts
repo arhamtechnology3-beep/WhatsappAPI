@@ -15,6 +15,7 @@
 // ============================================================
 
 import { NextResponse } from 'next/server';
+import { ForbiddenError, UnauthorizedError } from '@/lib/auth/account';
 import type { RateLimitResult } from '@/lib/rate-limit';
 
 export type ApiErrorCode =
@@ -96,6 +97,18 @@ export function toApiErrorResponse(err: unknown): NextResponse {
     return NextResponse.json(
       { error: { code: err.code, message: err.message } },
       { status: err.status, headers: err.headers }
+    );
+  }
+  if (err instanceof UnauthorizedError) {
+    return NextResponse.json(
+      { error: { code: 'unauthorized', message: err.message } },
+      { status: 401 }
+    );
+  }
+  if (err instanceof ForbiddenError) {
+    return NextResponse.json(
+      { error: { code: 'forbidden', message: err.message } },
+      { status: 403 }
     );
   }
   console.error('[api/v1] uncategorized error:', err);

@@ -1,5 +1,12 @@
 import { fetchShopify } from '@/lib/shopify/shopify-client'
 import { supabaseAdmin } from '@/lib/flows/admin-client'
+import { fetchShiprocketShipment, type LiveShipment } from '@/lib/shiprocket/client'
+import {
+  STAGE_LABEL,
+  formatDay,
+  isPastExpectedDelivery,
+  resolveOrderStage,
+} from '@/lib/orders/order-stage'
 
 export type ShopifyOrderLike = {
   id?: number | string
@@ -7,13 +14,21 @@ export type ShopifyOrderLike = {
   order_number?: string | number | null
   financial_status?: string | null
   fulfillment_status?: string | null
+  cancelled_at?: string | null
   total_price?: string | number | null
   currency?: string | null
   order_status_url?: string | null
-  line_items?: Array<{ title?: string; name?: string; quantity?: number }>
+  line_items?: Array<{
+    title?: string
+    name?: string
+    variant_title?: string | null
+    quantity?: number
+  }>
   fulfillments?: Array<{
     tracking_url?: string | null
     tracking_number?: string | null
+    tracking_company?: string | null
+    shipment_status?: string | null
   }>
 }
 
@@ -58,62 +73,133 @@ export function orderMatchesQuery(
   return false
 }
 
-function humanStatus(raw?: string | null, fallback = 'updating'): string {
-  const s = (raw || '').trim().toLowerCase().replace(/_/g, ' ')
-  return s || fallback
+function paymentLabel(raw?: string | null): string {
+  const s = (raw || '').toLowerCase()
+  if (s === 'paid') return 'Paid'
+  if (s.startsWith('cod') || s === 'pending') return 'Cash on Delivery'
+  if (s === 'refunded') return 'Refunded'
+  if (s === 'partially_refunded') return 'Partially refunded'
+  return ''
 }
 
-export function formatOrderStatusMessage(order: ShopifyOrderLike): string {
+function primaryFulfillment(order: ShopifyOrderLike) {
+  return (
+    order.fulfillments?.find((f) => f.tracking_number) ||
+    order.fulfillments?.[0] ||
+    null
+  )
+}
+
+export function trackingNumberOf(order: ShopifyOrderLike): string {
+  return primaryFulfillment(order)?.tracking_number?.trim() || ''
+}
+
+export interface OrderStatusExtras {
+  /** Live courier status from Shiprocket, when connected. */
+  live?: LiveShipment | null
+  /** Our shopify_orders.fulfillment_status (in_transit / delivered / ndr…). */
+  localFulfillment?: string | null
+  now?: Date
+}
+
+export function orderStageOf(order: ShopifyOrderLike, extras: OrderStatusExtras = {}) {
+  const fulfillment = primaryFulfillment(order)
+  const stage = resolveOrderStage({
+    financialStatus: order.financial_status,
+    fulfillmentStatus:
+      extras.localFulfillment && extras.localFulfillment !== 'fulfilled'
+        ? extras.localFulfillment
+        : order.fulfillment_status,
+    cancelledAt: order.cancelled_at,
+    shipmentStatus: fulfillment?.shipment_status,
+    live: extras.live,
+  })
+  const delayed = isPastExpectedDelivery(stage, extras.live?.edd, extras.now)
+  return { stage, delayed }
+}
+
+export function formatOrderStatusMessage(
+  order: ShopifyOrderLike,
+  extras: OrderStatusExtras = {},
+): string {
   const name =
     order.name?.trim() ||
-    (order.order_number != null ? `#${order.order_number}` : 'your order')
-  const pay = humanStatus(order.financial_status, 'pending')
-  const ship = humanStatus(order.fulfillment_status, 'not shipped yet')
+    (order.order_number != null ? `#${order.order_number}` : 'aapka order')
+  const live = extras.live
+  const fulfillment = primaryFulfillment(order)
+  const { stage, delayed } = orderStageOf(order, extras)
+
+  const lines = [`Order ${name} ki details 👇`, '', `📦 Status: ${STAGE_LABEL[stage]}`]
+
+  if (stage === 'delivered' && live?.deliveredAt) {
+    lines.push(`🗓️ Delivered on: ${formatDay(live.deliveredAt)}`)
+  }
+  if (stage !== 'delivered' && stage !== 'cancelled') {
+    if (live?.lastLocation && live.lastLocation !== 'NA' && stage !== 'packed') {
+      const when = formatDay(live.lastActivityAt)
+      lines.push(`📍 Last update: ${live.lastLocation}${when ? ` (${when})` : ''}`)
+    }
+    const courier = live?.courier || fulfillment?.tracking_company || ''
+    if (courier) lines.push(`🚚 Courier: ${courier}`)
+    if (live?.edd) lines.push(`🗓️ Expected delivery: ${formatDay(live.edd)}`)
+  }
+  if (delayed) {
+    lines.push(
+      '',
+      '⚠️ Expected date nikal gayi hai — sorry for the delay 🙏 Hum courier se follow up kar rahe hain. Neeche "Talk to agent" dabayein, team turant help karegi.',
+    )
+  }
+
   const items = (order.line_items || [])
     .slice(0, 6)
     .map((li) => {
       const title = (li.title || li.name || 'Item').trim()
-      const qty = Number(li.quantity) || 1
-      return `• ${title} × ${qty}`
+      const variant = (li.variant_title || '').trim()
+      const label =
+        variant && variant !== 'Default Title' && !title.includes(variant)
+          ? `${title} (${variant})`
+          : title
+      return `• ${label} × ${Number(li.quantity) || 1}`
     })
     .join('\n')
+  if (items) lines.push('', '🛍️ Items:', items)
+
   const total =
     order.total_price != null && String(order.total_price).length > 0
       ? `${order.currency === 'INR' || !order.currency ? '₹' : `${order.currency} `}${order.total_price}`
       : ''
+  const pay = paymentLabel(order.financial_status)
+  if (total) lines.push('', `💰 Total: ${total}${pay ? ` (${pay})` : ''}`)
+
   const tracking =
+    live?.trackUrl ||
+    fulfillment?.tracking_url ||
     order.fulfillments?.find((f) => f.tracking_url)?.tracking_url ||
-    order.fulfillments?.find((f) => f.tracking_number)?.tracking_number ||
     order.order_status_url ||
     ''
+  if (tracking) lines.push(`🔗 Track: ${tracking}`)
 
-  const lines = [
-    `Order ${name} mil gaya ✅`,
-    ``,
-    `Payment: ${pay}`,
-    `Delivery: ${ship}`,
-  ]
-  if (items) {
-    lines.push('', 'Items:', items)
-  }
-  if (total) lines.push('', `Total: ${total}`)
-  if (tracking) lines.push(`Track: ${tracking}`)
   lines.push(
     '',
-    'Sab theek hai to All good dabayein. Koi concern ho to Talk to agent.',
+    'Sab theek hai to "All good" dabayein, koi concern ho to "Talk to agent".',
   )
   return lines.join('\n')
 }
 
-export function snapshotToVars(order: ShopifyOrderLike): Record<string, string> {
+export function snapshotToVars(
+  order: ShopifyOrderLike,
+  extras: OrderStatusExtras = {},
+): Record<string, string> {
+  const { stage, delayed } = orderStageOf(order, extras)
   return {
     order_found: 'true',
     order_name: order.name || (order.order_number != null ? `#${order.order_number}` : ''),
-    order_status: humanStatus(order.financial_status, ''),
-    order_fulfillment: humanStatus(order.fulfillment_status, 'not shipped yet'),
+    order_status: (order.financial_status || '').toLowerCase(),
+    order_fulfillment: stage,
+    order_delayed: delayed ? 'true' : 'false',
     order_total:
       order.total_price != null ? String(order.total_price) : '',
-    order_summary: formatOrderStatusMessage(order),
+    order_summary: formatOrderStatusMessage(order, extras),
   }
 }
 
@@ -168,6 +254,16 @@ export async function lookupShopifyOrderStatus(args: {
   const db = supabaseAdmin()
   const candidates = orderNumberCandidates(query)
 
+  const withLiveTracking = async (
+    order: ShopifyOrderLike,
+    localFulfillment?: string | null,
+    fallbackAwb?: string,
+  ) => {
+    const awb = trackingNumberOf(order) || fallbackAwb || ''
+    const live = awb ? await fetchShiprocketShipment(db, args.accountId, awb) : null
+    return { found: true, vars: snapshotToVars(order, { live, localFulfillment }) }
+  }
+
   if (args.contactId) {
     const { data: local } = await db
       .from('shopify_orders')
@@ -184,14 +280,13 @@ export async function lookupShopifyOrderStatus(args: {
       try {
         const live = await fetchShopify(`/orders/${match.shopify_order_id}.json`)
         if (live?.order) {
-          return { found: true, vars: snapshotToVars(live.order as ShopifyOrderLike) }
+          return withLiveTracking(live.order as ShopifyOrderLike, match.fulfillment_status)
         }
       } catch (err) {
         console.warn('[shopify-order-lookup] live order fetch failed, using local row:', err)
       }
-      return {
-        found: true,
-        vars: snapshotToVars({
+      return withLiveTracking(
+        {
           name: match.order_number,
           order_number: match.order_number,
           financial_status: match.financial_status,
@@ -200,8 +295,10 @@ export async function lookupShopifyOrderStatus(args: {
           currency: match.currency,
           line_items: match.line_items as ShopifyOrderLike['line_items'],
           order_status_url: match.tracking_url,
-        }),
-      }
+        },
+        match.fulfillment_status,
+        awbFromTrackingUrl(match.tracking_url),
+      )
     }
 
     const { data: contact } = await db
@@ -212,16 +309,22 @@ export async function lookupShopifyOrderStatus(args: {
     if (contact?.shopify_customer_id) {
       const orders = await fetchCustomerOrders(String(contact.shopify_customer_id))
       const hit = orders.find((o) => orderMatchesQuery(o, query))
-      if (hit) return { found: true, vars: snapshotToVars(hit) }
+      if (hit) return withLiveTracking(hit)
     }
   }
 
   for (const name of candidates) {
     const hit = await fetchShopifyOrderByName(name)
     if (hit && orderMatchesQuery(hit, query)) {
-      return { found: true, vars: snapshotToVars(hit) }
+      return withLiveTracking(hit)
     }
   }
 
   return empty
+}
+
+/** `https://store.shiprocket.co/tracking/SRSP5359042244` → `SRSP5359042244`. */
+export function awbFromTrackingUrl(url: string | null | undefined): string {
+  const m = (url || '').match(/\/tracking\/([A-Za-z0-9]+)/)
+  return m ? m[1] : ''
 }

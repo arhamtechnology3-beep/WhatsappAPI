@@ -102,4 +102,17 @@ describe("middleware — auth routing and cookie handling", () => {
     expect(res.headers.get("location")).toBeNull();
     expect(res.cookies.get(ROTATED.name)?.value).toBe(ROTATED.value);
   });
+
+  it("does not copy ?workspace_id= into the workspace cookie", async () => {
+    mockUser = { id: "user-1" };
+    const res = await middleware(
+      authedRequest("https://app.test/api/contacts?workspace_id=attacker-ws"),
+    );
+    expect(res.cookies.get("wacrm_active_workspace_id")).toBeUndefined();
+  });
+
+  it("sets x-request-id on responses", async () => {
+    const res = await middleware(new NextRequest("https://app.test/login"));
+    expect(res.headers.get("x-request-id")).toBeTruthy();
+  });
 });

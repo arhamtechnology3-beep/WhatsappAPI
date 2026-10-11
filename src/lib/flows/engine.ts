@@ -42,6 +42,7 @@ import {
 import { decideFallback, resolveFallbackPolicy } from "./fallback";
 import { lookupShopifyOrderStatus } from "@/lib/shopify/shopify-order-lookup";
 import { expandOrderTrackingShopifyLookup } from "./order-tracking-patch";
+import { isAgentRequest, sendSupportContact } from "@/lib/support/agent-request";
 import {
   type CollectInputNodeConfig,
   type ConditionNodeConfig,
@@ -83,6 +84,15 @@ export function matchReplyId(
     return null;
   }
   return null;
+}
+
+/** "Order#1014" / "#1014" / "order no 1014" → "1014"; "DP/26/1012" kept as typed. */
+export function normalizeOrderInput(raw: string): string {
+  const s = (raw || "").trim();
+  const named = s.match(/[A-Za-z]{1,4}\/\d{2}\/\d+/);
+  if (named) return named[0].toUpperCase();
+  const digits = s.match(/\d{3,}/g);
+  return digits ? digits[digits.length - 1] : s;
 }
 
 /**
@@ -310,6 +320,14 @@ async function isDuplicateInbound(
   return (count ?? 0) > 0;
 }
 
+async function contactHasShopifyOrder(db: AdminClient, contactId: string): Promise<boolean> {
+  const { count } = await db
+    .from("shopify_orders")
+    .select("id", { count: "exact", head: true })
+    .eq("contact_id", contactId);
+  return (count ?? 0) > 0;
+}
+
 async function findEntryFlow(
   db: AdminClient,
   accountId: string,
@@ -454,6 +472,17 @@ async function executeHandoff(
     assigned_to: cfg.assign_to ?? null,
   });
   await endRun(db, run.id, "handed_off", "handoff_node");
+  await sendSupportContactForRun(db, run);
+}
+
+async function sendSupportContactForRun(db: AdminClient, run: FlowRunRow): Promise<void> {
+  if (!run.conversation_id || !run.contact_id) return;
+  await sendSupportContact(db, {
+    accountId: run.account_id,
+    userId: run.user_id,
+    conversationId: run.conversation_id,
+    contactId: run.contact_id,
+  });
 }
 
 /**
@@ -897,12 +926,30 @@ export async function dispatchInboundToFlows(
       return handleReplyForActiveRun(db, activeRun, input.message, nodes);
     }
 
+    // No active run: an agent ask (typed, or a stale "Talk to agent"
+    // button from an earlier menu) gets the support number instead of a
+    // keyword-matched bot menu or silence.
+    const askText =
+      input.message.kind === "text" ? input.message.text : input.message.reply_title;
+    if (isAgentRequest(askText)) {
+      await sendSupportContact(db, {
+        accountId: input.accountId,
+        userId: input.userId,
+        conversationId: input.conversationId,
+        contactId: input.contactId,
+      });
+      return { consumed: true, outcome: "handed_off" };
+    }
+
     // No active run → look for a flow whose entry trigger matches.
+    // Shoppers writing in for the first time are replying to an order
+    // message — a lead-capture greeting ("work email? company?") is wrong.
     const flow = await findEntryFlow(
       db,
       input.accountId,
       input.message,
-      input.isFirstInboundMessage,
+      input.isFirstInboundMessage &&
+        !(await contactHasShopifyOrder(db, input.contactId)),
     );
     if (!flow || !flow.entry_node_id) {
       return { consumed: false, outcome: "no_match" };
@@ -955,6 +1002,17 @@ async function handleReplyForActiveRun(
     return { consumed: true, flow_run_id: run.id, outcome: "no_match" };
   }
 
+  // "Phone pe baat karni hai, number bhejo" must reach a human, not be
+  // captured as a name or answered with the same menu again.
+  if (message.kind === "text" && isAgentRequest(message.text)) {
+    await logEvent(db, run.id, "handoff", run.current_node_key, {
+      reason: "customer_asked_for_agent",
+    });
+    await endRun(db, run.id, "handed_off", "customer_asked_for_agent");
+    await sendSupportContactForRun(db, run);
+    return { consumed: true, flow_run_id: run.id, outcome: "handed_off" };
+  }
+
   // Two ways a reply can advance:
   //   1. Interactive button/list tap on a send_buttons/send_list node.
   //   2. Text reply on a collect_input node — capture into vars.
@@ -972,7 +1030,9 @@ async function handleReplyForActiveRun(
     currentNode.node_type === "collect_input"
   ) {
     const cfg = currentNode.config as unknown as CollectInputNodeConfig;
-    const captured = message.text.trim();
+    const captured = /order/i.test(cfg.var_key ?? "")
+      ? normalizeOrderInput(message.text)
+      : message.text.trim();
     if (captured.length > 0 && cfg.var_key) {
       // Persist captured value + reset reprompt count atomically.
       const newVars = { ...run.vars, [cfg.var_key]: captured };
@@ -1019,6 +1079,16 @@ async function handleReplyForActiveRun(
       flow_run_id: run.id,
       outcome: outcome.outcome,
     };
+  }
+
+  // A "Talk to agent" tap from an older menu than the current node.
+  if (message.kind === "interactive_reply" && isAgentRequest(message.reply_title)) {
+    await logEvent(db, run.id, "handoff", run.current_node_key, {
+      reason: "customer_asked_for_agent",
+    });
+    await endRun(db, run.id, "handed_off", "customer_asked_for_agent");
+    await sendSupportContactForRun(db, run);
+    return { consumed: true, flow_run_id: run.id, outcome: "handed_off" };
   }
 
   // No match → fallback. Apply the policy.
@@ -1078,6 +1148,7 @@ async function handleReplyForActiveRun(
       reason: "fallback_exhausted",
     });
     await endRun(db, run.id, "handed_off", "fallback_exhausted");
+    await sendSupportContactForRun(db, run);
     return { consumed: true, flow_run_id: run.id, outcome: "handed_off" };
   }
   // action.type === 'end'

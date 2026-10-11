@@ -182,6 +182,27 @@ export default function ShopifyDashboardPage() {
   const [resendingJobId, setResendingJobId] = useState<string | null>(null)
   const [sequences, setSequences] = useState<AutomationSequence[]>([])
   const [currentPlan, setCurrentPlan] = useState<'basic' | 'growth' | 'scale'>('growth')
+  const [billingStatus, setBillingStatus] = useState<string | null>(null)
+
+  // Prefer server entitlements over local plan state
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/v1/stores/current')
+      .then(async (res) => {
+        if (!res.ok) return
+        const body = await res.json()
+        if (cancelled) return
+        const plan = body.data?.entitlements?.plan
+        setBillingStatus(body.data?.entitlements?.status ?? null)
+        if (plan === 'starter') setCurrentPlan('basic')
+        else if (plan === 'scale') setCurrentPlan('scale')
+        else if (plan === 'growth') setCurrentPlan('growth')
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   // Visitor sessions state
   const [visitorSessions, setVisitorSessions] = useState<VisitorSession[]>([])
@@ -568,9 +589,44 @@ export default function ShopifyDashboardPage() {
     toast.success('Checkout recovery URL copied!')
   }
 
-  const changePlan = (plan: 'basic' | 'growth' | 'scale') => {
-    setCurrentPlan(plan)
-    toast.success(`Switched subscription plan to ${plan.toUpperCase()}`)
+  const changePlan = async (plan: 'basic' | 'growth' | 'scale') => {
+    try {
+      const currentRes = await fetch('/api/v1/stores/current')
+      if (!currentRes.ok) {
+        toast.error('Select or connect a store before changing plans')
+        return
+      }
+      const currentBody = await currentRes.json()
+      const storeId = currentBody.data?.store?.id
+      if (!storeId) {
+        toast.error('No store context — connect Shopify first')
+        return
+      }
+      // Map legacy UI names to plan_id rows (starter ≈ basic)
+      const planId = plan === 'basic' ? 'starter' : plan
+      const res = await fetch('/api/v1/billing/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storeId, planId }),
+      })
+      const body = await res.json()
+      if (!res.ok) {
+        toast.error(body.error?.message || 'Billing update failed')
+        return
+      }
+      if (body.data?.confirmationUrl) {
+        window.location.href = body.data.confirmationUrl
+        return
+      }
+      const nextPlan = body.data?.entitlements?.plan
+      if (nextPlan === 'starter') setCurrentPlan('basic')
+      else if (nextPlan === 'scale') setCurrentPlan('scale')
+      else setCurrentPlan('growth')
+      setBillingStatus(body.data?.entitlements?.status ?? null)
+      toast.success(`Plan updated to ${plan.toUpperCase()} (server entitlements)`)
+    } catch {
+      toast.error('Billing request failed')
+    }
   }
 
   const openEditor = (templateName: string, currentBody: string, currentDelay: number) => {

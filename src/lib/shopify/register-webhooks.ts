@@ -7,6 +7,10 @@ export const SHOPIFY_WEBHOOK_TOPICS = [
   { topic: 'customers/create', path: '/api/webhooks/shopify/customers-create' },
   { topic: 'customers/update', path: '/api/webhooks/shopify/customers-update' },
   { topic: 'app/uninstalled', path: '/api/webhooks/shopify/app-uninstalled' },
+  // Mandatory App Store compliance topics (also set in Partner Dashboard)
+  { topic: 'customers/data_request', path: '/api/webhooks/shopify/gdpr/customers-data-request' },
+  { topic: 'customers/redact', path: '/api/webhooks/shopify/gdpr/customers-redact' },
+  { topic: 'shop/redact', path: '/api/webhooks/shopify/gdpr/shop-redact' },
 ] as const
 
 export function shopifyAppBaseUrl(): string {

@@ -1,6 +1,49 @@
-import { NextResponse } from 'next/server'
+import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/automations/admin-client";
+import { verifyShopifyWebhookSignature } from "@/lib/shopify/webhook-signature";
+import {
+  handleCustomersDataRequest,
+  recordWebhookReceipt,
+} from "@/lib/privacy/gdpr";
 
-export async function POST() {
-  // Respond with 200 to satisfy Shopify App compliance
-  return NextResponse.json({ received: true })
+export async function POST(request: Request) {
+  const rawBody = await request.text();
+  const signature = request.headers.get("X-Shopify-Hmac-Sha256");
+  if (!verifyShopifyWebhookSignature(rawBody, signature)) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+
+  const shop = request.headers.get("x-shopify-shop-domain");
+  const webhookId = request.headers.get("x-shopify-webhook-id");
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = JSON.parse(rawBody) as Record<string, unknown>;
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const supabase = supabaseAdmin();
+  const receipt = await recordWebhookReceipt(supabase, {
+    topic: "customers/data_request",
+    shopDomain: shop,
+    webhookId,
+    payload,
+  });
+  if (receipt.duplicate) {
+    return NextResponse.json({ received: true, duplicate: true });
+  }
+
+  try {
+    const customer = (payload.customer ?? {}) as Record<string, unknown>;
+    await handleCustomersDataRequest(supabase, {
+      shopDomain: shop || String(payload.shop_domain || ""),
+      shopifyCustomerId: customer.id != null ? String(customer.id) : null,
+      email: typeof customer.email === "string" ? customer.email : null,
+      phone: typeof customer.phone === "string" ? customer.phone : null,
+    });
+  } catch (err) {
+    console.error("[gdpr/customers-data-request]", err);
+  }
+
+  return NextResponse.json({ received: true });
 }

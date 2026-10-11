@@ -2,7 +2,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { findExistingContact, findExistingContactByEmail, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { hasWhatsAppPhone, toMetaPhone } from '@/lib/whatsapp/phone-utils'
 import { toCustomerStoreName, toCustomerStoreUrl } from '@/lib/shopify/storefront-url'
-import { canonicalRecipeName, recipeByName } from './whatsapp-template-library'
+import {
+  TEMPLATE_UPGRADES,
+  canonicalRecipeName,
+  recipeByName,
+} from './whatsapp-template-library'
 import { shouldEnqueueWorkflowTemplate } from './order-notify'
 
 
@@ -18,13 +22,27 @@ export interface ShopifyCustomerPayload {
 
 /**
  * Resolves the account that can send Shopify WhatsApp.
- * Multiple `accounts` rows make `limit(1)` non-deterministic and can
- * attach store webhooks to a tenant with no WABA.
+ * Prefer shop-domain resolution via `resolveShopifyShopContext` when the
+ * webhook/request includes `x-shopify-shop-domain`.
  */
-export async function getShopifyAccountContext(supabase: SupabaseClient): Promise<{
+export async function getShopifyAccountContext(
+  supabase: SupabaseClient,
+  shopDomain?: string | null,
+): Promise<{
   accountId: string
   userId: string
+  storeId?: string | null
 }> {
+  if (shopDomain) {
+    const { resolveShopifyShopContext } = await import('./shop-context')
+    const ctx = await resolveShopifyShopContext(supabase, shopDomain)
+    return {
+      accountId: ctx.accountId,
+      userId: ctx.userId,
+      storeId: ctx.storeId,
+    }
+  }
+
   const { data: wa } = await supabase
     .from('whatsapp_config')
     .select('account_id, user_id')
@@ -41,6 +59,7 @@ export async function getShopifyAccountContext(supabase: SupabaseClient): Promis
     return {
       accountId: wa.account_id,
       userId: linked?.owner_user_id || wa.user_id,
+      storeId: null,
     }
   }
 
@@ -57,6 +76,7 @@ export async function getShopifyAccountContext(supabase: SupabaseClient): Promis
   return {
     accountId: data.id,
     userId: data.owner_user_id,
+    storeId: null,
   }
 }
 
@@ -429,6 +449,7 @@ const TRIGGER_EVENT_MAP: Record<string, string[]> = {
   shipment_in_transit: [],
   shipment_ofd: [],
   shipment_ndr: [],
+  shipment_delayed: [],
   order_cancelled: ['order_cancelled'],
   payment_refunded: ['payment_refunded'],
   payment_received: ['payment_received'],
@@ -440,6 +461,7 @@ const LAST_RESORT_TEMPLATES: Partial<Record<string, string[]>> = {
   shipment_in_transit: ['wacrm_order_in_transit_v1', 'wacrm_order_shipped_v2'],
   shipment_ofd: ['wacrm_order_ofd_v1'],
   shipment_ndr: ['wacrm_order_ndr_v1'],
+  shipment_delayed: ['wacrm_order_delayed_v1'],
   order_delivered: ['wacrm_order_delivered_v2'],
 }
 
@@ -469,6 +491,7 @@ export type ShopifyNotifyTrigger =
   | 'shipment_in_transit'
   | 'shipment_ofd'
   | 'shipment_ndr'
+  | 'shipment_delayed'
   | 'order_cancelled'
   | 'payment_refunded'
   | 'payment_received'
@@ -476,6 +499,8 @@ export type ShopifyNotifyTrigger =
 export interface ShopifyNotifyData {
   customer_name?: string
   product_name?: string
+  /** "Gor Keri (500 g) × 1, Gunda Keri × 2" — every line item of the order. */
+  items_summary?: string
   store_name?: string
   checkout_url?: string
   order_number?: string
@@ -639,6 +664,35 @@ function notifyIdempotencyKey(
 }
 
 /**
+ * Swap e.g. order_confirmed_v2 → v3 (with the items line) once v3 is
+ * APPROVED on the account. Stays on the live template otherwise, or when
+ * the order has no items to list (Meta rejects empty parameters).
+ */
+export async function applyApprovedTemplateUpgrade<
+  T extends { templateName: string; templateParams: string[] },
+>(
+  supabase: SupabaseClient,
+  accountId: string,
+  job: T,
+  data: ShopifyNotifyData,
+): Promise<T> {
+  const upgrade = TEMPLATE_UPGRADES[job.templateName]
+  const recipe = upgrade ? recipeByName(upgrade) : undefined
+  if (!upgrade || !recipe || !data.items_summary?.trim()) return job
+  const { data: row } = await supabase
+    .from('message_templates')
+    .select('status')
+    .eq('account_id', accountId)
+    .eq('name', upgrade)
+    .limit(1)
+    .maybeSingle()
+  if (String(row?.status || '').toUpperCase() !== 'APPROVED') return job
+  const templateParams = mapTemplateParams([...recipe.variables], data)
+  if (templateParams.some((p) => !p.trim())) return job
+  return { ...job, templateName: upgrade, templateParams }
+}
+
+/**
  * Enqueues a WhatsApp notification by matching the trigger rule and mapping variables.
  */
 export async function enqueueShopifyNotification(
@@ -677,13 +731,14 @@ export async function enqueueShopifyNotification(
     const events = TRIGGER_EVENT_MAP[triggerType] || []
     const queuedTemplates = new Set<string>()
 
-    const queueJob = async (opts: {
+    const queueJob = async (input: {
       templateName: string
       templateKey: string
       templateParams: string[]
       delayMinutes: number
       workflowLogId?: string | null
     }) => {
+      const opts = await applyApprovedTemplateUpgrade(supabase, accountId, input, data)
       if (queuedTemplates.has(opts.templateName)) return
       const jobId = await insertOrReuseSendJob(supabase, {
         account_id: accountId,

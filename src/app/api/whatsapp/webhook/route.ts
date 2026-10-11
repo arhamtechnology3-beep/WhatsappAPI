@@ -1105,8 +1105,9 @@ async function processMessage(
     }
   }
 
-  // 3. First contact opt-in prompt dispatcher
-  if (isFirstInboundMessage && !contactRecord.opt_in_prompt_sent_at) {
+  // 3. First contact opt-in prompt dispatcher — not while the bot is
+  // mid-conversation (it lands between questions and confuses customers).
+  if (isFirstInboundMessage && !contactRecord.opt_in_prompt_sent_at && !flowConsumed) {
     try {
       await sendTextMessage({
         phoneNumberId,

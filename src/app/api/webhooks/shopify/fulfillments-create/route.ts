@@ -6,6 +6,7 @@ import {
   enqueueShopifyNotification,
 } from '@/lib/shopify/shopify-helper'
 import { scheduleImmediateWhatsAppJobs } from '@/lib/whatsapp/process-send-jobs'
+import { formatItemsSummary } from '@/lib/shopify/product-image'
 
 export async function POST(request: Request) {
   const rawBody = await request.text()
@@ -22,7 +23,7 @@ export async function POST(request: Request) {
 
   try {
     const payload = JSON.parse(rawBody)
-    const { accountId: resolvedAccountId } = await getShopifyAccountContext(supabase)
+    const { accountId: resolvedAccountId } = await getShopifyAccountContext(supabase, request.headers.get("x-shopify-shop-domain"))
     accountId = resolvedAccountId
 
     const shopifyOrderId = String(payload.order_id)
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
     // Find the associated order
     const { data: order } = await supabase
       .from('shopify_orders')
-      .select('id, contact_id, order_number, contacts(name, phone)')
+      .select('id, contact_id, order_number, line_items, contacts(name, phone)')
       .eq('shopify_order_id', shopifyOrderId)
       .maybeSingle()
 
@@ -75,6 +76,7 @@ export async function POST(request: Request) {
           order_number: orderNumber,
           tracking_url: trackingUrl || 'Not Available',
           shopify_order_id: shopifyOrderId,
+          items_summary: formatItemsSummary(order.line_items),
         }
       )
       notifyRes = { status: res.status, message: res.message }

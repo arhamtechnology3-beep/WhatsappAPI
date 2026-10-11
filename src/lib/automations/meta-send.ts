@@ -13,10 +13,14 @@ import {
   buildRecipeButtonParams,
   buildTemplateCustomerView,
   defaultHeaderImageUrl,
+  isOrderTemplateName,
   recipeByName,
   resolveHeaderMediaUrl,
 } from '@/lib/shopify/whatsapp-template-library'
-import { resolveContactShopifyHeaderImage } from '@/lib/shopify/product-image'
+import {
+  resolveContactShopifyHeaderImage,
+  resolveOrderHeaderImage,
+} from '@/lib/shopify/product-image'
 import { toCustomerStoreUrl } from '@/lib/shopify/storefront-url'
 import { renderTemplateBody } from '@/lib/whatsapp/render-template-body'
 
@@ -60,6 +64,8 @@ interface SendTemplateArgs {
   }
   /** Prefer this over contacts.phone when the job already resolved a number. */
   toPhone?: string
+  /** Order the message is about — picks that order's product for the header image. */
+  shopifyOrderId?: string | null
 }
 
 export async function engineSendText(args: SendTextArgs): Promise<{ whatsapp_message_id: string }> {
@@ -195,10 +201,12 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       }
 
       if (templateRow?.header_type === 'image') {
-        const productImage = await resolveContactShopifyHeaderImage(
-          db,
-          input.contactId,
-        )
+        const productImage = isOrderTemplateName(input.templateName)
+          ? (await resolveOrderHeaderImage(db, {
+              contactId: input.contactId,
+              shopifyOrderId: input.shopifyOrderId,
+            })) || defaultHeaderImageUrl()
+          : await resolveContactShopifyHeaderImage(db, input.contactId)
         messageParams.headerMediaUrl = resolveHeaderMediaUrl(
           templateRow,
           productImage,

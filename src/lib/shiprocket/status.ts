@@ -126,12 +126,17 @@ export function parseShiprocketWebhook(body: unknown): TrackingEvent {
   }
 }
 
-/** Strip Shopify # / GID noise so "1011" matches shopify_orders.order_number. */
+/**
+ * Strip Shopify # / GID / order-name prefix noise so "1011" matches
+ * shopify_orders.order_number ("DP/26/1012" → "1012").
+ */
 export function normalizeChannelOrderId(raw: string): string {
   const s = raw.trim()
   if (!s) return ''
   const gid = s.match(/Order\/(\d+)/i)
   if (gid) return gid[1]
+  const prefixed = s.match(/\/\s*(\d+)$/)
+  if (prefixed) return prefixed[1]
   return s.replace(/^#/, '').trim()
 }
 

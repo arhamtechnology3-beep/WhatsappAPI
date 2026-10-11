@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
   try {
     const payload = JSON.parse(rawBody)
-    const { accountId: resolvedAccountId, userId } = await getShopifyAccountContext(supabase)
+    const { accountId: resolvedAccountId, userId } = await getShopifyAccountContext(supabase, request.headers.get("x-shopify-shop-domain"))
     accountId = resolvedAccountId
 
     const acceptsMarketing =

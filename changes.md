@@ -4,32 +4,129 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
-## How to log a change (required)
-
-Whenever you modify files, fix a bug, add a feature, or ship to `main`, **add a new entry at the top** of the dated list below (newest first). Do this in the same PR as the code.
-
-Entry template:
-
-```
-## [YYYY-MM-DD HH:MM] Type (Area) — Short title
+## [2026-10-11 19:50] Fix (Logistics/Shopify) — Shiprocket tracking webhook URL + token, duplicate Shopify subscriptions
 
 ### Root Cause
-- What was wrong or missing (skip for pure features).
+- Shiprocket's webhook form rejects URLs containing "shiprocket" / "sr" / "kr", so `/api/webhooks/shiprocket` could never be configured, and that route had no auth (anyone could trigger customer WhatsApp sends). Shiprocket may send the order name ("DP/26/1012"), which did not match `shopify_orders.order_number` ("1012").
+- `orders/create`, `orders/updated`, `fulfillments/create`, `checkouts/create|update` are delivered twice (100% of events in the last 10 days): once from the app's own subscriptions and once from the 5 shop-level subscriptions created by `scripts/register-shopify-webhooks.ts`. `customers/*` arrive once.
 
 ### Objective & Fixes
-- What we changed and how to verify on live (hard-refresh, Sync Shopify, etc.).
+- New `POST /api/webhooks/courier-tracking?account_id=…`; it and the old Shiprocket route require `x-api-key` = `COURIER_WEBHOOK_TOKEN` (unset = reject). `normalizeChannelOrderId` drops order-name prefixes; Shiprocket `sample.json` covered by a test.
+- `scripts/remove-duplicate-shopify-webhooks.ts` lists shop-level subscriptions and deletes (with `--apply`) only topics whose recent deliveries are all doubled.
 
 ### Files Modified
-- `path/to/file`
+- `src/lib/logistics/courier-webhook.ts` (+ test), `src/app/api/webhooks/courier-tracking/route.ts`, `src/app/api/webhooks/shiprocket/route.ts`
+- `src/lib/shiprocket/status.ts` (+ test)
+- `scripts/remove-duplicate-shopify-webhooks.ts`, `.env.local.example`
+
+### Live / Ops
+- Not pushed yet. Hostinger env: add `COURIER_WEBHOOK_TOKEN`. No migration.
+
+## [2026-10-11 19:10] Fix (Orders/WhatsApp) — duplicate order messages, wrong product photo, misleading status, silent agent handoff
+
+### Root Cause
+- **Duplicates:** two Shopify apps subscribe to the same webhooks, so `orders/create` arrives twice. Each delivery re-scheduled the same send job, and the claim in `processWhatsAppSendJobs` left the job `pending` while sending, so the next drainer sent it again (order #1012: 3 confirmations, `attempts: 3`; 9 of 20 order sends in 30 days duplicated).
+- **Wrong photo:** order line items carry only `product_id`; the Admin lookup failed and the header fell back to the first catalog product (Katka Keri) for every order. The resolver also preferred the latest cart over the order being announced.
+- **Status reply:** "Order … mil gaya ✅ / Delivery: fulfilled" for parcels still in transit. Shiprocket tracking webhooks never reached us, so local status stayed `fulfilled`; `orders/updated` also overwrote courier statuses with `fulfilled`.
+- **Bot:** B2B Lead capture flow fired on shoppers' first message; opt-in prompt interrupted flows; typed "number bhejo" got the same menu again; "Talk to agent" told the customer nothing; taps after a handoff were dropped.
+
+### Objective & Fixes
+- Send-job claim is now a 10-minute `run_at` lease (status CHECK only allows pending/sent/failed), so a job is sent exactly once.
+- Order/shipment templates use that order's own product image (variant first) via the public storefront catalog, persisted to `line_items[].image_url`; brand logo when none. Backfilled orders #1011–#1016 on live.
+- New `wacrm_order_confirmed_v3` / `wacrm_order_shipped_v3` with an items line ("Gor Keri (500 g) × 1, …"); sends switch from v2 automatically once v3 is APPROVED on the account.
+- Order status reply rewritten (stage, last scan, courier, expected date, delay apology, items, payment) using live Shiprocket tracking by AWB.
+- Cron `shipments` job polls Shiprocket every 2h for open orders: syncs status, sends fresh OFD/delivered/NDR milestones (older scans sync silently), flags parcels past EDD (conversation → pending; `wacrm_order_delayed_v1` sent once approved).
+- Any agent request (button or typed, EN/Hinglish/Hindi/Gujarati) or bot handoff sends "📞 Call / WhatsApp: +91 91676 23044 (Arham Food)" once per 6h and marks the chat pending. Override with `SUPPORT_CONTACT_PHONE` / `SUPPORT_CONTACT_NAME`.
+- First-message flows (Lead capture) skipped for contacts with a Shopify order; opt-in prompt not sent while a flow consumed the message; typed order numbers normalized ("Order#1014" → "1014"); order prompt copy fixed (054, also applied on live).
+
+### Files Modified
+- `src/lib/whatsapp/process-send-jobs.ts` (+ test)
+- `src/lib/shopify/product-image.ts` (+ test), `whatsapp-template-library.ts`, `shopify-helper.ts`, `shopify-order-lookup.ts` (+ test), `template-upgrade.test.ts`
+- `src/lib/automations/meta-send.ts`
+- `src/lib/shiprocket/client.ts`, `src/lib/orders/order-stage.ts`, `src/lib/logistics/notify.ts`, `src/lib/logistics/shipment-sweep.ts`, `src/lib/cron/tick.ts`
+- `src/lib/support/agent-request.ts` (+ test), `src/lib/flows/engine.ts` (+ test), `src/lib/flows/order-tracking-patch.ts`
+- `src/app/api/webhooks/shopify/{orders-create,orders-updated,fulfillments-create}/route.ts`, `src/app/api/shopify/orders/notify/route.ts`, `src/app/api/whatsapp/webhook/route.ts`
+- `scripts/backfill-order-images.ts`
+- `supabase/migrations/054_order_tracking_copy.sql`
 
 ### Live
-- Git SHA / PR number if already on `main`.
-- Migration required: `supabase/migrations/0xx_....sql` (or none).
-```
+- Not pushed. Data already applied on live: order image backfill, 054 copy update.
+- Migration: `054_order_tracking_copy.sql` (idempotent; already applied).
+- After deploy: Shopify page → Install recipes, then submit `wacrm_order_confirmed_v3`, `wacrm_order_shipped_v3`, `wacrm_order_delayed_v1` to Meta.
 
-Types: `Fix`, `Feat`, `Chore`, `Docs`. Areas: Contacts, Inbox, Shopify, Auth, Templates, Automations, Cache, etc.
+## [2026-09-18 03:40] Fix (IdentityFlow) — 052 safe when visitor_sessions missing on live
 
----
+### Root Cause
+- Live Supabase never applied `030_visitor_tracking_tables.sql`. Running `052` hit `ALTER TABLE visitor_sessions` and aborted the transaction, so `stores` was never created and `053` then failed with `relation "stores" does not exist`.
+
+### Objective & Fixes
+- `052` now `CREATE TABLE IF NOT EXISTS` for `visitor_sessions` / `visitor_identity_map` before adding `store_id` and locking down anon RLS.
+- Re-run **full** `052`, then `053`, in that order.
+
+### Files Modified
+- `supabase/migrations/052_identityflow_stores.sql`
+- `changes.md`
+
+### Live
+- Not pushed.
+- Migration required: re-run `052_identityflow_stores.sql`, then `053_identityflow_phases.sql`
+
+## [2026-09-18 03:45] Feat (IdentityFlow) — Phases 1–5 connection, tracking, campaigns, ops
+
+### Root Cause
+- Phase 0 added stores/entitlements. Runtime still used env Shopify tokens, plaintext OAuth tokens, stub GDPR, fake billing UI, and no tracking SDK / campaigns / retention.
+
+### Objective & Fixes
+- Phase 1: hardened OAuth (timing-safe HMAC + state cookie), encrypted `shopify_connections`, trial-safe install/reinstall, shop-domain webhook resolution, GDPR HMAC + privacy jobs, Shopify App Billing API (+ mock for env installs), billing UI.
+- Phase 2: storefront SDK, signed/consent-aware event ingest, Customer 360 APIs/pages, real GDPR export/redact/shop redact.
+- Phase 3: campaigns/segments schema, campaign CRUD + popup helper, frequency caps via entitlements.
+- Phase 4: campaign → `whatsapp_send_jobs` with marketing opt-in check.
+- Phase 5: usage counters, trial expiry + retention cron, support access grants (no secrets), isolation/HMAC tests.
+- Apply `052_identityflow_stores.sql` and `053_identityflow_phases.sql`.
+- Enable nav with `NEXT_PUBLIC_IDENTITYFLOW_NAV=true` or `beta_features: identityflow`.
+
+### Files Modified
+- `src/app/api/shopify/install/route.ts`, `callback/route.ts`
+- `src/lib/shopify/*`, `src/lib/billing/shopify-billing.ts`, `src/lib/privacy/gdpr.ts`
+- `src/app/api/v1/{billing,events,campaigns,customers,support}/**`
+- `public/identityflow/{sdk,popup}.js`
+- `supabase/migrations/053_identityflow_phases.sql`
+- `changes.md`
+
+### Live
+- Not pushed.
+- Migration required: `052_identityflow_stores.sql`, `053_identityflow_phases.sql`
+
+## [2026-09-18 03:15] Feat (IdentityFlow) — Phase 0 stores, entitlements, isolation
+
+### Root Cause
+- Spec requires per-store tenancy, 7-day trials, and server entitlements. The CRM only had workspaces with an optional shop domain, fake billing UI, and open anon RLS on visitor tables.
+
+### Objective & Fixes
+- Add store / subscription / plan schema under existing workspaces (orgs). Backfill one store per connected shop.
+- Server `getCurrentStore` + `getStoreEntitlements`. Store cookie is httpOnly; `?workspace_id=` / `?store_id=` are not trusted.
+- Trial FSM never resets on reinstall (`shop_trial_history`).
+- IdentityFlow nav (Customer 360, Campaigns, Billing, Privacy, store switcher) is off unless `NEXT_PUBLIC_IDENTITYFLOW_NAV=true` or `beta_features` includes `identityflow`.
+- CRM, WhatsApp, and env-token Shopify client are unchanged.
+- Apply `052_identityflow_stores.sql`.
+
+### Files Modified
+- `IMPLEMENTATION_PLAN.md`
+- `ARCHITECTURE.md`
+- `THREAT_MODEL.md`
+- `supabase/migrations/052_identityflow_stores.sql`
+- `src/lib/auth/store.ts`
+- `src/lib/auth/store-access.ts`
+- `src/lib/billing/entitlements.ts`
+- `src/lib/billing/subscription-state.ts`
+- `src/lib/billing/trial.ts`
+- `src/middleware.ts`
+- `src/components/layout/sidebar.tsx`
+- `changes.md`
+
+### Live
+- Not pushed.
+- Migration required: `supabase/migrations/052_identityflow_stores.sql`
 
 ## [2026-09-16 02:20] Feat (Logistics) — Shiprocket + Delhivery + AfterShip WhatsApp tracking
 

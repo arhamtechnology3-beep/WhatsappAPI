@@ -4,6 +4,25 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-11 20:15] Fix (Build) — Hostinger builds with webpack; Turbopack PostCSS worker crashes there
+
+### Root Cause
+- Since today every Hostinger build fails, including a redeploy of the last good commit `1512ef0`: Turbopack spawns a separate Node process to run PostCSS on `src/app/globals.css`, and on Hostinger that process exits before Turbopack can connect ("node process exited before we could connect to it"). Same commits build fine locally.
+- `next build --webpack` additionally type-checks route exports: four cron routes exported their runner (`runAutomationsCron`, `runFlowsCron`, `runShopifyAbandonedCron`, `runShopifySequenceCron`) for `tick.ts`, which Next rejects. Middleware also pulled `node:crypto` into the Edge bundle via `request-id.ts`.
+
+### Objective & Fixes
+- `npm run build` is now `next build --webpack` (PostCSS runs in-process).
+- Cron runners moved to `src/lib/{automations/cron,flows/cron,shopify/abandoned-cron,shopify/sequence-cron}.ts`; routes only authorize and call them.
+- `resolveRequestId` uses Web Crypto `globalThis.crypto.randomUUID()`.
+
+### Files Modified
+- `package.json`
+- `src/app/api/{automations/cron,flows/cron,shopify/cron,shopify/cron/sequences}/route.ts`, the four new lib files, `src/lib/cron/tick.ts`
+- `src/lib/observability/request-id.ts`
+
+### Live
+- Push to `main` triggers the Hostinger build. No migration.
+
 ## [2026-10-11 19:50] Fix (Logistics/Shopify) — Shiprocket tracking webhook URL + token, duplicate Shopify subscriptions
 
 ### Root Cause

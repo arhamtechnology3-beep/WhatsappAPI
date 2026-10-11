@@ -20,7 +20,8 @@ Keep it up to date for **current work and every future change**. `CHANGELOG.md` 
 - `scripts/remove-duplicate-shopify-webhooks.ts`, `.env.local.example`
 
 ### Live / Ops
-- Not pushed yet. Hostinger env: add `COURIER_WEBHOOK_TOKEN`. No migration.
+- Pushed to `main` in `0cdb8a5`. Hostinger env: add `COURIER_WEBHOOK_TOKEN`. No migration.
+- Deleted the 5 duplicate shop-level Shopify subscriptions on live (2026-10-11 19:55).
 
 ## [2026-10-11 19:10] Fix (Orders/WhatsApp) — duplicate order messages, wrong product photo, misleading status, silent agent handoff
 
@@ -50,7 +51,7 @@ Keep it up to date for **current work and every future change**. `CHANGELOG.md` 
 - `supabase/migrations/054_order_tracking_copy.sql`
 
 ### Live
-- Not pushed. Data already applied on live: order image backfill, 054 copy update.
+- Pushed to `main` in `0cdb8a5` (052/053 tables confirmed on live). Data already applied on live: order image backfill, 054 copy update.
 - Migration: `054_order_tracking_copy.sql` (idempotent; already applied).
 - After deploy: Shopify page → Install recipes, then submit `wacrm_order_confirmed_v3`, `wacrm_order_shipped_v3`, `wacrm_order_delayed_v1` to Meta.
 
@@ -68,7 +69,7 @@ Keep it up to date for **current work and every future change**. `CHANGELOG.md` 
 - `changes.md`
 
 ### Live
-- Not pushed.
+- Pushed to `main` in `0cdb8a5` (052/053 tables confirmed on live).
 - Migration required: re-run `052_identityflow_stores.sql`, then `053_identityflow_phases.sql`
 
 ## [2026-09-18 03:45] Feat (IdentityFlow) — Phases 1–5 connection, tracking, campaigns, ops
@@ -94,7 +95,7 @@ Keep it up to date for **current work and every future change**. `CHANGELOG.md` 
 - `changes.md`
 
 ### Live
-- Not pushed.
+- Pushed to `main` in `0cdb8a5` (052/053 tables confirmed on live).
 - Migration required: `052_identityflow_stores.sql`, `053_identityflow_phases.sql`
 
 ## [2026-09-18 03:15] Feat (IdentityFlow) — Phase 0 stores, entitlements, isolation
@@ -125,7 +126,7 @@ Keep it up to date for **current work and every future change**. `CHANGELOG.md` 
 - `changes.md`
 
 ### Live
-- Not pushed.
+- Pushed to `main` in `0cdb8a5` (052/053 tables confirmed on live).
 - Migration required: `supabase/migrations/052_identityflow_stores.sql`
 
 ## [2026-09-16 02:20] Feat (Logistics) — Shiprocket + Delhivery + AfterShip WhatsApp tracking
@@ -160,7 +161,7 @@ Keep it up to date for **current work and every future change**. `CHANGELOG.md` 
 - `changes.md`
 
 ### Live
-- Not pushed.
+- Pushed to `main` in `0cdb8a5` (052/053 tables confirmed on live).
 - Migration required: `supabase/migrations/051_logistics_whatsapp_integrations.sql`
 
 ## [2026-08-24 00:15] Fix (Build) — restore missing import so Hostinger deploy succeeds

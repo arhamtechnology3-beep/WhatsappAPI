@@ -37,6 +37,16 @@ export const TEMPLATE_UPGRADES: Readonly<Record<string, string>> = {
   wacrm_order_shipped_v2: 'wacrm_order_shipped_v3',
 }
 
+/**
+ * Cart drip step 3 without a coupon code (offer is auto-applied at
+ * checkout). The drip switches to it from step3 v1/v2 once APPROVED.
+ */
+export const CART_STEP3_NO_CODE_TEMPLATE = 'wacrm_cart_reminder_step3_v3'
+
+export function isCodedCartStep3Template(name: string | null | undefined): boolean {
+  return /^wacrm_cart_reminder_step3_v[12]$/.test(name || '')
+}
+
 export type ShopifyRecipeTrigger =
   | 'cart_abandoned'
   | 'cart_abandoned_step2'
@@ -375,6 +385,28 @@ Complete purchase pe code apply ho jayega.`,
     buttons: [completePurchase(), shopBestsellers()],
     button_url_sources: ['checkout_url', null],
     sample_values: { body: ['Jesal', 'Nani Trial Pack', 'WACRM10'] },
+  },
+  {
+    trigger_type: 'cart_abandoned_step3',
+    template_name: CART_STEP3_NO_CODE_TEMPLATE,
+    category: 'MARKETING',
+    language: WACRM_TEMPLATE_LANGUAGE,
+    body: `Namaste {{1}}! 🎁
+{{2}} abhi bhi cart mein saved hai.
+
+✨ *10% Discount & FREE Shipping auto-applied at checkout!*
+
+✅ Handmade, no chemical preservatives
+✅ Fresh & hygienically packed
+
+Complete Purchase pe tap karo aur order confirm karo.`,
+    variables: ['customer_name', 'product_name'],
+    default_delay_minutes: 1440,
+    header_type: 'image',
+    footer_text: 'DivyaPrabha Foods',
+    buttons: [completePurchase(), shopBestsellers()],
+    button_url_sources: ['checkout_url', null],
+    sample_values: { body: ['Jesal', 'Nani Trial Pack'] },
   },
   {
     trigger_type: 'browse_abandoned',

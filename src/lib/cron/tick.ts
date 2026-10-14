@@ -5,6 +5,7 @@ import { runShopifySequenceCron } from '@/lib/shopify/sequence-cron'
 import { reconcileTrialExpiry, runDataRetention } from '@/lib/ops/retention'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { sweepOpenShipments } from '@/lib/logistics/shipment-sweep'
+import { syncPendingTemplateStatuses } from '@/lib/whatsapp/pending-template-sync'
 import { NextResponse } from 'next/server'
 
 type JobName =
@@ -14,6 +15,7 @@ type JobName =
   | 'flows'
   | 'identityflow'
   | 'shipments'
+  | 'templates'
 
 export type CronTickResult = {
   ok: boolean
@@ -51,6 +53,11 @@ async function runShipmentSweep(): Promise<Response> {
   return NextResponse.json({ ok: true, ...result })
 }
 
+async function runTemplateStatusSync(): Promise<Response> {
+  const result = await syncPendingTemplateStatuses(supabaseAdmin())
+  return NextResponse.json({ ok: true, ...result })
+}
+
 /**
  * Run every delayed-job worker once. Sequential so Hostinger's Node
  * process does not pile Meta/Shopify bursts on the same tick.
@@ -63,6 +70,7 @@ export async function runAllCronJobs(): Promise<CronTickResult> {
     flows: { status: 500, body: { error: 'not-run' } },
     identityflow: { status: 500, body: { error: 'not-run' } },
     shipments: { status: 500, body: { error: 'not-run' } },
+    templates: { status: 500, body: { error: 'not-run' } },
   }
 
   const runners: Array<[JobName, () => Promise<Response>]> = [
@@ -72,6 +80,7 @@ export async function runAllCronJobs(): Promise<CronTickResult> {
     ['flows', runFlowsCron],
     ['identityflow', runIdentityFlowCron],
     ['shipments', runShipmentSweep],
+    ['templates', runTemplateStatusSync],
   ]
 
   for (const [name, fn] of runners) {

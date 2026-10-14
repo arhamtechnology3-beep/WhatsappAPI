@@ -17,6 +17,25 @@ import {
   metadataWithSentStep,
   stepAlreadySent,
 } from '@/lib/shopify/sequence-dedupe'
+import {
+  CART_STEP3_NO_CODE_TEMPLATE,
+  isCodedCartStep3Template,
+} from '@/lib/shopify/whatsapp-template-library'
+
+async function isTemplateApproved(
+  supabase: ReturnType<typeof supabaseAdmin>,
+  accountId: string,
+  name: string,
+): Promise<boolean> {
+  const { data } = await supabase
+    .from('message_templates')
+    .select('status')
+    .eq('account_id', accountId)
+    .eq('name', name)
+    .limit(1)
+    .maybeSingle()
+  return String(data?.status || '').toUpperCase() === 'APPROVED'
+}
 
 export async function runShopifySequenceCron() {
   const supabase = supabaseAdmin()
@@ -234,9 +253,18 @@ export async function runShopifySequenceCron() {
           productUrl = meta.product_url || ''
         }
 
+        // Step 3 drops the coupon code once the no-code template is approved;
+        // the 10% / free-shipping offer is auto-applied at checkout.
+        let templateName: string = step.template_name
+        const noCodeStep3 =
+          sequence.trigger_type === 'cart_abandoned' &&
+          isCodedCartStep3Template(templateName) &&
+          (await isTemplateApproved(supabase, tracking.account_id, CART_STEP3_NO_CODE_TEMPLATE))
+        if (noCodeStep3) templateName = CART_STEP3_NO_CODE_TEMPLATE
+
         // Generate dynamic discount code if this is the final step
         let discountCode = tracking.discount_code
-        if (tracking.current_step === 3 && sequence.trigger_type === 'cart_abandoned' && !discountCode) {
+        if (tracking.current_step === 3 && sequence.trigger_type === 'cart_abandoned' && !discountCode && !noCodeStep3) {
           const storeDomain = process.env.SHOPIFY_STORE_DOMAIN || process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN || ''
           const token = process.env.SHOPIFY_ADMIN_API_TOKEN || ''
           discountCode = await createShopifyDiscountCode(storeDomain, token)
@@ -246,7 +274,9 @@ export async function runShopifySequenceCron() {
         const customerName = contact?.name || 'Customer'
         const storeName = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN || 'Our Store'
 
-        const mapping: string[] = step.template_variable_mapping || []
+        const mapping: string[] = noCodeStep3
+          ? ['customer_name', 'product_name']
+          : step.template_variable_mapping || []
         let templateParams = mapping.map((variableName) => {
           if (variableName === 'customer_name') return customerName
           if (variableName === 'product_name') return productName
@@ -314,7 +344,7 @@ export async function runShopifySequenceCron() {
               userId: ownerUserId,
               conversationId: conv.id,
               contactId: tracking.contact_id,
-              templateName: step.template_name,
+              templateName,
               params: templateParams,
               buttonUrls: {
                 checkout_url: checkoutUrl || undefined,

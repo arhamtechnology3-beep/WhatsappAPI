@@ -4,6 +4,27 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-14 17:20] Change (Cart drip) — step 3 without a coupon code; pending template status backstop
+
+### Root Cause
+- Cart drip step 3 (`wacrm_cart_reminder_step3_v2`, and the older v1 shown in Templates) asks the customer to use a coupon code ("Code DP10 se abhi milega extra OFF", "use code OFF10"), and the drip creates a Shopify discount code for it. The offer is auto-applied at checkout, so no code is needed.
+- `wacrm_owner_new_order_v1` is still PENDING at Meta (no rejection). Templates gated on APPROVED depend only on Meta's `message_template_status_update` webhook to flip the local row.
+
+### Objective & Fixes
+- New recipe `wacrm_cart_reminder_step3_v3` (MARKETING, image header, Complete Purchase + Shop Bestsellers): no code, says "✨ *10% Discount & FREE Shipping auto-applied at checkout!*". Variables: name, product.
+- Sequence cron: when step 3 is a step3 v1/v2 template and v3 is APPROVED, send v3 with [name, product] and skip creating a Shopify discount code. Until then step 3 is unchanged.
+- Cron `templates` job (every 15 min): checks PENDING templates on Meta and applies APPROVED / REJECTED (+ reason) locally, then propagates to steps/rules — owner alerts and step 3 v3 go live even if the webhook is missed.
+- `scripts/submit-recipe-template.ts <accountId> <name>` submits any built-in recipe (uploads header image).
+
+### Files Modified
+- `src/lib/shopify/whatsapp-template-library.ts` (+ test), `src/lib/shopify/sequence-cron.ts`
+- `src/lib/whatsapp/pending-template-sync.ts` (+ test), `src/lib/cron/tick.ts`
+- `scripts/submit-recipe-template.ts`
+
+### Live
+- 17:15 submitted `wacrm_cart_reminder_step3_v3` (Meta id `1096734372717273`, PENDING), saved in `message_templates`.
+- 17:16 `wacrm_owner_new_order_v1` still PENDING on Meta, no rejection reason. No migration.
+
 ## [2026-10-14 15:50] Fix (Logistics) — "Delivered" WhatsApp missed when the courier is re-booked; duplicate shipped messages
 
 ### Root Cause

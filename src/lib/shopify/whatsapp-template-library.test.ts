@@ -15,6 +15,8 @@ import {
   dynamicStorefrontUrl,
   templateHasMediaHeader,
   resolveTemplateHeaderKind,
+  CART_STEP3_NO_CODE_TEMPLATE,
+  isCodedCartStep3Template,
 } from './whatsapp-template-library'
 
 describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
@@ -46,6 +48,18 @@ describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
         'wacrm_order_ndr_v1',
       ]),
     )
+  })
+
+  it('cart step 3 v3 has no coupon code and states the auto-applied offer', () => {
+    const v3 = recipeByName(CART_STEP3_NO_CODE_TEMPLATE)!
+    expect(v3.template_name).toBe('wacrm_cart_reminder_step3_v3')
+    expect(v3.variables).toEqual(['customer_name', 'product_name'])
+    expect(v3.body).not.toMatch(/code/i)
+    expect(v3.body).toContain('✨ *10% Discount & FREE Shipping auto-applied at checkout!*')
+    expect(isCodedCartStep3Template('wacrm_cart_reminder_step3_v1')).toBe(true)
+    expect(isCodedCartStep3Template('wacrm_cart_reminder_step3_v2')).toBe(true)
+    expect(isCodedCartStep3Template('wacrm_cart_reminder_step3_v3')).toBe(false)
+    expect(isCodedCartStep3Template('wacrm_cart_reminder_step2_v2')).toBe(false)
   })
 
   it('uses current offers and the custom-domain storefront', () => {

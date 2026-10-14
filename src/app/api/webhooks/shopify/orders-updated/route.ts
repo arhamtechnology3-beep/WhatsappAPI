@@ -8,6 +8,12 @@ import {
 } from '@/lib/shopify/shopify-helper'
 import { extractShopifyCustomerIdentity } from '@/lib/shopify/order-notify'
 import { formatItemsSummary } from '@/lib/shopify/product-image'
+import {
+  fulfillmentTrackingUrl,
+  isDelivered,
+  isFreshDelivery,
+  latestFulfillment,
+} from '@/lib/shopify/fulfillment-tracking'
 import { scheduleImmediateWhatsAppJobs } from '@/lib/whatsapp/process-send-jobs'
 
 const COURIER_STATUSES = new Set(['in_transit', 'out_for_delivery', 'delivered', 'ndr'])
@@ -62,6 +68,10 @@ export async function POST(request: Request) {
       .maybeSingle()
 
     const dealId = existingOrder?.deal_id
+    const fulfillment = latestFulfillment(payload.fulfillments)
+    const trackingUrl = fulfillmentTrackingUrl(fulfillment)
+    const shopifyDelivered = fulfillmentStatus === 'fulfilled' && isDelivered(fulfillment)
+    const wasDelivered = existingOrder?.fulfillment_status === 'delivered'
     // Courier milestones are more precise than Shopify's "fulfilled".
     const keepCourierStatus =
       fulfillmentStatus === 'fulfilled' &&
@@ -72,9 +82,13 @@ export async function POST(request: Request) {
       .from('shopify_orders')
       .update({
         financial_status: financialStatus,
-        fulfillment_status: keepCourierStatus
-          ? existingOrder?.fulfillment_status
-          : fulfillmentStatus,
+        fulfillment_status: shopifyDelivered
+          ? 'delivered'
+          : keepCourierStatus
+            ? existingOrder?.fulfillment_status
+            : fulfillmentStatus,
+        // A re-booked courier gets a new AWB; the courier sweep tracks this URL.
+        ...(trackingUrl ? { tracking_url: trackingUrl } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq('shopify_order_id', orderId)
@@ -146,6 +160,10 @@ export async function POST(request: Request) {
         !keepCourierStatus
       ) {
         recordNotify(await notify('order_fulfilled'))
+      }
+
+      if (shopifyDelivered && !wasDelivered && !isCancelled && isFreshDelivery(fulfillment)) {
+        recordNotify(await notify('order_delivered'))
       }
     }
 

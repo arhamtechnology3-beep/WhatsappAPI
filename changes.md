@@ -4,6 +4,22 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-14 15:50] Fix (Logistics) — "Delivered" WhatsApp missed when the courier is re-booked; duplicate shipped messages
+
+### Root Cause
+- **Duplicates (screenshots of #1016):** every order up to #1016 got 2× confirmation and 2× shipped (one job, `attempts: 2`, two Meta message ids at the same second) because Shopify delivered each webhook twice and both deliveries sent the same job. Already fixed by the 2026-10-11 19:50 send lease + duplicate-subscription removal; no template has been doubled since (delivered #1014, delayed #1012, confirmation #1017 each sent once).
+- **No delivered message:** the "delivered" WhatsApp exists (`wacrm_order_delivered_v2`, sent for #1014 on 11 Oct) but only fires from the 2-hourly Shiprocket sweep, which tracks the AWB saved at first fulfillment. #1015 and #1016 were re-booked (Blue Dart / Delhivery), Shiprocket cancelled the old AWBs ("This AWB has been cancelled") and returned a blank status, so the sweep skipped them forever. Shopify already had the new AWBs (and #1015 as delivered) but `orders/updated` never synced tracking or delivery.
+
+### Objective & Fixes
+- Courier sweep: when the stored AWB has no live status, use the current AWB from Shopify's latest live fulfillment, track that, and save its tracking URL.
+- `orders/updated`: saves the latest fulfillment's tracking URL; when Shopify marks the shipment delivered, sets `fulfillment_status = delivered` and sends `order_delivered` if delivered in the last 24h (older deliveries sync silently). Same `shipment_delivered:<orderId>` job key as the sweep, so one message per order.
+
+### Files Modified
+- `src/lib/shopify/fulfillment-tracking.ts` (+ test), `src/lib/logistics/shipment-sweep.ts`, `src/app/api/webhooks/shopify/orders-updated/route.ts`
+
+### Live
+- No migration. #1016 (Delhivery 19041967206902, in transit) will get its delivered message once delivered; #1013/#1015 were delivered days ago and stay silent.
+
 ## [2026-10-14 15:25] Feat (Orders) — WhatsApp new-order alert to the store owners
 
 ### Objective & Fixes

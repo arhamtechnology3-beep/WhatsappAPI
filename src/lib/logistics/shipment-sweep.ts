@@ -6,6 +6,12 @@ import {
   trackingNumberOf,
   type ShopifyOrderLike,
 } from '@/lib/shopify/shopify-order-lookup'
+import {
+  fulfillmentTrackingNumber,
+  fulfillmentTrackingUrl,
+  latestFulfillment,
+  type ShopifyFulfillmentLike,
+} from '@/lib/shopify/fulfillment-tracking'
 import { enqueueShopifyNotification } from '@/lib/shopify/shopify-helper'
 import { scheduleImmediateWhatsAppJobs } from '@/lib/whatsapp/process-send-jobs'
 import {
@@ -53,18 +59,52 @@ function istTimestamp(raw: string): number {
   return Date.parse(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:00+05:30`)
 }
 
-async function awbForOrder(row: {
-  shopify_order_id: string
-  tracking_url: string | null
-}): Promise<string> {
-  const fromUrl = awbFromTrackingUrl(row.tracking_url)
-  if (fromUrl) return fromUrl
+/** Current AWB on Shopify — changes when the courier is re-booked. */
+async function shopifyTracking(
+  shopifyOrderId: string,
+): Promise<{ awb: string; url: string }> {
   try {
-    const res = await fetchShopify(`/orders/${row.shopify_order_id}.json`)
-    return trackingNumberOf((res?.order || {}) as ShopifyOrderLike)
+    const res = await fetchShopify(`/orders/${shopifyOrderId}.json`)
+    const order = (res?.order || {}) as ShopifyOrderLike & { fulfillments?: ShopifyFulfillmentLike[] }
+    const current = latestFulfillment(order.fulfillments)
+    return {
+      awb: fulfillmentTrackingNumber(current) || trackingNumberOf(order),
+      url: fulfillmentTrackingUrl(current),
+    }
   } catch {
-    return ''
+    return { awb: '', url: '' }
   }
+}
+
+/**
+ * Live Shiprocket status for the order. A stored AWB that Shiprocket no
+ * longer tracks (cancelled on re-booking) falls back to Shopify's current
+ * AWB, which is saved so the next sweep uses it directly.
+ */
+async function liveShipmentForOrder(
+  db: SupabaseClient,
+  row: { account_id: string; shopify_order_id: string; tracking_url: string | null },
+): Promise<{ awb: string; live: LiveShipment } | null> {
+  const storedAwb = awbFromTrackingUrl(row.tracking_url)
+  if (storedAwb) {
+    const live = await fetchShiprocketShipment(db, row.account_id, storedAwb)
+    if (live?.status) return { awb: storedAwb, live }
+  }
+
+  const current = await shopifyTracking(row.shopify_order_id)
+  if (!current.awb || current.awb === storedAwb) return null
+  const live = await fetchShiprocketShipment(db, row.account_id, current.awb)
+  if (!live?.status) return null
+
+  const url = live.trackUrl || current.url
+  if (url && url !== row.tracking_url) {
+    await db
+      .from('shopify_orders')
+      .update({ tracking_url: url, updated_at: new Date().toISOString() })
+      .eq('account_id', row.account_id)
+      .eq('shopify_order_id', row.shopify_order_id)
+  }
+  return { awb: current.awb, live }
 }
 
 async function flagDelay(
@@ -144,10 +184,9 @@ export async function sweepOpenShipments(
       tracking_url: string | null
       fulfillment_status: string | null
     }
-    const awb = await awbForOrder(row)
-    if (!awb) continue
-    const live = await fetchShiprocketShipment(db, row.account_id, awb)
-    if (!live?.status) continue
+    const found = await liveShipmentForOrder(db, row)
+    if (!found) continue
+    const { awb, live } = found
     result.checked++
 
     const stage = stageFromCourierStatus(live.status)

@@ -4,6 +4,26 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-14 17:45] UI (Settings → Templates) — status counts, filters, compact list
+
+### Root Cause
+- Templates were a two-column wall of full WhatsApp previews: no counts, no way to find pending/rejected ones, and Approved used the same purple as the Marketing category badge.
+
+### Objective & Fixes
+- Status bar at the top: All / Approved / Pending / Needs attention (rejected, paused, disabled) / Drafts with counts and a proportion bar; tapping a tile filters the list.
+- Search (name or message text) and category filter.
+- Compact list: name, category, language, buttons, one-line message, status, last submitted, Preview / Edit / Delete. Needs attention and Pending sort first. Rejection reason inline.
+- Preview opens a side panel with status, submitted time, Meta quality and ID, and the full customer view.
+- "Waiting for Meta" note when templates are pending (checked every 15 min).
+- Approved badge is green everywhere (inbox and broadcast pickers too). Install recipes and Delete all moved under ⋯; Delete all now asks for confirmation.
+
+### Files Modified
+- `src/components/settings/template-library.tsx` (new), `src/components/settings/template-manager.tsx`
+- `src/lib/template-status.ts` (+ test)
+
+### Live
+- No migration.
+
 ## [2026-10-14 17:20] Change (Cart drip) — step 3 without a coupon code; pending template status backstop
 
 ### Root Cause

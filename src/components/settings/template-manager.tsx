@@ -9,9 +9,9 @@ import {
   RefreshCw,
   AlertCircle,
   X,
-  Pencil,
-  RotateCcw,
   Upload,
+  MoreHorizontal,
+  Download,
 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import {
@@ -23,9 +23,16 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { SettingsPanelHead } from './settings-panel-head';
+import { TemplateLibrary } from './template-library';
 import {
   Dialog,
   DialogContent,
@@ -46,8 +53,6 @@ import type {
   TemplateButton,
   TemplateSampleValues,
 } from '@/types';
-import { templateStatusConfig } from '@/lib/template-status';
-import { WhatsAppTemplatePreview } from '@/components/whatsapp/whatsapp-template-preview';
 import {
   extractVariableIndices,
   TEMPLATE_LIMITS,
@@ -56,12 +61,6 @@ import {
 const CATEGORIES = ['Marketing', 'Utility', 'Authentication'] as const;
 type HeaderFormat = 'none' | 'text' | 'image' | 'video' | 'document';
 const HEADER_FORMATS: HeaderFormat[] = ['none', 'text', 'image', 'video', 'document'];
-
-const categoryColors: Record<string, string> = {
-  Marketing: 'bg-purple-600/20 text-purple-400 border-purple-600/30',
-  Utility: 'bg-blue-600/20 text-blue-400 border-blue-600/30',
-  Authentication: 'bg-amber-600/20 text-amber-400 border-amber-600/30',
-};
 
 interface TemplateFormData {
   name: string;
@@ -141,6 +140,7 @@ export function TemplateManager() {
   const [isDraftEdit, setIsDraftEdit] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [installingRecipes, setInstallingRecipes] = useState(false);
   // Template selected for the confirm-delete dialog. The destructive
   // action goes through this two-step so a slip on the trash icon
@@ -549,53 +549,57 @@ export function TemplateManager() {
     <section className="animate-in fade-in-50 space-y-4 duration-200">
       <SettingsPanelHead
         title="Message templates"
-        description={
-          'Create templates and submit them to Meta for approval. Install recipes adds the Shopify lifecycle drafts. Sync from Meta only refreshes templates already in this list.'
-        }
+        description="WhatsApp messages approved by Meta. Only Approved templates can be sent; new and edited ones wait for Meta review."
         action={
           <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              onClick={installRecipes}
-              disabled={installingRecipes || syncing || deletingAll}
-              title="Add DivyaPrabha Farm Didi-style Shopify recipes as local drafts"
-            >
-              {installingRecipes ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Plus className="size-4" />
-              )}
-              {installingRecipes ? 'Installing…' : 'Install recipes'}
-            </Button>
-            {templates.length > 0 && (
-              <Button
-                variant="outline"
-                onClick={deleteAllLocalTemplates}
-                disabled={deletingAll || syncing}
-                className="border-red-900/60 text-red-400 hover:bg-red-950/30"
-                title="Remove every template from wacrm even if Meta rejects the remote delete"
-              >
-                {deletingAll ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Trash2 className="size-4" />
-                )}
-                {deletingAll ? 'Deleting…' : 'Delete all'}
-              </Button>
-            )}
-            <Button
-              variant="outline"
               onClick={handleSyncFromMeta}
               disabled={syncing}
-              title="Refresh status of templates already in wacrm. Does not re-import deleted templates."
+              title="Refresh the status of these templates from Meta. Does not re-import deleted templates."
             >
               <RefreshCw className={`size-4 ${syncing ? 'animate-spin' : ''}`} />
               {syncing ? 'Syncing…' : 'Sync from Meta'}
             </Button>
             <Button onClick={openCreate}>
               <Plus className="size-4" />
-              New Template
+              New template
             </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline" size="icon" aria-label="More template actions" />
+                }
+              >
+                {installingRecipes || deletingAll ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <MoreHorizontal className="size-4" />
+                )}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-56 border-border bg-popover">
+                <DropdownMenuItem
+                  onClick={installRecipes}
+                  disabled={installingRecipes || syncing || deletingAll}
+                >
+                  <Download className="size-4" />
+                  Install Shopify recipes
+                </DropdownMenuItem>
+                {templates.length > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={() => setConfirmDeleteAll(true)}
+                      disabled={deletingAll || syncing}
+                    >
+                      <Trash2 className="size-4" />
+                      Delete all templates…
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         }
       />
@@ -605,116 +609,57 @@ export function TemplateManager() {
           <CardContent className="flex flex-col items-center justify-center py-12 text-center">
             <p className="text-muted-foreground text-sm">No templates yet.</p>
             <p className="text-muted-foreground text-xs mt-1">
-              Use Install recipes for Shopify lifecycle drafts, or New Template.
+              Use New template, or More → Install Shopify recipes for the order and cart messages.
             </p>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-3 xl:grid-cols-2">
-          {templates.map((template) => {
-            const statusKey = template.status || 'DRAFT';
-            const status = templateStatusConfig[statusKey];
-            return (
-              <Card key={template.id}>
-                <CardContent className="flex items-start justify-between pt-4">
-                  <div className="space-y-2 min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-medium text-foreground">{template.name}</h3>
-                      <Badge
-                        className={`text-xs border ${categoryColors[template.category] || ''}`}
-                      >
-                        {template.category}
-                      </Badge>
-                      <Badge className={`text-xs border ${status.classes}`}>
-                        {status.label}
-                      </Badge>
-                      {template.language && (
-                        <span className="text-xs text-muted-foreground uppercase">
-                          {template.language}
-                        </span>
-                      )}
-                      {template.quality_score && (
-                        <span
-                          className={`text-[10px] uppercase font-medium ${
-                            template.quality_score === 'GREEN'
-                              ? 'text-emerald-400'
-                              : template.quality_score === 'YELLOW'
-                                ? 'text-yellow-400'
-                                : 'text-red-400'
-                          }`}
-                          title="Meta quality score"
-                        >
-                          {template.quality_score}
-                        </span>
-                      )}
-                    </div>
-                    {(template.rejection_reason || template.submission_error) && (
-                      <div className="flex items-start gap-1.5 text-xs text-red-400 bg-red-950/20 border border-red-900/40 rounded px-2 py-1.5">
-                        <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
-                        <span>
-                          {template.rejection_reason || template.submission_error}
-                        </span>
-                      </div>
-                    )}
-                    <WhatsAppTemplatePreview template={template} compact />
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0 ml-2">
-                    {(statusKey === 'APPROVED' || statusKey === 'DRAFT') && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEdit(template)}
-                        title={statusKey === 'DRAFT' ? "Edit and submit draft template" : "Editing triggers Meta re-review — status flips to PENDING."}
-                        aria-label={statusKey === 'DRAFT' ? "Edit draft template" : "Edit template"}
-                        className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
-                      >
-                        <Pencil className="size-3.5" />
-                        Edit
-                      </Button>
-                    )}
-                    {(statusKey === 'REJECTED' || statusKey === 'PAUSED') && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEdit(template)}
-                        title="Edit the template and resubmit to Meta for review."
-                        aria-label="Edit and resubmit template"
-                        className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
-                      >
-                        <RotateCcw className="size-3.5" />
-                        Resubmit
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setTemplateToDelete(template)}
-                      disabled={deletingId === template.id}
-                      aria-label={
-                        template.meta_template_id
-                          ? 'Delete template from Meta and locally'
-                          : 'Delete template locally'
-                      }
-                      title={
-                        template.meta_template_id
-                          ? 'Delete from Meta and locally'
-                          : 'Delete locally'
-                      }
-                      className="text-muted-foreground hover:text-red-400 hover:bg-red-950/30 h-8 w-8"
-                    >
-                      {deletingId === template.id ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="size-4" />
-                      )}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+        <TemplateLibrary
+          templates={templates}
+          deletingId={deletingId}
+          onEdit={openEdit}
+          onDelete={setTemplateToDelete}
+        />
       )}
+
+      <Dialog open={confirmDeleteAll} onOpenChange={setConfirmDeleteAll}>
+        <DialogContent className="bg-popover border-border sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-popover-foreground">Delete all templates?</DialogTitle>
+            <DialogDescription className="text-muted-foreground">
+              All {templates.length} templates will be removed from wacrm. Order confirmations,
+              shipping updates and cart reminders stop sending until they are restored.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="bg-popover border-border">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDeleteAll(false)}
+              disabled={deletingAll}
+              className="border-border text-muted-foreground hover:bg-muted"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={async () => {
+                await deleteAllLocalTemplates();
+                setConfirmDeleteAll(false);
+              }}
+              disabled={deletingAll}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deletingAll ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Deleting…
+                </>
+              ) : (
+                'Delete all'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={dialogOpen}

@@ -30,7 +30,9 @@ Keep it up to date for **current work and every future change**. `CHANGELOG.md` 
 ### Live
 - Code: `8741ed9` pushed to `main` 20:30.
 - 20:20 submitted to Meta, all PENDING, saved in `message_templates`: `wacrm_review_request_v1` (UTILITY, `1292801066306069`), `wacrm_review_reminder_v1` (UTILITY, `1425986289661029`), `wacrm_refill_reminder_v1` (MARKETING, `1851269439369088`), `wacrm_refill_followup_v1` (MARKETING, `1065748419622699`).
-- **Apply `058_order_followups.sql`** in Supabase, deploy, then `npx tsx scripts/backfill-order-followups.ts --apply` (dry run today: #1013 two products, #1014, #1015 → review request now). Until 058 runs, scheduling and the cron job no-op.
+- 20:16 `058_order_followups.sql` applied on Supabase (verified table + `contacts.reorder_reminders_off_at`).
+- 20:18 backfill `--apply`: #1013 (Gunda Keri + Homemade Mango Pickle), #1014, #1015 scheduled at stage `review_request`; they send once `wacrm_review_request_v1` is APPROVED.
+- 20:20 deploy live: `/review/<token>` for #1013 renders both pickles; bad reorder token redirects to all-products.
 
 ## [2026-10-14 17:45] UI (Settings → Templates) — status counts, filters, compact list
 

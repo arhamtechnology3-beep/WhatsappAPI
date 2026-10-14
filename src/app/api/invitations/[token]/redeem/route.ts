@@ -22,6 +22,10 @@ import type { PostgrestError } from "@supabase/supabase-js";
 
 import { hashInviteToken } from "@/lib/auth/invitations";
 import {
+  isProfilelessCallerError,
+  redeemProfilelessInviteForUser,
+} from "@/lib/auth/redeem-profileless";
+import {
   checkRateLimit,
   rateLimitResponse,
   RATE_LIMITS,
@@ -81,11 +85,37 @@ export async function POST(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const tokenHash = hashInviteToken(token);
   const { data: accountId, error } = await supabase.rpc("redeem_invitation", {
-    p_token_hash: hashInviteToken(token),
+    p_token_hash: tokenHash,
   });
 
-  if (error) return rpcErrorToResponse(error);
+  if (error) {
+    // Migration 055 teaches the RPC to create the missing profile.
+    // Until that SQL is applied, signup can leave an auth user with
+    // no profile (the account/workspace sync trigger aborts
+    // handle_new_user). Attach them here so Accept still works.
+    if (isProfilelessCallerError(error)) {
+      const fullName =
+        typeof user.user_metadata?.full_name === "string"
+          ? user.user_metadata.full_name
+          : "";
+      const bootstrapped = await redeemProfilelessInviteForUser({
+        tokenHash,
+        userId: user.id,
+        email: user.email ?? "",
+        fullName,
+      });
+      if (!bootstrapped.ok) {
+        return NextResponse.json(
+          { error: bootstrapped.error },
+          { status: bootstrapped.status },
+        );
+      }
+      return NextResponse.json({ ok: true, accountId: bootstrapped.accountId });
+    }
+    return rpcErrorToResponse(error);
+  }
 
   return NextResponse.json({ ok: true, accountId });
 }

@@ -19,6 +19,8 @@ import {
   recoverMissingShopifyPhone,
 } from '@/lib/shopify/order-notify'
 import { scheduleImmediateWhatsAppJobs } from '@/lib/whatsapp/process-send-jobs'
+import { orderCoversCheckout } from '@/lib/shopify/recovery-conversion'
+import { enqueueOwnerOrderAlerts, ownerOrderAlertParams } from '@/lib/shopify/owner-order-alert'
 import { hasWhatsAppPhone } from '@/lib/whatsapp/phone-utils'
 
 export async function POST(request: Request) {
@@ -107,8 +109,25 @@ export async function POST(request: Request) {
       }
     }
 
-    // If no deal found via cart token, do not recover a different open
-    // checkout for this contact — that would kill an unrelated cart drip.
+    if (!dealId) {
+      const { data: openCheckouts } = await supabase
+        .from('shopify_checkouts')
+        .select('id, deal_id, line_items')
+        .eq('contact_id', contact.id)
+        .neq('status', 'recovered')
+        .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString())
+        .order('created_at', { ascending: false })
+      const checkout = (openCheckouts || []).find((c) =>
+        orderCoversCheckout(payload.line_items, c.line_items),
+      )
+      if (checkout) {
+        dealId = checkout.deal_id
+        await supabase
+          .from('shopify_checkouts')
+          .update({ status: 'recovered', updated_at: new Date().toISOString() })
+          .eq('id', checkout.id)
+      }
+    }
 
     if (dealId) {
       // Move checkout deal to Cart Recovered stage
@@ -191,6 +210,17 @@ export async function POST(request: Request) {
     )
 
     scheduleImmediateWhatsAppJobs(notifyRes.jobIds || [])
+
+    const ownerJobIds = await enqueueOwnerOrderAlerts(supabase, {
+      accountId,
+      userId,
+      shopifyOrderId: orderId,
+      params: ownerOrderAlertParams(payload, {
+        customerName: [identity.firstName, identity.lastName].filter(Boolean).join(' ') || contact.name,
+        phone: sendPhone,
+      }),
+    })
+    scheduleImmediateWhatsAppJobs(ownerJobIds)
 
     await supabase.from('shopify_webhook_logs').insert({
       account_id: accountId,

@@ -144,6 +144,9 @@ export type ConditionOperator =
 
 export type ConditionSubject = "var" | "tag" | "contact_field";
 
+/** `contact_field` key resolved from `shopify_orders`: the count, absent when 0. */
+export const SHOPIFY_ORDER_COUNT_FIELD = "shopify_order_count";
+
 /**
  * Routes the run based on a predicate over the contact's tags,
  * profile fields, or stored vars. Always auto-advances — no Meta
@@ -154,7 +157,8 @@ export interface ConditionNodeConfig {
   /**
    * For `var`: the key in flow_runs.vars.
    * For `tag`: the tag UUID (matched against contact_tags).
-   * For `contact_field`: one of 'name' | 'email' | 'phone' | 'company'.
+   * For `contact_field`: one of 'name' | 'email' | 'phone' | 'company' |
+   * 'shopify_order_count'.
    */
   subject_key: string;
   operator: ConditionOperator;

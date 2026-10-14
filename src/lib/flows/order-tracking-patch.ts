@@ -116,7 +116,7 @@ export function expandOrderTrackingShopifyLookup<T extends PatchableNode>(
           ...n,
           config: {
             ...n.config,
-            text: 'Order {{vars.order_no}} check kar rahe hain, ek second... ⏳',
+            text: 'Aapka order check kar rahe hain, ek second... ⏳',
             next_node_key: LOOKUP_KEY,
           },
         }

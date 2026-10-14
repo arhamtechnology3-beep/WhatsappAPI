@@ -2,20 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 import { AuthProvider, useAuth } from "@/hooks/use-auth";
-import { canSendMessages } from "@/lib/auth/roles";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { PresenceHeartbeat } from "@/components/presence/presence-heartbeat";
-import { clearCachedData } from "@/lib/cache/page-cache";
-
 // Auth-gated dashboard shell. Extracted from the layout so the layout
 // itself can stay a server component and export metadata (noindex) —
 // client components can't export Next's metadata object.
 
 function DashboardShellInner({ children }: { children: React.ReactNode }) {
-  const { user, loading, accountRole } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
 
   // Sidebar drawer state — only used on mobile. On lg+ the sidebar is
@@ -28,43 +24,6 @@ function DashboardShellInner({ children }: { children: React.ReactNode }) {
       router.push("/login");
     }
   }, [user, loading, router]);
-
-  useEffect(() => {
-    if (loading || !user || !accountRole || !canSendMessages(accountRole)) return;
-    const key = "wacrm_cleared_templates_automations_20260816b";
-    try {
-      if (window.localStorage.getItem(key)) return;
-    } catch {
-      return;
-    }
-    let cancelled = false;
-    fetch("/api/account/clear-templates-automations", { method: "POST" })
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (cancelled) return;
-        if (!res.ok || !data.success) return;
-        try {
-          window.localStorage.setItem(key, "1");
-        } catch {
-          // private mode
-        }
-        const n =
-          (data.templates ?? 0) +
-          (data.automations ?? 0) +
-          (data.shopifyRules ?? 0) +
-          (data.workflows ?? 0);
-        if (n > 0) {
-          clearCachedData();
-          toast.success("Removed existing WhatsApp templates and automations");
-        }
-      })
-      .catch(() => {
-        // Keep the dashboard usable if cleanup fails
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [user, loading, accountRole]);
 
   if (loading) {
     return (

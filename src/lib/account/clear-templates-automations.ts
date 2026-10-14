@@ -13,7 +13,7 @@ export interface ClearTemplatesAutomationsResult {
 export async function clearTemplatesAndAutomations(
   db: SupabaseClient,
   accountId: string,
-  userId?: string // retained for callers; wipe is install-wide
+  userId?: string // retained for callers
 ): Promise<ClearTemplatesAutomationsResult> {
   void userId
   const metaErrors: string[] = []
@@ -27,12 +27,13 @@ export async function clearTemplatesAndAutomations(
   const { data: templates } = await db
     .from('message_templates')
     .select('id, name, meta_template_id')
+    .eq('account_id', accountId)
 
   // Local delete first so a Meta #100 / timeout cannot leave CRM rows behind.
   const { data: deletedTemplates, error: tplErr } = await db
     .from('message_templates')
     .delete()
-    .neq('id', '00000000-0000-0000-0000-000000000000')
+    .eq('account_id', accountId)
     .select('id')
   if (tplErr) throw tplErr
   const templatesDeleted = deletedTemplates?.length ?? 0
@@ -68,7 +69,7 @@ export async function clearTemplatesAndAutomations(
   const { data: deletedAutomations, error: autoErr } = await db
     .from('automations')
     .delete()
-    .neq('id', '00000000-0000-0000-0000-000000000000')
+    .eq('account_id', accountId)
     .select('id')
   if (autoErr) throw autoErr
   const automationsDeleted = deletedAutomations?.length ?? 0

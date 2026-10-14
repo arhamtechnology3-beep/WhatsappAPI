@@ -15,6 +15,7 @@ import {
   defaultHeaderImageUrl,
   isOrderTemplateName,
   recipeByName,
+  recipeToDraftInsert,
   resolveHeaderMediaUrl,
 } from '@/lib/shopify/whatsapp-template-library'
 import {
@@ -144,6 +145,18 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
           .maybeSingle()
         if (fallbackRow) {
           templateRow = fallbackRow
+        }
+      }
+      if (!templateRow) {
+        // Without the row Meta gets no image header (#132012). Recipes
+        // carry the same header/body/buttons that were approved.
+        const recipe = recipeByName(input.templateName)
+        if (recipe) {
+          templateRow = {
+            ...recipeToDraftInsert(recipe, input.accountId, input.userId),
+            name: input.templateName,
+            status: 'APPROVED',
+          }
         }
       }
       ;(input as any)._templateRow = templateRow

@@ -241,12 +241,16 @@ export async function lookupShopifyOrderStatus(args: {
   contactId?: string | null
 }): Promise<{ found: boolean; vars: Record<string, string> }> {
   const query = (args.query || '').trim()
+  // "No order has been created but money debited" — no number to search,
+  // so answer with the order placed from this WhatsApp number.
+  const hasOrderNumber = /\d{3,}/.test(query)
   const empty = {
     found: false,
     vars: {
       order_found: 'false',
-      order_summary:
-        `Order ${query || 'number'} hamare Shopify records mein nahi mila. Number check karke dubara try karein, ya Talk to agent.`,
+      order_summary: hasOrderNumber
+        ? `Order ${query} hamare Shopify records mein nahi mila. Number check karke dubara try karein, ya Talk to agent.`
+        : 'Is WhatsApp number par abhi koi order nahi mila. Apna order number bhejein (jaise 1014 ya DP/26/1014), ya Talk to agent.',
     },
   }
   if (!query) return empty
@@ -269,13 +273,16 @@ export async function lookupShopifyOrderStatus(args: {
       .from('shopify_orders')
       .select('order_number, financial_status, fulfillment_status, total_price, currency, line_items, tracking_url, shopify_order_id')
       .eq('contact_id', args.contactId)
+      .order('created_at', { ascending: false })
       .limit(50)
-    const match = (local || []).find((row) =>
-      orderMatchesQuery(
-        { name: row.order_number, order_number: row.order_number },
-        query,
-      ),
-    )
+    const match = hasOrderNumber
+      ? (local || []).find((row) =>
+          orderMatchesQuery(
+            { name: row.order_number, order_number: row.order_number },
+            query,
+          ),
+        )
+      : local?.[0]
     if (match?.shopify_order_id) {
       try {
         const live = await fetchShopify(`/orders/${match.shopify_order_id}.json`)
@@ -308,10 +315,12 @@ export async function lookupShopifyOrderStatus(args: {
       .maybeSingle()
     if (contact?.shopify_customer_id) {
       const orders = await fetchCustomerOrders(String(contact.shopify_customer_id))
-      const hit = orders.find((o) => orderMatchesQuery(o, query))
+      const hit = hasOrderNumber ? orders.find((o) => orderMatchesQuery(o, query)) : orders[0]
       if (hit) return withLiveTracking(hit)
     }
   }
+
+  if (!hasOrderNumber) return empty
 
   for (const name of candidates) {
     const hit = await fetchShopifyOrderByName(name)

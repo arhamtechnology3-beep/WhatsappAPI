@@ -4,6 +4,88 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-14 15:25] Feat (Orders) — WhatsApp new-order alert to the store owners
+
+### Objective & Fixes
+- Every Shopify `orders/create` queues `wacrm_owner_new_order_v1` (UTILITY, no header) to 9769104020, 9167623044, 9029498911 (override with `SHOPIFY_OWNER_ALERT_PHONES`, comma separated): order name, customer, mobile, items, total, payment (Paid online / Cash on Delivery), ship-to address. Once per order per number (`owner_new_order:<orderId>:<phone>` job key); sends appear in those contacts' inbox chats.
+- Skipped (logged) until the template is APPROVED; the template-status webhook flips it automatically.
+
+### Files Modified
+- `src/lib/shopify/owner-order-alert.ts` (+ test), `src/app/api/webhooks/shopify/orders-create/route.ts`
+- `scripts/submit-owner-order-template.ts`
+
+### Live
+- Template submitted to Meta 2026-10-14 15:22 (id `1783909529648189`, PENDING) and saved in `message_templates`. Alerts need this code deployed. No migration.
+
+## [2026-10-14 15:20] Fix (Templates/Orders) — order #1017 got no confirmation: all templates had been wiped
+
+### Root Cause
+- Order DP/26/1017 (Sudha B, 13:30 IST): webhook and send job fine, but Meta rejected `wacrm_order_confirmed_v2` 3× with `#132012 header: expected IMAGE, received UNKNOWN`. `message_templates` was **empty**, so the sender did not know the template has an image header.
+- `dashboard-shell.tsx` still ran the August one-time wipe (`POST /api/account/clear-templates-automations`) on any dashboard load in a browser without the `localStorage` key — i.e. every new login/browser (likely the new team member on 12 Oct). It deleted all `message_templates` and `automations` **install-wide** (`id <> 0`), with agent role enough. Meta copies survived (token lacks delete permission). Last successful template send: 12 Oct 08:47 IST; cart/browse drips have been failing since.
+- MagicCheckout orders have no `cart_token`, so the paid checkout stayed `abandoned_notified` and the cart drip would have nudged Sudha after she paid.
+- Bot: "I ordered … money debited" went to Order Tracking, which searched Shopify for the sentence and echoed it back ("Order No order has been created… nahi mila").
+
+### Objective & Fixes
+- Removed the dashboard auto-wipe. The wipe endpoint (Templates → Delete all) now needs admin and only touches the caller's account.
+- Template sends fall back to the built-in recipe (image header, buttons) when the `message_templates` row is missing.
+- `orders/create` with no matching cart token recovers the contact's open checkout (last 7 days) that has any of the ordered products (`orderCoversCheckout`), stopping its drip and moving its deal.
+- Order lookup: text without an order number uses the contact's latest order; "checking" copy no longer echoes the input (057 + in-code patch). Not-found copy for a number with no orders.
+- `scripts/restore-message-templates.ts` re-creates missing rows from the WABA; Meta→row mapping shared with Sync (`src/lib/whatsapp/meta-template-row.ts`).
+
+### Files Modified
+- `src/app/(dashboard)/dashboard-shell.tsx`, `src/app/api/account/clear-templates-automations/route.ts`, `src/lib/account/clear-templates-automations.ts`
+- `src/lib/automations/meta-send.ts`
+- `src/app/api/webhooks/shopify/orders-create/route.ts`, `src/lib/shopify/recovery-conversion.ts` (+ test)
+- `src/lib/shopify/shopify-order-lookup.ts`, `src/lib/flows/order-tracking-patch.ts`, `supabase/migrations/057_order_lookup_copy_no_echo.sql`
+- `src/lib/whatsapp/meta-template-row.ts`, `src/app/api/whatsapp/templates/sync/route.ts`, `scripts/restore-message-templates.ts`
+
+### Live / Ops (2026-10-14)
+- 15:16 Sudha's cart drip → converted, checkout → recovered. 4 stale in-progress cart drips (19 Aug – 12 Oct; test/team contacts) → stopped so the restore would not fire them.
+- 15:17 Restored 27 `wacrm_*` template rows from the WABA (all APPROVED).
+- 15:20 Re-sent #1017 confirmation as `wacrm_order_confirmed_v3` (items line, product photo) — **delivered**. New orders now pick v3 automatically.
+- Code not deployed yet: until it is, a dashboard load in a fresh browser can wipe the rows again. Run `057` any time; `automations` table was emptied and cannot be recovered (cart/browse/new-customer drips live in `shopify_automation_sequences` and are intact).
+
+## [2026-10-14 15:10] Change (Bot) — Welcome menu by customer type; "Talk to Agent" gives a chat button in office hours
+
+### Root Cause
+- Existing customers saying "hi" got the FAQ list with **Returns & Refund**, which DivyaPrabha does not want offered.
+- New customers (no Shopify order) got the B2B **Lead capture** questions (name / work email / company) on their first message.
+- Every agent request (button, typed, or bot handoff) sent "📞 Call / WhatsApp: +91 91676 23044", inviting calls at any hour, including nights and Sundays.
+
+### Objective & Fixes
+- **Talk to Agent:** Mon–Sat 9 AM–7 PM IST sends a **Chat with Agent** button (Meta `cta_url`) that opens a WhatsApp chat with the support number (`wa.me`, prefilled "Hi, I need some help"); footer "Chat only · Monday to Saturday, 9 AM - 7 PM". The number and "Call" no longer appear in the text. Outside those hours (and all Sunday): "Our team is available Monday to Saturday, 9 AM - 7 PM. Please leave your message here…", no button. Chat still marked pending; same reply not repeated within 6h. If Meta rejects the button, the `wa.me` link is sent as text.
+- **Existing customer (has a Shopify order) "hi/hello/help":** list with Shipping Info + Talk to Agent only.
+- **New customer:** buttons Shop Bestsellers (all-products collection) / Shipping Info / Talk to Agent, on the first message (new **New customer welcome** flow) and on later "hi/hello/help" (FAQ flow branches on Shopify orders). Lead capture set to `draft`.
+- Engine: condition `contact_field` = `shopify_order_count` (count of the contact's Shopify orders, absent when 0; also in the builder's field picker). First-message flows now win over keyword flows on a contact's first message (before, this depended on Lead capture being the oldest flow).
+
+### Files Modified
+- `src/lib/support/agent-request.ts` (+ test)
+- `src/lib/whatsapp/meta-api.ts` (`sendInteractiveCtaUrl`), `src/lib/flows/meta-send.ts` (`engineSendCtaUrl`)
+- `src/lib/flows/engine.ts`, `src/lib/flows/types.ts`, `src/components/flows/forms/node-config-form.tsx`
+- `supabase/migrations/056_welcome_menu_by_customer_type.sql`
+
+### Live
+- Not deployed yet. Order: deploy the app code first, **then** run `056` in the Supabase SQL editor (on the old build the new condition node fails the run, so "hi" would get no menu).
+
+## [2026-10-12 17:30] Fix (Team) — Accept invitation failed with "Caller has no profile"
+
+### Root Cause
+- Signup inserts `accounts`, which syncs to `workspaces`, which syncs back into `accounts` without `owner_user_id` (NOT NULL) and recurses. `handle_new_user` swallows that error, so the auth user is saved with no profile. `redeem_invitation` then raises `Caller has no profile` (Shraddha's Accept click, 12 Oct 2026). The app also reads `workspace_members`, which redeem never wrote.
+
+### Objective & Fixes
+- Sync triggers stop at trigger depth 1 and include `owner_user_id` when creating an account from a workspace.
+- Signup writes the workspace membership and no longer hides a failed bootstrap.
+- Redeem creates a profile on the invited account when the caller has none, and upserts `workspace_members`.
+- Until that SQL is applied, `POST /api/invitations/[token]/redeem` does the same attach when the RPC still returns "Caller has no profile".
+
+### Files Modified
+- `supabase/migrations/055_fix_invite_redeem_missing_profile.sql`
+- `src/app/api/invitations/[token]/redeem/route.ts`
+- `src/lib/auth/redeem-profileless.ts` (+ test)
+
+### Live
+- `055_fix_invite_redeem_missing_profile.sql` applied on production Supabase (SQL editor, 2026-10-12 17:32, “Success. No rows returned”). App code for the redeem fallback is not deployed; the live Accept button calls the updated `redeem_invitation` function, so the SQL is enough.
+
 ## [2026-10-11 20:15] Fix (Build) — Hostinger builds with webpack; Turbopack PostCSS worker crashes there
 
 ### Root Cause

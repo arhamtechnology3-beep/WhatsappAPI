@@ -60,6 +60,7 @@ import {
   type StartNodeConfig,
   type HttpFetchNodeConfig,
   type KeywordTriggerConfig,
+  SHOPIFY_ORDER_COUNT_FIELD,
 } from "./types";
 
 /**
@@ -350,20 +351,23 @@ async function findEntryFlow(
   if (error || !flows) return null;
 
   const typed = flows as FlowRow[];
-  for (const flow of typed) {
-    if (flow.trigger_type === "keyword") {
-      if (matchesKeywordTrigger(
-        message.text,
-        flow.trigger_config as KeywordTriggerConfig,
-      )) {
-        return flow;
-      }
-    } else if (flow.trigger_type === "first_inbound_message" && isFirstInbound) {
-      return flow;
-    }
-    // 'manual' triggers do not auto-start from inbound messages.
+  // A first-message welcome wins over keyword flows ("I want to order"
+  // must not open order tracking for someone who never ordered).
+  if (isFirstInbound) {
+    const welcome = typed.find((f) => f.trigger_type === "first_inbound_message");
+    if (welcome) return welcome;
   }
-  return null;
+  // 'manual' triggers do not auto-start from inbound messages.
+  return (
+    typed.find(
+      (flow) =>
+        flow.trigger_type === "keyword" &&
+        matchesKeywordTrigger(
+          message.text,
+          flow.trigger_config as KeywordTriggerConfig,
+        ),
+    ) ?? null
+  );
 }
 
 // ============================================================
@@ -517,6 +521,12 @@ async function evaluateConditionNode(
     // against a tag UUID would still work mechanically (compare its
     // existence to the value).
     subjectValue = (count ?? 0) > 0 ? cfg.subject_key : undefined;
+  } else if (cfg.subject_key === SHOPIFY_ORDER_COUNT_FIELD) {
+    const { count } = await db
+      .from("shopify_orders")
+      .select("id", { count: "exact", head: true })
+      .eq("contact_id", run.contact_id!);
+    subjectValue = (count ?? 0) > 0 ? String(count) : undefined;
   } else {
     const ALLOWED = ["name", "email", "phone", "company"] as const;
     type AllowedField = (typeof ALLOWED)[number];

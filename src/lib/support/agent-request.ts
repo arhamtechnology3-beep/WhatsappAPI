@@ -1,9 +1,17 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { engineSendText } from '@/lib/automations/meta-send'
+import { engineSendCtaUrl } from '@/lib/flows/meta-send'
 
 const DEFAULT_SUPPORT_PHONE = '919167623044'
 const DEFAULT_SUPPORT_NAME = 'Arham Food'
 const RESEND_WINDOW_MS = 6 * 60 * 60 * 1000
+
+const SUPPORT_TIME_ZONE = 'Asia/Kolkata'
+const SUPPORT_OPEN_HOUR = 9
+const SUPPORT_CLOSE_HOUR = 19
+/** Sunday closed. */
+const SUPPORT_DAYS = new Set(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'])
+const SUPPORT_HOURS_LABEL = 'Monday to Saturday, 9 AM - 7 PM'
 
 export function supportContact(): { name: string; phone: string; display: string } {
   const phone = (process.env.SUPPORT_CONTACT_PHONE || DEFAULT_SUPPORT_PHONE).replace(/\D/g, '')
@@ -14,15 +22,51 @@ export function supportContact(): { name: string; phone: string; display: string
   return { name, phone, display }
 }
 
-export function supportContactMessage(): string {
-  const { name, display } = supportContact()
-  return [
-    'Hamari team aapki madad ke liye ready hai 🙏',
-    '',
-    `📞 Call / WhatsApp: ${display} (${name})`,
-    '',
-    'Aap yahin message bhi chhod sakte hain — team jaldi reply karegi.',
-  ].join('\n')
+/** Agents chat Mon–Sat, 9 AM – 7 PM India time. */
+export function isSupportOpen(now: Date = new Date()): boolean {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: SUPPORT_TIME_ZONE,
+    weekday: 'short',
+    hour: 'numeric',
+    hourCycle: 'h23',
+  }).formatToParts(now)
+  const weekday = parts.find((p) => p.type === 'weekday')?.value ?? ''
+  const hour = Number(parts.find((p) => p.type === 'hour')?.value)
+  return SUPPORT_DAYS.has(weekday) && hour >= SUPPORT_OPEN_HOUR && hour < SUPPORT_CLOSE_HOUR
+}
+
+export type SupportReply =
+  | { kind: 'chat'; body: string; footer: string; buttonText: string; url: string }
+  | { kind: 'closed'; text: string }
+
+/**
+ * Open hours: a "Chat with Agent" button that opens a WhatsApp chat with
+ * the support number (no number or call option in the text).
+ * Closed: ask the customer to leave a message here.
+ */
+export function supportReply(now: Date = new Date()): SupportReply {
+  if (!isSupportOpen(now)) {
+    return {
+      kind: 'closed',
+      text: [
+        `Our team is available ${SUPPORT_HOURS_LABEL}.`,
+        '',
+        'Please leave your message here and we will reply as soon as we are back 🙏',
+      ].join('\n'),
+    }
+  }
+  const { phone } = supportContact()
+  return {
+    kind: 'chat',
+    body: [
+      'Our team is here to help 🙏',
+      '',
+      'Tap *Chat with Agent* below to message our agent on WhatsApp.',
+    ].join('\n'),
+    footer: `Chat only · ${SUPPORT_HOURS_LABEL}`,
+    buttonText: 'Chat with Agent',
+    url: `https://wa.me/${phone}?text=${encodeURIComponent('Hi, I need some help')}`,
+  }
 }
 
 const AGENT_PATTERNS: RegExp[] = [
@@ -51,8 +95,9 @@ export function isAgentRequest(text: string | null | undefined): boolean {
 }
 
 /**
- * Send the support number once per conversation per 6h and flag the chat
- * as pending so it shows up for the team. Never throws.
+ * Send the agent reply (chat button, or office-hours note when closed)
+ * once per conversation per 6h and flag the chat as pending so it shows
+ * up for the team. Never throws.
  */
 export async function sendSupportContact(
   db: SupabaseClient,
@@ -69,19 +114,47 @@ export async function sendSupportContact(
       .update({ status: 'pending', updated_at: new Date().toISOString() })
       .eq('id', args.conversationId)
 
-    const { display } = supportContact()
+    const reply = supportReply()
+    const marker = reply.kind === 'chat' ? reply.body : reply.text
     const since = new Date(Date.now() - RESEND_WINDOW_MS).toISOString()
     const { data: recent } = await db
       .from('messages')
       .select('id')
       .eq('conversation_id', args.conversationId)
-      .ilike('content_text', `%${display}%`)
+      .eq('content_text', marker)
       .gte('created_at', since)
       .limit(1)
       .maybeSingle()
     if (recent) return { sent: false }
 
-    await engineSendText({ ...args, text: supportContactMessage() })
+    if (reply.kind === 'closed') {
+      await engineSendText({ ...args, text: reply.text })
+      return { sent: true }
+    }
+    try {
+      await engineSendCtaUrl({
+        ...args,
+        bodyText: reply.body,
+        footerText: reply.footer,
+        displayText: reply.buttonText,
+        url: reply.url,
+      })
+    } catch (err) {
+      console.error(
+        '[support] chat button failed, sending link as text:',
+        err instanceof Error ? err.message : err,
+      )
+      await engineSendText({
+        ...args,
+        text: [
+          'Our team is here to help 🙏',
+          '',
+          `Chat with our agent on WhatsApp: ${reply.url}`,
+          '',
+          reply.footer,
+        ].join('\n'),
+      })
+    }
     return { sent: true }
   } catch (err) {
     console.error(

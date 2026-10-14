@@ -7,7 +7,7 @@ export const maxDuration = 60
 
 export async function POST() {
   try {
-    const ctx = await requireRole('agent')
+    const ctx = await requireRole('admin')
     const result = await clearTemplatesAndAutomations(
       supabaseAdmin(),
       ctx.accountId,

@@ -709,6 +709,7 @@ function ConditionForm({
                 <SelectItem value="email">email</SelectItem>
                 <SelectItem value="phone">phone</SelectItem>
                 <SelectItem value="company">company</SelectItem>
+                <SelectItem value="shopify_order_count">Shopify orders (count)</SelectItem>
               </SelectContent>
             </Select>
           ) : (

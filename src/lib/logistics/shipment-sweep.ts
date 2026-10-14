@@ -193,7 +193,8 @@ export async function sweepOpenShipments(
     const local = stage ? STAGE_TO_LOCAL[stage] : undefined
     const eventStatus = stage ? STAGE_TO_EVENT_STATUS[stage] : undefined
     if (local && eventStatus && local !== row.fulfillment_status) {
-      const fresh = now.getTime() - istTimestamp(live.lastActivityAt) < NOTIFY_FRESHNESS_MS
+      const scannedAt = istTimestamp(live.lastActivityAt)
+      const fresh = now.getTime() - scannedAt < NOTIFY_FRESHNESS_MS
       await processShipmentTrackingEvent(
         {
           awb,
@@ -207,7 +208,11 @@ export async function sweepOpenShipments(
           etd: live.edd,
           source: 'shiprocket_poll',
         },
-        { accountId: row.account_id, notify: fresh },
+        {
+          accountId: row.account_id,
+          notify: fresh,
+          deliveredAt: Number.isFinite(scannedAt) ? new Date(scannedAt) : undefined,
+        },
       )
       result.updated++
     }

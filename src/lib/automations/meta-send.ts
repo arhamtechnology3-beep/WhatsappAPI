@@ -62,6 +62,7 @@ interface SendTemplateArgs {
     checkout_url?: string
     product_url?: string
     tracking_url?: string
+    followup_token?: string
   }
   /** Prefer this over contacts.phone when the job already resolved a number. */
   toPhone?: string
@@ -209,6 +210,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
               input.buttonUrls?.tracking_url ||
               order?.tracking_url ||
               undefined,
+            followup_token: input.buttonUrls?.followup_token,
           })
         }
       }

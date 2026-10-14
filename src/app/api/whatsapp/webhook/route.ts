@@ -13,6 +13,7 @@ import {
 } from '@/lib/whatsapp/template-webhook'
 import { fetchShopify } from '@/lib/shopify/shopify-client'
 import { moveDealToStageName } from '@/lib/shopify/shopify-helper'
+import { stopOrderFollowupsForContact } from '@/lib/followups/order-followups'
 import { classifyReferral } from '@/lib/whatsapp/referral-parser'
 import { findOrCreateConversation as ensureConversation } from '@/lib/inbox/find-or-create-conversation'
 
@@ -1013,6 +1014,8 @@ async function processMessage(
       .update({ status: 'stopped', updated_at: new Date().toISOString() })
       .eq('contact_id', contactRecord.id)
       .eq('status', 'in_progress')
+
+    await stopOrderFollowupsForContact(supabaseAdmin(), contactRecord.id)
 
     // Audit log if it transitioned from opted-in or just was true
     if (contactBefore?.marketing_opt_in || (contactRecord as any).marketing_opt_in) {

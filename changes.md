@@ -4,6 +4,33 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-14 20:25] Feat (Orders) — review request, review reminder, and 30/45-day refill WhatsApp after delivery
+
+### Objective
+- After the "delivered" WhatsApp: ask for a product review 24h later, remind once 72h after that if not reviewed, then bring the customer back for a refill at day 30 and day 45 (repeat orders).
+- Orders with 2–3 pickles: one message, one **Write a Review** button for the whole order.
+
+### What changed
+- New table `order_followups` (058): one row per delivered order with its products (storefront handle, image, variants), a link token, the current stage and next send time. Created from every delivered signal: courier webhooks / sweep (`processShipmentTrackingEvent`) and Shopify `orders/updated`. Safe to call repeatedly (one row per order).
+- Schedule (IST 9:30 AM–8:30 PM send window): `wacrm_review_request_v1` delivered + 24h → `wacrm_review_reminder_v1` 72h later, only for products whose review page was not opened → `wacrm_refill_reminder_v1` delivered + 30d → `wacrm_refill_followup_v1` delivered + 45d. Refill messages stop when the customer orders again, taps **Stop reminders** / sends STOP, or the order is refunded/voided. Deliveries found 10+ days late skip the review messages; 45+ days late get nothing.
+- Review button → `https://whatsapp.arhamtechnology.com/review/<token>`: one product redirects straight to `divyaprabhafoods.com/products/<handle>?review=1` (Judge.me form); 2+ products show a page listing each pickle with its own Write a Review button. Opening a review page is recorded per product (drives the reminder).
+- Reorder button → `/reorder/<token>`: Shopify cart link with the same variants and quantities (sold-out variants dropped) straight to checkout.
+- Refill audience: every delivered customer (owner decision), not only Shopify marketing opt-ins — checkout leaves `marketing_opt_out_at` set for everyone who skips the email-offers box. "Stop reminders" / STOP sets `contacts.reorder_reminders_off_at` and cancels the contact's follow-ups.
+- Cron tick: new `followups` job. Each stage waits for its template to be APPROVED; stale stages are dropped.
+- `scripts/backfill-order-followups.ts [--apply]` schedules recent delivered orders (dry run by default).
+
+### Files Modified
+- `supabase/migrations/058_order_followups.sql`
+- `src/lib/followups/plan.ts` (+ test), `src/lib/followups/order-followups.ts`
+- `src/app/review/[token]/page.tsx`, `src/app/review/[token]/[handle]/route.ts`, `src/app/reorder/[token]/route.ts`
+- `src/lib/shopify/whatsapp-template-library.ts` (+ test), `src/lib/automations/meta-send.ts`, `src/lib/shopify/product-image.ts`
+- `src/lib/logistics/notify.ts`, `src/lib/logistics/shipment-sweep.ts`, `src/app/api/webhooks/shopify/orders-updated/route.ts`, `src/app/api/whatsapp/webhook/route.ts`, `src/lib/cron/tick.ts`
+- `scripts/backfill-order-followups.ts`
+
+### Live
+- 20:20 submitted to Meta, all PENDING, saved in `message_templates`: `wacrm_review_request_v1` (UTILITY, `1292801066306069`), `wacrm_review_reminder_v1` (UTILITY, `1425986289661029`), `wacrm_refill_reminder_v1` (MARKETING, `1851269439369088`), `wacrm_refill_followup_v1` (MARKETING, `1065748419622699`).
+- **Apply `058_order_followups.sql`** in Supabase, deploy, then `npx tsx scripts/backfill-order-followups.ts --apply` (dry run today: #1013 two products, #1014, #1015 → review request now). Until 058 runs, scheduling and the cron job no-op.
+
 ## [2026-10-14 17:45] UI (Settings → Templates) — status counts, filters, compact list
 
 ### Root Cause

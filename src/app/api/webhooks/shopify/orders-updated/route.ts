@@ -15,6 +15,7 @@ import {
   latestFulfillment,
 } from '@/lib/shopify/fulfillment-tracking'
 import { scheduleImmediateWhatsAppJobs } from '@/lib/whatsapp/process-send-jobs'
+import { scheduleOrderFollowups } from '@/lib/followups/order-followups'
 
 const COURIER_STATUSES = new Set(['in_transit', 'out_for_delivery', 'delivered', 'ndr'])
 
@@ -165,6 +166,15 @@ export async function POST(request: Request) {
       if (shopifyDelivered && !wasDelivered && !isCancelled && isFreshDelivery(fulfillment)) {
         recordNotify(await notify('order_delivered'))
       }
+    }
+
+    if (shopifyDelivered && !wasDelivered && !isCancelled) {
+      const deliveredAt = Date.parse(fulfillment?.updated_at || '')
+      await scheduleOrderFollowups(supabase, {
+        accountId,
+        shopifyOrderId: orderId,
+        deliveredAt: Number.isFinite(deliveredAt) ? new Date(deliveredAt) : undefined,
+      })
     }
 
     scheduleImmediateWhatsAppJobs(jobIds)

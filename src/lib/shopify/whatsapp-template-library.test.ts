@@ -17,6 +17,12 @@ import {
   resolveTemplateHeaderKind,
   CART_STEP3_NO_CODE_TEMPLATE,
   isCodedCartStep3Template,
+  isOrderTemplateName,
+  REFILL_FOLLOWUP_TEMPLATE,
+  REFILL_REMINDER_TEMPLATE,
+  REVIEW_REMINDER_TEMPLATE,
+  REVIEW_REQUEST_TEMPLATE,
+  WHATSAPP_LINK_ORIGIN,
 } from './whatsapp-template-library'
 
 describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
@@ -67,12 +73,15 @@ describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
       expect(recipe.body).not.toMatch(/3%\s*OFF/i)
       expect(recipe.body).not.toMatch(/prepaid/i)
       expect(recipe.body).not.toMatch(/₹499/)
-      for (const b of recipe.buttons) {
-        if (b.type === 'URL') {
+      recipe.buttons.forEach((b, index) => {
+        if (b.type !== 'URL') return
+        if (recipe.button_url_sources[index] === 'followup_token') {
+          expect(b.url.startsWith(`${WHATSAPP_LINK_ORIGIN}/`)).toBe(true)
+        } else {
           expect(b.url).toContain('divyaprabhafoods.com')
-          expect(b.url).not.toMatch(/myshopify/i)
         }
-      }
+        expect(b.url).not.toMatch(/myshopify/i)
+      })
     }
     const festival = SHOPIFY_TEMPLATE_LIBRARY.find(
       (r) => r.template_name === 'wacrm_festival_broadcast_v2',
@@ -216,6 +225,35 @@ describe('buildRecipeButtonParams', () => {
     })
     expect(params[0]).toBe('checkouts/cn/xyz')
     expect(params[1]).toBeUndefined()
+  })
+
+  it('fills review and reorder buttons with the follow-up token', () => {
+    const review = recipeByName(REVIEW_REQUEST_TEMPLATE)!
+    expect(review.buttons[0]).toMatchObject({
+      type: 'URL',
+      url: 'https://whatsapp.arhamtechnology.com/review/{{1}}',
+    })
+    expect(buildRecipeButtonParams(review, { followup_token: 'k3Xb9QmZ2a' })).toEqual({
+      0: 'k3Xb9QmZ2a',
+    })
+    const refill = recipeByName(REFILL_REMINDER_TEMPLATE)!
+    expect(refill.buttons.map((b) => b.text)).toEqual(['Reorder Now', 'Stop reminders'])
+    expect(buildRecipeButtonParams(refill, { followup_token: 'tok12345' })).toEqual({
+      0: 'tok12345',
+    })
+  })
+
+  it('uses the order product photo on review and refill messages', () => {
+    for (const name of [
+      REVIEW_REQUEST_TEMPLATE,
+      REVIEW_REMINDER_TEMPLATE,
+      REFILL_REMINDER_TEMPLATE,
+      REFILL_FOLLOWUP_TEMPLATE,
+    ]) {
+      expect(isOrderTemplateName(name)).toBe(true)
+    }
+    expect(recipeByName(REVIEW_REQUEST_TEMPLATE)!.category).toBe('UTILITY')
+    expect(recipeByName(REFILL_REMINDER_TEMPLATE)!.category).toBe('MARKETING')
   })
 
   it('sends no URL suffix for static Track Order buttons', () => {

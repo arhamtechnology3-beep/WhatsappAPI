@@ -6,6 +6,7 @@ import { reconcileTrialExpiry, runDataRetention } from '@/lib/ops/retention'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { sweepOpenShipments } from '@/lib/logistics/shipment-sweep'
 import { syncPendingTemplateStatuses } from '@/lib/whatsapp/pending-template-sync'
+import { runOrderFollowupsCron } from '@/lib/followups/order-followups'
 import { NextResponse } from 'next/server'
 
 type JobName =
@@ -16,6 +17,7 @@ type JobName =
   | 'identityflow'
   | 'shipments'
   | 'templates'
+  | 'followups'
 
 export type CronTickResult = {
   ok: boolean
@@ -71,6 +73,7 @@ export async function runAllCronJobs(): Promise<CronTickResult> {
     identityflow: { status: 500, body: { error: 'not-run' } },
     shipments: { status: 500, body: { error: 'not-run' } },
     templates: { status: 500, body: { error: 'not-run' } },
+    followups: { status: 500, body: { error: 'not-run' } },
   }
 
   const runners: Array<[JobName, () => Promise<Response>]> = [
@@ -81,6 +84,7 @@ export async function runAllCronJobs(): Promise<CronTickResult> {
     ['identityflow', runIdentityFlowCron],
     ['shipments', runShipmentSweep],
     ['templates', runTemplateStatusSync],
+    ['followups', runOrderFollowupsCron],
   ]
 
   for (const [name, fn] of runners) {

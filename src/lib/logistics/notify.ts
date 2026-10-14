@@ -10,6 +10,7 @@ import {
   formatItemsSummary,
 } from '@/lib/shopify/product-image'
 import { scheduleImmediateWhatsAppJobs } from '@/lib/whatsapp/process-send-jobs'
+import { scheduleOrderFollowups } from '@/lib/followups/order-followups'
 import { hasWhatsAppPhone, toMetaPhone } from '@/lib/whatsapp/phone-utils'
 import {
   mapShipmentStatus,
@@ -75,7 +76,7 @@ async function findShopifyOrder(
 export async function processShipmentTrackingEvent(
   event: TrackingEvent,
   /** notify:false only syncs shopify_orders (stale scans found by the poller). */
-  opts?: { accountId?: string | null; notify?: boolean },
+  opts?: { accountId?: string | null; notify?: boolean; deliveredAt?: Date },
 ): Promise<ProcessShipmentResult> {
   const milestone = mapShipmentStatus(event.status)
   if (milestone === 'skip') {
@@ -115,6 +116,14 @@ export async function processShipmentTrackingEvent(
         updated_at: new Date().toISOString(),
       })
       .eq('id', order.id)
+
+    if (milestone === 'delivered' && order.shopify_order_id) {
+      await scheduleOrderFollowups(supabase, {
+        accountId,
+        shopifyOrderId: String(order.shopify_order_id),
+        deliveredAt: opts?.deliveredAt,
+      })
+    }
   }
 
   if (opts?.notify === false) {

@@ -60,6 +60,10 @@ export type ShopifyRecipeTrigger =
   | 'shipment_ofd'
   | 'shipment_ndr'
   | 'shipment_delayed'
+  | 'order_review_request'
+  | 'order_review_reminder'
+  | 'order_refill'
+  | 'order_refill_followup'
   | 'broadcast'
 
 export type RecipeUrlSource =
@@ -67,6 +71,8 @@ export type RecipeUrlSource =
   | 'product_url'
   | 'tracking_url'
   | 'storefront'
+  /** `order_followups.token` for the /review and /reorder links. */
+  | 'followup_token'
   | null
 
 export interface ShopifyTemplateRecipe {
@@ -111,6 +117,18 @@ export function bestsellersUrl(): string {
 export function dynamicStorefrontUrl(): string {
   return `${storefrontBaseUrl()}/{{1}}`
 }
+
+/**
+ * Public origin of this app, baked into the review / reorder buttons when
+ * the template is submitted. Not read from env: `.env.local` points at a
+ * placeholder and Meta keeps whatever URL was approved.
+ */
+export const WHATSAPP_LINK_ORIGIN = 'https://whatsapp.arhamtechnology.com'
+
+export const REVIEW_REQUEST_TEMPLATE = 'wacrm_review_request_v1'
+export const REVIEW_REMINDER_TEMPLATE = 'wacrm_review_reminder_v1'
+export const REFILL_REMINDER_TEMPLATE = 'wacrm_refill_reminder_v1'
+export const REFILL_FOLLOWUP_TEMPLATE = 'wacrm_refill_followup_v1'
 
 /** Public JPEG/PNG that currently 200s on the live store (share.jpg / Gor_Keri.jpg 404). */
 export const DEFAULT_HEADER_IMAGE_URL =
@@ -263,13 +281,16 @@ export function buildRecipeButtonParams(
     checkout_url?: string
     product_url?: string
     tracking_url?: string
+    followup_token?: string
   },
 ): Record<number, string> {
   const out: Record<number, string> = {}
   recipe.buttons.forEach((button, index) => {
     if (button.type !== 'URL') return
     const source = recipe.button_url_sources[index]
-    if (source === 'checkout_url') {
+    if (source === 'followup_token') {
+      if (urls.followup_token) out[index] = urls.followup_token
+    } else if (source === 'checkout_url') {
       out[index] =
         urlButtonParamFromAbsolute(urls.checkout_url) || 'checkouts'
     } else if (source === 'product_url') {
@@ -320,6 +341,26 @@ const shopNow = (): TemplateButton => ({
   type: 'URL',
   text: 'Shop Now',
   url: collectionAllProductsUrl(),
+})
+
+const writeReview = (): TemplateButton => ({
+  type: 'URL',
+  text: 'Write a Review',
+  url: `${WHATSAPP_LINK_ORIGIN}/review/{{1}}`,
+  example: `${WHATSAPP_LINK_ORIGIN}/review/k3Xb9QmZ2a`,
+})
+
+const reorderNow = (): TemplateButton => ({
+  type: 'URL',
+  text: 'Reorder Now',
+  url: `${WHATSAPP_LINK_ORIGIN}/reorder/{{1}}`,
+  example: `${WHATSAPP_LINK_ORIGIN}/reorder/k3Xb9QmZ2a`,
+})
+
+/** The webhook's STOP keyword handler catches this reply. */
+const stopReminders = (): TemplateButton => ({
+  type: 'QUICK_REPLY',
+  text: 'Stop reminders',
 })
 
 export const SHOPIFY_TEMPLATE_LIBRARY: readonly ShopifyTemplateRecipe[] = [
@@ -687,6 +728,89 @@ Shop Now pe tap karo aur ghar pe mangwao.`,
     button_url_sources: [null, null],
     sample_values: { body: ['Jesal'] },
   },
+  {
+    trigger_type: 'order_review_request',
+    template_name: REVIEW_REQUEST_TEMPLATE,
+    category: 'UTILITY',
+    language: WACRM_TEMPLATE_LANGUAGE,
+    body: `Namaste {{1}}! 🙏
+Order #{{2}} mil gaya hoga — swad kaisa laga?
+
+🥭 {{3}}
+
+Aapka review doosre parivaron ko sahi achaar chunne mein madad karta hai, aur hamari didis ka hausla badhata hai.
+
+⭐ Sirf 1 minute — Write a Review pe tap karein.`,
+    variables: ['customer_name', 'order_number', 'review_products'],
+    default_delay_minutes: 1440,
+    header_type: 'image',
+    footer_text: 'DivyaPrabha Foods',
+    buttons: [writeReview()],
+    button_url_sources: ['followup_token'],
+    sample_values: { body: ['Jesal', '1017', 'Gunda Keri aur Gor Keri'] },
+  },
+  {
+    trigger_type: 'order_review_reminder',
+    template_name: REVIEW_REMINDER_TEMPLATE,
+    category: 'UTILITY',
+    language: WACRM_TEMPLATE_LANGUAGE,
+    body: `Namaste {{1}}, ek chhoti si request 🙏
+{{2}} ke baare mein aapki raay abhi tak nahi mili.
+
+Ek line ka honest review bhi hamare liye bahut keemti hai aur doosre customers ki madad karta hai.
+
+⭐ Write a Review pe tap karein. Dhanyawad!`,
+    variables: ['customer_name', 'review_products'],
+    default_delay_minutes: 4320,
+    header_type: 'image',
+    footer_text: 'DivyaPrabha Foods',
+    buttons: [writeReview()],
+    button_url_sources: ['followup_token'],
+    sample_values: { body: ['Jesal', 'Gor Keri'] },
+  },
+  {
+    trigger_type: 'order_refill',
+    template_name: REFILL_REMINDER_TEMPLATE,
+    category: 'MARKETING',
+    language: WACRM_TEMPLATE_LANGUAGE,
+    body: `Namaste {{1}}! 🥭
+{{2}} ka jar khatam hone wala hoga na? 😋
+
+Fresh batch taiyaar hai — ek tap mein wahi order dobara karein.
+
+✅ Handmade, no chemical preservatives
+✅ Buy 2 x 250g pickles — FREE shipping
+✅ 10% OFF on ₹749+ | Free ship above ₹599
+
+Reorder Now pe tap karein.`,
+    variables: ['customer_name', 'product_names'],
+    default_delay_minutes: 30 * 1440,
+    header_type: 'image',
+    footer_text: 'DivyaPrabha Foods',
+    buttons: [reorderNow(), stopReminders()],
+    button_url_sources: ['followup_token', null],
+    sample_values: { body: ['Jesal', 'Gunda Keri aur Gor Keri'] },
+  },
+  {
+    trigger_type: 'order_refill_followup',
+    template_name: REFILL_FOLLOWUP_TEMPLATE,
+    category: 'MARKETING',
+    language: WACRM_TEMPLATE_LANGUAGE,
+    body: `Namaste {{1}}! Ghar mein achaar khatam to nahi ho gaya? 🫙
+{{2}} — wahi ghar jaisa swad, fresh batch mein.
+
+✅ Handmade by didis, no chemical preservatives
+✅ 10% OFF on ₹749+ | Free ship above ₹599
+
+Reorder Now se ek tap mein wahi order dobara mangwayein.`,
+    variables: ['customer_name', 'product_names'],
+    default_delay_minutes: 45 * 1440,
+    header_type: 'image',
+    footer_text: 'DivyaPrabha Foods',
+    buttons: [reorderNow(), stopReminders()],
+    button_url_sources: ['followup_token', null],
+    sample_values: { body: ['Jesal', 'Gunda Keri aur Gor Keri'] },
+  },
 ]
 
 export function recipeByName(
@@ -706,6 +830,10 @@ const ORDER_RECIPE_TRIGGERS: ReadonlySet<ShopifyRecipeTrigger> = new Set([
   'shipment_ofd',
   'shipment_ndr',
   'shipment_delayed',
+  'order_review_request',
+  'order_review_reminder',
+  'order_refill',
+  'order_refill_followup',
 ])
 
 /** Order / shipment templates must show the ordered product (or the brand), never a cart or catalog pick. */

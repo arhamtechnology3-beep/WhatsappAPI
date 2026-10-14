@@ -217,6 +217,15 @@ export function _resetStorefrontCatalogCache(): void {
   catalogCache = null
 }
 
+/** Published product (handle, variants with `available`, images) by numeric id. */
+export async function storefrontProductById(
+  productId: unknown,
+): Promise<Record<string, unknown> | null> {
+  const id = shopifyNumericId(productId, 'Product')
+  if (!id) return null
+  return (await storefrontCatalog()).find((p) => String(p.id) === id) || null
+}
+
 /** Variant image first (e.g. 500 g jar), else the product's main image. */
 export function imageFromCatalogProduct(
   product: Record<string, unknown>,

@@ -4,10 +4,12 @@ import { isShopifyCodOrder } from './order-notify'
 import { toMetaPhone } from '@/lib/whatsapp/phone-utils'
 
 export const OWNER_ORDER_TEMPLATE = 'wacrm_owner_new_order_v1'
+/** v1 sat in Meta review (7 variables, little fixed text); v2 greets the owner by name. */
+export const OWNER_ORDER_TEMPLATE_V2 = 'wacrm_owner_new_order_v2'
 
-const DEFAULT_OWNER_PHONES = '9769104020,9167623044,9029498911'
+const DEFAULT_OWNER_RECIPIENTS = 'Vidhi:9004300378,Naman Boss:9029498911,Jesal:9769104020'
 
-/** Approved on Meta as a UTILITY template; {{n}} order matches ownerOrderAlertParams. */
+/** Submitted to Meta as a UTILITY template; {{n}} order matches ownerOrderAlertParams. */
 export const OWNER_ORDER_TEMPLATE_BODY = [
   'New order received 🛒',
   '',
@@ -32,11 +34,48 @@ export const OWNER_ORDER_TEMPLATE_SAMPLE = [
   'Sai Villa, 20 Union Park, Sion Trombay Road, Chembur, Mumbai, Maharashtra 400071',
 ]
 
-/** `SHOPIFY_OWNER_ALERT_PHONES` (comma separated) or the three store owners. */
+/** {{1}} is the owner's name; {{2}}–{{8}} are ownerOrderAlertParams. */
+export const OWNER_ORDER_TEMPLATE_V2_BODY = [
+  'Hi {{1}}, a new order has been placed on DivyaPrabha Foods 🛒',
+  '',
+  'Order: {{2}}',
+  'Customer: {{3}}',
+  'Mobile: {{4}}',
+  'Items: {{5}}',
+  'Total: {{6}}',
+  'Payment: {{7}}',
+  'Ship to: {{8}}',
+  '',
+  'Please pack this order and dispatch it within 24 hours. Reply here if anything about the order is unclear.',
+].join('\n')
+
+export const OWNER_ORDER_TEMPLATE_V2_FOOTER = 'DivyaPrabha Foods order alert'
+
+export const OWNER_ORDER_TEMPLATE_V2_SAMPLE = ['Vidhi', ...OWNER_ORDER_TEMPLATE_SAMPLE]
+
+export interface OwnerRecipient {
+  name: string
+  phone: string
+}
+
+/**
+ * `SHOPIFY_OWNER_ALERT_PHONES` (comma separated `Name:phone` or bare
+ * phone) or the three store owners. Bare phones are greeted as "Team".
+ */
+export function ownerAlertRecipients(): OwnerRecipient[] {
+  const raw = process.env.SHOPIFY_OWNER_ALERT_PHONES || DEFAULT_OWNER_RECIPIENTS
+  const out: OwnerRecipient[] = []
+  for (const entry of raw.split(',')) {
+    const [maybeName, maybePhone] = entry.includes(':') ? entry.split(':') : ['', entry]
+    const phone = toMetaPhone((maybePhone || '').trim())
+    if (!phone || out.some((r) => r.phone === phone)) continue
+    out.push({ name: maybeName.trim() || 'Team', phone })
+  }
+  return out
+}
+
 export function ownerAlertPhones(): string[] {
-  const raw = process.env.SHOPIFY_OWNER_ALERT_PHONES || DEFAULT_OWNER_PHONES
-  const phones = raw.split(',').map((p) => toMetaPhone(p.trim())).filter(Boolean)
-  return [...new Set(phones)]
+  return ownerAlertRecipients().map((r) => r.phone)
 }
 
 type Rec = Record<string, unknown>
@@ -115,21 +154,27 @@ async function ownerContactId(
   db: SupabaseClient,
   accountId: string,
   userId: string,
-  phone: string,
+  owner: OwnerRecipient,
 ): Promise<string | null> {
+  const { phone } = owner
   const local = phone.startsWith('91') ? phone.slice(2) : phone
   const { data: existing } = await db
     .from('contacts')
-    .select('id')
+    .select('id, name')
     .eq('account_id', accountId)
     .in('phone', [phone, `+${phone}`, local])
     .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle()
-  if (existing?.id) return existing.id
+  if (existing?.id) {
+    if (!existing.name || existing.name === 'Store owner') {
+      await db.from('contacts').update({ name: owner.name }).eq('id', existing.id)
+    }
+    return existing.id
+  }
   const { data: created, error } = await db
     .from('contacts')
-    .insert({ account_id: accountId, user_id: userId, phone, name: 'Store owner' })
+    .insert({ account_id: accountId, user_id: userId, phone, name: owner.name })
     .select('id')
     .single()
   if (error) {
@@ -139,9 +184,21 @@ async function ownerContactId(
   return created.id
 }
 
+/** v2 when approved, else v1 when approved, else null. */
+export function pickOwnerTemplate(
+  statuses: Array<{ name: string; status: string | null }>,
+): string | null {
+  const approved = new Set(
+    statuses.filter((t) => String(t.status || '').toUpperCase() === 'APPROVED').map((t) => t.name),
+  )
+  if (approved.has(OWNER_ORDER_TEMPLATE_V2)) return OWNER_ORDER_TEMPLATE_V2
+  if (approved.has(OWNER_ORDER_TEMPLATE)) return OWNER_ORDER_TEMPLATE
+  return null
+}
+
 /**
  * Queue the "new order" WhatsApp to every owner number, once per order.
- * Skipped until the template is APPROVED on the account. Never throws.
+ * Skipped until a template is APPROVED on the account. Never throws.
  */
 export async function enqueueOwnerOrderAlerts(
   db: SupabaseClient,
@@ -149,28 +206,29 @@ export async function enqueueOwnerOrderAlerts(
 ): Promise<string[]> {
   const jobIds: string[] = []
   try {
-    const { data: template } = await db
+    const { data: templates } = await db
       .from('message_templates')
-      .select('status')
+      .select('name, status')
       .eq('account_id', args.accountId)
-      .eq('name', OWNER_ORDER_TEMPLATE)
-      .limit(1)
-      .maybeSingle()
-    if (String(template?.status || '').toUpperCase() !== 'APPROVED') {
-      console.warn(`[owner-order-alert] ${OWNER_ORDER_TEMPLATE} not approved; skipped order ${args.shopifyOrderId}`)
+      .in('name', [OWNER_ORDER_TEMPLATE, OWNER_ORDER_TEMPLATE_V2])
+    const templateName = pickOwnerTemplate(templates || [])
+    if (!templateName) {
+      console.warn(`[owner-order-alert] no approved owner template; skipped order ${args.shopifyOrderId}`)
       return jobIds
     }
 
-    for (const phone of ownerAlertPhones()) {
-      const contactId = await ownerContactId(db, args.accountId, args.userId, phone)
+    for (const owner of ownerAlertRecipients()) {
+      const { phone } = owner
+      const contactId = await ownerContactId(db, args.accountId, args.userId, owner)
       if (!contactId) continue
       const { data: job, error } = await db
         .from('whatsapp_send_jobs')
         .insert({
           account_id: args.accountId,
           contact_id: contactId,
-          template_name: OWNER_ORDER_TEMPLATE,
-          template_params: args.params,
+          template_name: templateName,
+          template_params:
+            templateName === OWNER_ORDER_TEMPLATE_V2 ? [owner.name, ...args.params] : args.params,
           status: 'pending',
           run_at: new Date().toISOString(),
           idempotency_key: `owner_new_order:${args.shopifyOrderId}:${phone}`,

@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  OWNER_ORDER_TEMPLATE,
   OWNER_ORDER_TEMPLATE_BODY,
   OWNER_ORDER_TEMPLATE_SAMPLE,
+  OWNER_ORDER_TEMPLATE_V2,
+  OWNER_ORDER_TEMPLATE_V2_BODY,
+  OWNER_ORDER_TEMPLATE_V2_SAMPLE,
   ownerAlertPhones,
+  ownerAlertRecipients,
   ownerOrderAlertParams,
+  pickOwnerTemplate,
 } from './owner-order-alert'
 
 afterEach(() => vi.unstubAllEnvs())
@@ -34,14 +40,40 @@ const order1017 = {
   ],
 }
 
-describe('ownerAlertPhones', () => {
-  it('defaults to the three store owners in Meta format', () => {
-    expect(ownerAlertPhones()).toEqual(['919769104020', '919167623044', '919029498911'])
+describe('ownerAlertRecipients', () => {
+  it('defaults to Vidhi, Naman Boss and Jesal in Meta format', () => {
+    expect(ownerAlertRecipients()).toEqual([
+      { name: 'Vidhi', phone: '919004300378' },
+      { name: 'Naman Boss', phone: '919029498911' },
+      { name: 'Jesal', phone: '919769104020' },
+    ])
   })
 
-  it('reads SHOPIFY_OWNER_ALERT_PHONES and drops duplicates', () => {
-    vi.stubEnv('SHOPIFY_OWNER_ALERT_PHONES', '+91 97691 04020, 9769104020,9820000000')
+  it('reads SHOPIFY_OWNER_ALERT_PHONES, greets bare numbers as Team, drops duplicates', () => {
+    vi.stubEnv('SHOPIFY_OWNER_ALERT_PHONES', 'Jesal:+91 97691 04020, 9769104020,9820000000')
+    expect(ownerAlertRecipients()).toEqual([
+      { name: 'Jesal', phone: '919769104020' },
+      { name: 'Team', phone: '919820000000' },
+    ])
     expect(ownerAlertPhones()).toEqual(['919769104020', '919820000000'])
+  })
+})
+
+describe('pickOwnerTemplate', () => {
+  it('prefers the approved v2, falls back to an approved v1', () => {
+    expect(
+      pickOwnerTemplate([
+        { name: OWNER_ORDER_TEMPLATE, status: 'APPROVED' },
+        { name: OWNER_ORDER_TEMPLATE_V2, status: 'APPROVED' },
+      ]),
+    ).toBe(OWNER_ORDER_TEMPLATE_V2)
+    expect(
+      pickOwnerTemplate([
+        { name: OWNER_ORDER_TEMPLATE, status: 'APPROVED' },
+        { name: OWNER_ORDER_TEMPLATE_V2, status: 'PENDING' },
+      ]),
+    ).toBe(OWNER_ORDER_TEMPLATE)
+    expect(pickOwnerTemplate([{ name: OWNER_ORDER_TEMPLATE, status: 'PENDING' }])).toBeNull()
   })
 })
 
@@ -84,9 +116,16 @@ describe('ownerOrderAlertParams', () => {
 })
 
 describe('owner template', () => {
-  it('has one sample per variable and does not end with a variable', () => {
-    const vars = OWNER_ORDER_TEMPLATE_BODY.match(/\{\{\d+\}\}/g) ?? []
-    expect(vars).toHaveLength(OWNER_ORDER_TEMPLATE_SAMPLE.length)
-    expect(OWNER_ORDER_TEMPLATE_BODY.trim().endsWith('}}')).toBe(false)
+  it('has one sample per variable and does not start or end with a variable', () => {
+    for (const [body, sample] of [
+      [OWNER_ORDER_TEMPLATE_BODY, OWNER_ORDER_TEMPLATE_SAMPLE],
+      [OWNER_ORDER_TEMPLATE_V2_BODY, OWNER_ORDER_TEMPLATE_V2_SAMPLE],
+    ] as const) {
+      const vars = body.match(/\{\{\d+\}\}/g) ?? []
+      expect(vars).toHaveLength(sample.length)
+      expect(body.trim().startsWith('{{')).toBe(false)
+      expect(body.trim().endsWith('}}')).toBe(false)
+    }
+    expect(OWNER_ORDER_TEMPLATE_V2_SAMPLE[0]).toBe('Vidhi')
   })
 })

@@ -260,6 +260,7 @@ async function advance(
       status: plan.stage === 'done' ? 'completed' : 'active',
       next_run_at: plan.next_run_at?.toISOString() ?? null,
       attempts: 0,
+      last_error: null,
       history: [...(row.history || []), { stage: row.stage, at: now.toISOString(), ...entry }],
       updated_at: now.toISOString(),
     })

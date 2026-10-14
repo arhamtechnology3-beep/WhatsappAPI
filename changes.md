@@ -4,6 +4,26 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-15 00:45] Fix (Orders) — owner new-order alert: v2 template with owner names; recipients Vidhi / Naman Boss / Jesal
+
+### Root Cause
+- `wacrm_owner_new_order_v1` (Meta `1783909529648189`) stuck PENDING ~15h with no rejection reason: 7 variables with almost no fixed text, the pattern Meta holds for manual review. A pending template cannot be edited.
+- Owner list still had 9167623044; owners are Vidhi 9004300378, Naman Boss 9029498911, Jesal 9769104020.
+
+### Objective & Fixes
+- New `wacrm_owner_new_order_v2` (UTILITY): "Hi {{1}}, a new order has been placed on DivyaPrabha Foods 🛒" + the same 7 order lines + fixed dispatch line + footer "DivyaPrabha Foods order alert". {{1}} = the owner's name.
+- Alerts use v2 once APPROVED, else v1 if APPROVED, else skip (logged). Same `owner_new_order:<orderId>:<phone>` job key, so one alert per owner per order.
+- Recipients default `Vidhi:9004300378,Naman Boss:9029498911,Jesal:9769104020`; `SHOPIFY_OWNER_ALERT_PHONES` accepts `Name:phone` (bare numbers are greeted "Team"). Owner contacts named "Store owner" are renamed.
+- `scripts/submit-owner-order-template.ts <accountId> [v1|v2]` (default v2, with footer).
+- Follow-ups: clear `last_error` when a stage advances (sent rows still showed "waiting for … approval").
+
+### Files Modified
+- `src/lib/shopify/owner-order-alert.ts` (+ test), `scripts/submit-owner-order-template.ts`, `src/lib/followups/order-followups.ts`
+
+### Live
+- 00:43 submitted `wacrm_owner_new_order_v2` (Meta `1639150487652401`, PENDING), saved in `message_templates`.
+- Follow-ups: review templates and both refill templates APPROVED (Meta moved `wacrm_review_reminder_v1` to MARKETING). Review requests sent 14 Oct 21:18 IST to #1013, #1014, #1015; reminders due 18 Oct 09:30 IST. No migration.
+
 ## [2026-10-14 20:25] Feat (Orders) — review request, review reminder, and 30/45-day refill WhatsApp after delivery
 
 ### Objective

@@ -30,8 +30,11 @@ Disable or remove any old load of `visitor-identifier.js` (legacy Supabase / fin
   };
 </script>
 <script src="https://whatsapp.arhamtechnology.com/identityflow/visitor-tracker.js" defer></script>
-<script src="https://whatsapp.arhamtechnology.com/identityflow/wa-unlock-popup.js" defer></script>
+{% comment %} 21st.dev-style widget — replace any old wa-unlock-popup.js line (browsers cache the old URL) {% endcomment %}
+<script src="https://whatsapp.arhamtechnology.com/identityflow/wa-unlock-widget.js" defer></script>
 ```
+
+
 
 ### 1c. Theme setting (optional but recommended)
 

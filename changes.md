@@ -4,6 +4,21 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-15 20:20] Fix (CI) — align festival template-send test with header retry cascade
+
+### Root Cause
+- Lint was unblocked; CI then failed on `meta-api.template-send.test.ts` expecting a body-only first send (length 1). Implementation prefers header link first, then retries without buttons / without media header (3 Graph posts).
+
+### Objective & Fixes
+- Update the test to assert the current cascade and that the successful attempt has no header component.
+
+### Files Modified
+- `src/lib/whatsapp/meta-api.template-send.test.ts`
+- `changes.md`
+
+### Live
+- No runtime change. Unblocks green CI on `main`.
+
 ## [2026-10-15 20:10] Fix (Visitors) — auto-provision store when IdentityFlow stores empty
 
 ### Root Cause

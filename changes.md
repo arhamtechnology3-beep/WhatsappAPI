@@ -4,6 +4,21 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-15 23:15] Docs (Visitors) — DivyaPrabha theme + settings operator checklist
+
+### Root Cause
+- Theme install and Visitors capture settings still need to be done on the DivyaPrabha Shopify/CRM instance by the operator.
+
+### Objective & Fixes
+- Added `docs/divyaprabha-visitor-ops.md` with copy-paste liquid, settings table, discount steps, and optional Supabase SQL.
+
+### Files Modified
+- `docs/divyaprabha-visitor-ops.md`
+- `changes.md`
+
+### Live
+- Docs only. No deploy required.
+
 ## [2026-10-15 20:20] Fix (CI) — align festival template-send test with header retry cascade
 
 ### Root Cause

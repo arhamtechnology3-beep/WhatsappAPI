@@ -4,6 +4,22 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-15 20:00] Fix (Visitors) — resolve custom-domain Origin to store
+
+### Root Cause
+- Live `POST /api/v1/track` with `Origin: https://divyaprabhafoods.com` returned `Unknown store` because `stores.shop_domain` is typically `*.myshopify.com`, not the customer custom domain.
+
+### Objective & Fixes
+- Alias match via `SHOPIFY_STOREFRONT_ORIGINS`, `NEXT_PUBLIC_STOREFRONT_URL` / `STOREFRONT_ORIGIN`, and brand-slug fuzzy match on shop_domain/name.
+- Include stores with null shop_domain in the candidate list for single-tenant fallback.
+
+### Files Modified
+- `src/lib/visitors/store-context.ts`, `store-context.test.ts`
+- `changes.md`
+
+### Live
+- Deploy with this commit so storefront tracking can ingest events before theme install.
+
 ## [2026-10-15 19:50] Ops (Visitors) — merged to main; seed SQL + theme install notes
 
 ### Root Cause

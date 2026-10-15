@@ -92,6 +92,9 @@
 
   function show(data) {
     if (document.getElementById('if-uw')) return;
+    var waUrl = String(data.waUrl || '');
+    if (!/^https:\/\/wa\.me\//.test(waUrl)) return;
+
     injectStyles();
 
     var offer = String(data.offerText || 'Unlock 10% OFF on WhatsApp');
@@ -109,17 +112,15 @@
       '<div id="if-uw-avatar" aria-hidden="true">DP</div>' +
       '<div id="if-uw-msg">' +
       '<p id="if-uw-name">DivyaPrabha</p>' +
-      '<p id="if-uw-text">' +
-      offer +
-      '</p>' +
+      '<p id="if-uw-text"></p>' +
       '<div id="if-uw-actions">' +
-      '<a id="if-uw-cta" href="' +
-      data.waUrl +
-      '" target="_blank" rel="noopener">' +
+      '<a id="if-uw-cta" target="_blank" rel="noopener">' +
       waSvg() +
       '<span>Get code</span></a>' +
       '<button type="button" id="if-uw-dismiss">Not now</button>' +
       '</div></div>';
+    preview.querySelector('#if-uw-text').textContent = offer;
+    preview.querySelector('#if-uw-cta').setAttribute('href', waUrl);
 
     var fabWrap = document.createElement('div');
     fabWrap.id = 'if-uw-fab-wrap';
@@ -133,16 +134,19 @@
     root.appendChild(fabWrap);
     document.body.appendChild(root);
 
+    var collapseTimer = null;
     function hidePreview() {
       if (preview && preview.parentNode) preview.remove();
     }
-    function closeAll() {
-      markDismissed();
-      root.remove();
-      if (w.VisitorTracker) w.VisitorTracker.track('popup_dismissed', { kind: 'wa_unlock' });
+    function armCollapseTimer() {
+      if (collapseTimer) clearTimeout(collapseTimer);
+      collapseTimer = setTimeout(function () {
+        if (document.getElementById('if-uw-preview')) hidePreview();
+      }, 9000);
     }
 
     document.getElementById('if-uw-dismiss').onclick = function () {
+      if (collapseTimer) clearTimeout(collapseTimer);
       hidePreview();
       markDismissed();
       if (w.VisitorTracker) w.VisitorTracker.track('popup_dismissed', { kind: 'wa_unlock' });
@@ -156,6 +160,7 @@
       // Preview closed — reopen briefly
       if (!document.getElementById('if-uw-preview')) {
         root.insertBefore(preview, fabWrap);
+        armCollapseTimer();
       }
     };
     document.getElementById('if-uw-cta').onclick = function () {
@@ -164,10 +169,7 @@
 
     if (w.VisitorTracker) w.VisitorTracker.track('popup_viewed', { kind: 'wa_unlock', ui: VERSION });
 
-    // Auto-collapse to FAB after a few seconds (modern widget pattern)
-    setTimeout(function () {
-      if (document.getElementById('if-uw-preview')) hidePreview();
-    }, 9000);
+    armCollapseTimer();
   }
 
   function maybeShow() {

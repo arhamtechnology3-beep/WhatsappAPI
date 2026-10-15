@@ -19,7 +19,7 @@ export async function POST(request: Request) {
 
   const supabase = supabaseAdmin()
   let accountId = ''
-  let topic = 'fulfillments/create'
+  const topic = 'fulfillments/create'
 
   try {
     const payload = JSON.parse(rawBody)

@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
   const supabase = supabaseAdmin()
   let accountId = ''
-  let topic = 'orders/create'
+  const topic = 'orders/create'
 
   try {
     const payload = JSON.parse(rawBody)
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     const orderId = String(payload.id)
     const orderNumber = String(payload.order_number)
     const identity = extractShopifyCustomerIdentity(payload)
-    let email = identity.email
+    const email = identity.email
     let phone = identity.phone
     if (!hasWhatsAppPhone(phone)) {
       phone = (await recoverMissingShopifyPhone(payload)) || phone

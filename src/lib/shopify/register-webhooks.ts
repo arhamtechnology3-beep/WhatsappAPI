@@ -32,7 +32,7 @@ export async function registerShopifyWebhooks(opts: {
   const apiVersion = opts.apiVersion || process.env.SHOPIFY_API_VERSION || '2025-01'
   const results: { topic: string; ok: boolean; error?: string }[] = []
 
-  let existingAddresses = new Set<string>()
+  const existingAddresses = new Set<string>()
   try {
     const listRes = await fetch(
       `https://${shop}/admin/api/${apiVersion}/webhooks.json`,

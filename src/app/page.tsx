@@ -287,7 +287,7 @@ export default function RootPage() {
               </div>
               <h3 className="font-bold text-lg text-white">Smart Opt-out & Compliance</h3>
               <p className="text-sm text-slate-400 leading-relaxed">
-                Adheres strictly to Meta marketing guidelines. Automatically filters out promotional drips for unsubscribed numbers, and listens for the "STOP" opt-out message.
+                Adheres strictly to Meta marketing guidelines. Automatically filters out promotional drips for unsubscribed numbers, and listens for the &quot;STOP&quot; opt-out message.
               </p>
             </div>
           </div>

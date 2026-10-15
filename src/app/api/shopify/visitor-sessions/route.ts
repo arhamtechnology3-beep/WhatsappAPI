@@ -16,8 +16,34 @@ export async function GET() {
     const main = supabaseAdmin()
     const store = await resolveStoreForAccount(main, ctx.accountId)
 
-    let sessions: any[] = []
-    let identityMap: any[] = []
+    type SessionRow = {
+      id: string
+      visitor_id: string
+      session_id: string
+      device_type?: string | null
+      referrer_source?: string | null
+      utm_params?: unknown
+      session_start: string
+      pages_viewed?: unknown
+      products_viewed?: unknown
+      cart_events?: unknown
+      associated_phone?: string | null
+      associated_email?: string | null
+      associated_name?: string | null
+      last_activity_at?: string | null
+    }
+    type IdentityRow = {
+      visitor_id: string
+      phone_number?: string | null
+      contact_id?: string | null
+      source?: string | null
+      linked_at?: string | null
+      last_seen_at?: string | null
+      first_linked_at?: string | null
+    }
+
+    let sessions: SessionRow[] = []
+    let identityMap: IdentityRow[] = []
 
     if (store) {
       const { data: mainSessions } = await main
@@ -75,7 +101,7 @@ export async function GET() {
     const visitorContactMap: Record<string, string> = {}
     const visitorSourceMap: Record<string, string> = {}
     for (const entry of identityMap) {
-      if (!visitorPhoneMap[entry.visitor_id]) {
+      if (entry.phone_number && !visitorPhoneMap[entry.visitor_id]) {
         visitorPhoneMap[entry.visitor_id] = entry.phone_number
       }
       if (entry.contact_id && !visitorContactMap[entry.visitor_id]) {
@@ -109,7 +135,7 @@ export async function GET() {
       }
     }
 
-    const enriched = sessions.map((s: any) => {
+    const enriched = sessions.map((s) => {
       const phone = s.associated_phone || visitorPhoneMap[s.visitor_id] || null
       const digits = phone ? phone.replace(/\D/g, '') : null
       const last10 = digits ? digits.slice(-10) : null
@@ -128,8 +154,17 @@ export async function GET() {
         }
       }
 
-      const pagesViewed: any[] = Array.isArray(s.pages_viewed) ? s.pages_viewed : []
-      const cartEvents: any[] = Array.isArray(s.cart_events) ? s.cart_events : []
+      const pagesViewed = Array.isArray(s.pages_viewed) ? s.pages_viewed : []
+      const cartEvents = Array.isArray(s.cart_events) ? s.cart_events : []
+      const lastPageRaw = pagesViewed.length > 0 ? pagesViewed[pagesViewed.length - 1] : null
+      const lastPage =
+        lastPageRaw && typeof lastPageRaw === 'object'
+          ? String(
+              (lastPageRaw as { path?: unknown; url?: unknown }).path ||
+                (lastPageRaw as { path?: unknown; url?: unknown }).url ||
+                '',
+            ) || null
+          : null
 
       return {
         id: s.id,
@@ -141,12 +176,7 @@ export async function GET() {
         last_activity_at: s.last_activity_at || s.session_start,
         pages_viewed_count: pagesViewed.length,
         cart_events_count: cartEvents.length,
-        last_page:
-          pagesViewed.length > 0
-            ? pagesViewed[pagesViewed.length - 1]?.path ||
-              pagesViewed[pagesViewed.length - 1]?.url ||
-              null
-            : null,
+        last_page: lastPage,
         associated_phone: phone,
         associated_email: s.associated_email || null,
         associated_name: s.associated_name || null,
@@ -159,17 +189,15 @@ export async function GET() {
 
     const stats = {
       total: enriched.length,
-      mobile: enriched.filter((s: any) => s.device_type === 'Mobile').length,
-      identified: enriched.filter((s: any) => s.is_identified).length,
-      linked_to_contact: enriched.filter((s: any) => s.contact_id).length,
+      mobile: enriched.filter((s) => s.device_type === 'Mobile').length,
+      identified: enriched.filter((s) => s.is_identified).length,
+      linked_to_contact: enriched.filter((s) => s.contact_id).length,
     }
 
     return NextResponse.json({ sessions: enriched, stats })
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('[visitor-sessions] error:', err)
-    return NextResponse.json(
-      { error: err.message || 'Internal server error' },
-      { status: 500 },
-    )
+    const message = err instanceof Error ? err.message : 'Internal server error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

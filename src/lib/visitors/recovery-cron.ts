@@ -29,8 +29,11 @@ type SessionRow = {
   session_start: string
 }
 
-function asArray(v: unknown): any[] {
-  return Array.isArray(v) ? v : []
+type JsonRecord = Record<string, unknown>
+
+function asArray(v: unknown): JsonRecord[] {
+  if (!Array.isArray(v)) return []
+  return v.filter((item): item is JsonRecord => !!item && typeof item === 'object')
 }
 
 export function classifyNudge(session: {
@@ -40,7 +43,7 @@ export function classifyNudge(session: {
   const cart = asArray(session.cart_events)
   const products = asArray(session.products_viewed)
   const hasCart = cart.some(
-    (e) => e?.type === 'add_to_cart' || e?.type === 'checkout_started',
+    (e) => e.type === 'add_to_cart' || e.type === 'checkout_started',
   )
   if (hasCart) return 'cart'
   if (products.length > 0) return 'browse'
@@ -56,18 +59,29 @@ export function mostViewedProduct(products_viewed: unknown): {
 } | null {
   const products = asArray(products_viewed)
   if (!products.length) return null
-  const counts = new Map<string, { count: number; row: any }>()
+  const counts = new Map<string, { count: number; row: JsonRecord }>()
   for (const p of products) {
     const key = String(p.product_id || p.handle || p.title || '')
     if (!key) continue
     const prev = counts.get(key)
     counts.set(key, { count: (prev?.count || 0) + 1, row: p })
   }
-  let best: { count: number; row: any } | null = null
+  let best: { count: number; row: JsonRecord } | null = null
   for (const v of counts.values()) {
     if (!best || v.count > best.count) best = v
   }
-  return best?.row || products[products.length - 1] || null
+  const row = best?.row || products[products.length - 1] || null
+  if (!row) return null
+  return {
+    product_id: row.product_id != null ? String(row.product_id) : undefined,
+    handle: row.handle != null ? String(row.handle) : undefined,
+    title: row.title != null ? String(row.title) : undefined,
+    price:
+      typeof row.price === 'string' || typeof row.price === 'number'
+        ? row.price
+        : undefined,
+    variant_id: row.variant_id != null ? String(row.variant_id) : undefined,
+  }
 }
 
 export function cartPermalinkFromEvents(cart_events: unknown): string | null {

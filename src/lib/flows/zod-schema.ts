@@ -141,7 +141,7 @@ export function validateFlowGraph(json: any): { success: true; data: any } | { s
   for (const node of flow.nodes) {
     try {
       const cfg = node.config;
-      let targets: string[] = [];
+      const targets: string[] = [];
 
       switch (node.node_type) {
         case "start": {

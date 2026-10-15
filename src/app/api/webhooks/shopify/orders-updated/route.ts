@@ -30,7 +30,7 @@ export async function POST(request: Request) {
 
   const supabase = supabaseAdmin()
   let accountId = ''
-  let topic = 'orders/updated'
+  const topic = 'orders/updated'
 
   try {
     const payload = JSON.parse(rawBody)

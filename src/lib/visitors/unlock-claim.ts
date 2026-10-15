@@ -115,8 +115,8 @@ export async function claimWaUnlockFromInbound(
 
   const code = settings.discount_code || 'DP10'
   const replyText = alreadyClaimed
-    ? `Aapka code pehle se mil chuka hai: *${code}*. Checkout pe apply karo. Reply STOP anytime to opt out.`
-    : `Thank you! Aapka code hai *${code}* 🎁\nCheckout pe apply karo. Offers WhatsApp pe milte rahenge — reply STOP anytime to opt out.`
+    ? `Aapka WhatsApp number pehle se *activated* hai ✅\nAapka code: *${code}* — checkout pe apply karke discount lo.`
+    : `Thank you! Aapka WhatsApp number ab is offer ke liye *activated* hai ✅\nAapka code hai *${code}* 🎁\nCheckout pe apply karo aur discount enjoy karo.`
 
   return {
     claimed: true,

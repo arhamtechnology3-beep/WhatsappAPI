@@ -4,6 +4,24 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-16 01:05] Copy (Visitors) — unlock reply emphasizes number activated
+
+### Root Cause
+- Unlock auto-reply ended with “reply STOP anytime to opt out,” which undercut the reason to message WhatsApp.
+- Copy did not clearly confirm the customer’s number is now activated for the coupon.
+
+### Objective & Fixes
+- Remove STOP/opt-out line from unlock claim replies.
+- New/first claim: thank + number activated + code + checkout apply.
+- Re-claim: number already activated + code reminder.
+
+### Files Modified
+- `src/lib/visitors/unlock-claim.ts`
+- `changes.md`
+
+### Live
+- Deploy to Hostinger; send `Hi! Send my DP10 code (ref …)` again to verify reply.
+
 ## [2026-10-16 01:00] Design (Visitors) — 21st.dev floating unlock widget
 
 ### Root Cause

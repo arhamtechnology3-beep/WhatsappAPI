@@ -44,3 +44,27 @@ SHOPIFY_STOREFRONT_ORIGINS=https://divyaprabhafoods.com,https://www.divyaprabhaf
 
 Enable in CRM → Visitors → Settings (`popup_enabled`), set WhatsApp number
 and discount code (create the Shopify discount first).
+
+Or run `scripts/seed-visitor-capture-settings.sql` in the Supabase SQL Editor
+(then set `whatsapp_number` in that script’s UPDATE, or in the CRM UI).
+
+## 5. Quick copy-paste for `snippets/header-scripts.liquid`
+
+```liquid
+{% comment %} IdentityFlow visitor recognition — replace legacy visitor-identifier.js {% endcomment %}
+<script>
+  window.__IDENTITYFLOW_TRACK__ = {
+    endpoint: "https://whatsapp.arhamtechnology.com",
+    popupDelaySeconds: 25,
+    {% if customer %}
+    shopifyCustomerId: {{ customer.id | json }},
+    shopifyCustomerSig: {{ customer.id | hmac_sha256: settings.visitor_hmac_secret | json }},
+    {% endif %}
+  };
+</script>
+<script src="https://whatsapp.arhamtechnology.com/identityflow/visitor-tracker.js" defer></script>
+<script src="https://whatsapp.arhamtechnology.com/identityflow/wa-unlock-popup.js" defer></script>
+```
+
+Until Hostinger finishes deploying `main` (`e2d79b0`+), those script URLs 404.
+After deploy they should return `200` with JavaScript.

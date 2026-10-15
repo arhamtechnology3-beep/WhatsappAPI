@@ -4,6 +4,24 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-15 19:50] Ops (Visitors) — merged to main; seed SQL + theme install notes
+
+### Root Cause
+- Feature was complete on the PR branch but not on Hostinger; CI lint blocked merge; theme/settings/template still needed operator steps.
+
+### Objective & Fixes
+- Merged PR #41 to `main` (`e2d79b0`) for Hostinger auto-deploy.
+- Added `scripts/seed-visitor-capture-settings.sql` and expanded `docs/theme-visitor-recognition.md` with copy-paste liquid.
+
+### Files Modified
+- `scripts/seed-visitor-capture-settings.sql`
+- `docs/theme-visitor-recognition.md`
+- `changes.md`
+
+### Live
+- SHA: `e2d79b0` on `main` (PR #41 merged). Wait for Hostinger; confirm `/identityflow/visitor-tracker.js` returns 200.
+- Still needs operator: theme publish, `SHOPIFY_STOREFRONT_ORIGINS`, run seed SQL / Visitors settings + WA number + DP10 discount, submit `wacrm_visit_nudge_v1` (no `.env.local` / Shopify theme in cloud agent).
+
 ## [2026-10-15 19:45] Fix (CI) — unblock lint so visitor recognition PR can merge
 
 ### Root Cause
@@ -24,7 +42,7 @@ Keep it up to date for **current work and every future change**. `CHANGELOG.md` 
 - `changes.md`
 
 ### Live
-- Merge PR #41 → Hostinger auto-deploy. Then theme snippets, `SHOPIFY_STOREFRONT_ORIGINS`, Visitors settings, submit `wacrm_visit_nudge_v1`.
+- Merged with PR #41 as `e2d79b0`.
 
 ## [2026-10-15 18:55] Feat (Visitors) — first-party recognition + WhatsApp browse/cart/visit recovery (no passkey/OTP)
 

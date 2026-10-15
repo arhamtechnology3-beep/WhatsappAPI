@@ -28,6 +28,7 @@ import {
   Store,
   CreditCard,
   ShieldCheck,
+  Eye,
 } from "lucide-react";
 import type { AccountRole } from "@/lib/auth/roles";
 
@@ -102,6 +103,7 @@ const navItems: NavItem[] = [
   { href: "/inbox", label: "Inbox", icon: MessageSquare },
   { href: "/contacts", label: "Contacts", icon: Users },
   { href: "/ctwa-insights", label: "CTWA Insights", icon: BarChart3 },
+  { href: "/visitors", label: "Visitors", icon: Eye },
   { href: "/pipelines", label: "Pipelines", icon: GitBranch },
   { href: "/broadcasts", label: "Broadcasts", icon: Radio },
   { href: "/automations", label: "Automations", icon: Zap },

@@ -16,6 +16,7 @@ import { moveDealToStageName } from '@/lib/shopify/shopify-helper'
 import { stopOrderFollowupsForContact } from '@/lib/followups/order-followups'
 import { classifyReferral } from '@/lib/whatsapp/referral-parser'
 import { findOrCreateConversation as ensureConversation } from '@/lib/inbox/find-or-create-conversation'
+import { claimWaUnlockFromInbound } from '@/lib/visitors/unlock-claim'
 
 // The `after()` callback in POST runs within this route's max duration.
 // Inbound processing can fan out to per-media Meta verification calls, so
@@ -987,6 +988,42 @@ async function processMessage(
   }
 
   const cleanedText = inboundText.trim().toUpperCase()
+
+  // 0. WhatsApp unlock-offer popup (ref CODE) — OTP-free capture
+  try {
+    const unlock = await claimWaUnlockFromInbound(supabaseAdmin(), {
+      accountId,
+      contactId: contactRecord.id,
+      phone: senderPhone,
+      messageText: inboundText,
+    })
+    if (unlock.claimed) {
+      try {
+        await sendTextMessage({
+          phoneNumberId,
+          accessToken,
+          to: senderPhone,
+          text: unlock.replyText,
+          contextMessageId: message.id,
+        })
+        await supabaseAdmin()
+          .from('messages')
+          .insert({
+            conversation_id: conversation.id,
+            sender_type: 'agent',
+            content_type: 'text',
+            content_text: unlock.replyText,
+            status: 'sent',
+            created_at: new Date().toISOString(),
+          })
+      } catch (sendErr) {
+        console.error('[webhook] unlock reply failed:', sendErr)
+      }
+      // Still continue so STOP / flows also process if needed.
+    }
+  } catch (unlockErr) {
+    console.error('[webhook] unlock claim failed:', unlockErr)
+  }
 
   // 1. Opt-out keyword handler
   const isOptOut = optOutKeywords.some(kw => cleanedText === kw.trim().toUpperCase() || cleanedText.includes(kw.trim().toUpperCase()))

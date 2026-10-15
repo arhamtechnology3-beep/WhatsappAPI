@@ -200,6 +200,39 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle()
+          let wcid: string | undefined
+          const needsWcid = recipe.button_url_sources.some(
+            (s) =>
+              s === 'checkout_url' ||
+              s === 'product_url' ||
+              s === 'bestsellers' ||
+              s === 'storefront',
+          )
+          if (needsWcid) {
+            try {
+              const { resolveStoreForAccount } = await import(
+                '@/lib/visitors/account-store'
+              )
+              const { ensureContactLinkToken } = await import(
+                '@/lib/visitors/tokens'
+              )
+              const store = await resolveStoreForAccount(db, input.accountId)
+              if (store) {
+                wcid =
+                  (await ensureContactLinkToken(db, {
+                    storeId: store.id,
+                    organizationId: store.organization_id,
+                    accountId: input.accountId,
+                    contactId: input.contactId,
+                  })) || undefined
+              }
+            } catch (err) {
+              console.warn(
+                '[meta-send] wcid token skipped:',
+                err instanceof Error ? err.message : err,
+              )
+            }
+          }
           messageParams.buttonParams = buildRecipeButtonParams(recipe, {
             checkout_url:
               input.buttonUrls?.checkout_url ||
@@ -211,6 +244,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
               order?.tracking_url ||
               undefined,
             followup_token: input.buttonUrls?.followup_token,
+            wcid,
           })
         }
       }

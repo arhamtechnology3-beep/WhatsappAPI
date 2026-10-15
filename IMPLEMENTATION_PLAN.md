@@ -73,6 +73,17 @@ Do **not** in Phase 0: popup builder, passkeys, Shopify App Billing GraphQL, per
 - Playwright: two stores, trial vs paid, reinstall does not reset trial
 - Security review; independent implementation (no GoKwik/KwikPass proprietary work)
 
+## Phase 6 — Visitor recognition + WhatsApp recovery (replaces passkey idea)
+
+In-house equivalent of KwikPass/BIK **without** a shared network, fingerprinting, OTP, or passkeys:
+
+1. First-party tracker posts to `/api/v1/track` (Origin-resolved store); identity via `wcid` tagged WhatsApp links, order `dp_visitor_id`, signed logged-in customer, capture/checkout.
+2. Recovery cron for identified visitors: cart / browse / visit nudges with consent, IST window, frequency caps.
+3. OTP-free "Unlock offer on WhatsApp" popup (`ref CODE` → webhook claim + consent + auto-reply).
+4. Dashboard `/visitors` (rate by source, funnel, settings).
+
+Theme install notes: `docs/theme-visitor-recognition.md`. Migration: `059_visitor_recognition.sql`.
+
 ## Phase status (repo)
 
 | Phase | Status |
@@ -83,6 +94,7 @@ Do **not** in Phase 0: popup builder, passkeys, Shopify App Billing GraphQL, per
 | 3 Campaigns | Done (CRUD + popup helper) |
 | 4 Messaging bridge | Done (campaign → whatsapp_send_jobs) |
 | 5 Scale / ops | Done (usage, retention, support grants, cron) |
+| 6 Visitor recognition + recovery | Done (code); apply 059 + theme snippets + approve `wacrm_visit_nudge_v1` |
 
 Remaining App Store polish: theme app extension packaging (`shopify.app.toml`), Playwright e2e against two real shops, and Partner approval for protected customer data / passwordless login.
 

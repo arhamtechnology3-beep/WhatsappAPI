@@ -7,6 +7,7 @@ import {
   collectionAllProductsUrl,
   storefrontBaseUrl,
 } from '@/lib/shopify/whatsapp-template-library'
+import { withContactWcid } from '@/lib/visitors/redirect-wcid'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,10 +34,16 @@ export async function GET(
   }
 
   const path = reorderCartPath(followup.products, soldOut)
-  if (path) return NextResponse.redirect(`${storefrontBaseUrl()}/${path}`, 302)
-  const handle = followup.products.find((p) => p.handle)?.handle
-  return NextResponse.redirect(
-    handle ? `${storefrontBaseUrl()}/products/${handle}` : collectionAllProductsUrl(),
-    302,
-  )
+  const target = path
+    ? `${storefrontBaseUrl()}/${path}`
+    : followup.products.find((p) => p.handle)?.handle
+      ? `${storefrontBaseUrl()}/products/${followup.products.find((p) => p.handle)!.handle}`
+      : collectionAllProductsUrl()
+
+  const tagged = await withContactWcid(db, {
+    accountId: followup.account_id,
+    contactId: followup.contact_id,
+    url: target,
+  })
+  return NextResponse.redirect(tagged, 302)
 }

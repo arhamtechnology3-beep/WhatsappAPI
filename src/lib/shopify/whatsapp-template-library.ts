@@ -52,6 +52,7 @@ export type ShopifyRecipeTrigger =
   | 'cart_abandoned_step2'
   | 'cart_abandoned_step3'
   | 'browse_abandoned'
+  | 'visit_nudge'
   | 'shopify_customer_created'
   | 'order_created'
   | 'order_fulfilled'
@@ -71,6 +72,7 @@ export type RecipeUrlSource =
   | 'product_url'
   | 'tracking_url'
   | 'storefront'
+  | 'bestsellers'
   /** `order_followups.token` for the /review and /reorder links. */
   | 'followup_token'
   | null
@@ -157,6 +159,20 @@ export function urlButtonParamFromAbsolute(
  * variable makes Graph return `#100 Invalid parameter` and the inbox shows
  * a failed bubble with no buttons.
  */
+/**
+ * Keep only the `wcid` query param when coercing Meta URL-button
+ * suffixes — other query junk (coupons pasted as full URLs) is still
+ * stripped so Graph does not reject the send.
+ */
+export function preserveWcidQuery(pathWithMaybeQuery: string): string {
+  const [path, query = ''] = pathWithMaybeQuery.split('?')
+  if (!query) return path
+  const params = new URLSearchParams(query)
+  const wcid = params.get('wcid')
+  if (!wcid) return path
+  return `${path}?wcid=${encodeURIComponent(wcid)}`
+}
+
 export function coerceUrlButtonParam(
   templateButtonUrl: string,
   raw?: string | null,
@@ -165,9 +181,11 @@ export function coerceUrlButtonParam(
   const trimmed = (raw ?? '').trim()
   if (!trimmed) return undefined
   if (/^https?:\/\//i.test(trimmed)) {
-    return urlButtonParamFromAbsolute(trimmed).split(/[?#]/)[0] || undefined
+    return (
+      preserveWcidQuery(urlButtonParamFromAbsolute(trimmed)) || undefined
+    )
   }
-  return trimmed.replace(/^\//, '').split(/[?#]/)[0]
+  return preserveWcidQuery(trimmed.replace(/^\//, '')) || undefined
 }
 
 export function coerceTemplateButtonParams(
@@ -275,6 +293,13 @@ export function buildTemplateCustomerView(
   return view
 }
 
+export function appendWcidToSuffix(suffix: string, wcid?: string | null): string {
+  if (!wcid?.trim() || !suffix) return suffix
+  if (/[?&]wcid=/.test(suffix)) return suffix
+  const sep = suffix.includes('?') ? '&' : '?'
+  return `${suffix}${sep}wcid=${encodeURIComponent(wcid.trim())}`
+}
+
 export function buildRecipeButtonParams(
   recipe: ShopifyTemplateRecipe,
   urls: {
@@ -282,6 +307,8 @@ export function buildRecipeButtonParams(
     product_url?: string
     tracking_url?: string
     followup_token?: string
+    /** Tagged WhatsApp link token — appended to storefront CTA suffixes. */
+    wcid?: string
   },
 ): Record<number, string> {
   const out: Record<number, string> = {}
@@ -291,11 +318,17 @@ export function buildRecipeButtonParams(
     if (source === 'followup_token') {
       if (urls.followup_token) out[index] = urls.followup_token
     } else if (source === 'checkout_url') {
-      out[index] =
-        urlButtonParamFromAbsolute(urls.checkout_url) || 'checkouts'
+      out[index] = appendWcidToSuffix(
+        urlButtonParamFromAbsolute(urls.checkout_url) || 'checkouts',
+        urls.wcid,
+      )
     } else if (source === 'product_url') {
-      out[index] =
-        urlButtonParamFromAbsolute(urls.product_url) || COLLECTION_ALL_PRODUCTS_PATH
+      out[index] = appendWcidToSuffix(
+        urlButtonParamFromAbsolute(urls.product_url) || COLLECTION_ALL_PRODUCTS_PATH,
+        urls.wcid,
+      )
+    } else if (source === 'bestsellers' || source === 'storefront') {
+      out[index] = appendWcidToSuffix(COLLECTION_ALL_PRODUCTS_PATH, urls.wcid)
     } else if (source === 'tracking_url') {
       const tracking = urls.tracking_url || urls.checkout_url
       out[index] =
@@ -329,6 +362,14 @@ const shopBestsellers = (): TemplateButton => ({
   type: 'URL',
   text: 'Shop Bestsellers',
   url: bestsellersUrl(),
+})
+
+/** Dynamic bestsellers path so we can append ?wcid= on send. */
+const shopBestsellersDynamic = (): TemplateButton => ({
+  type: 'URL',
+  text: 'Shop Bestsellers',
+  url: dynamicStorefrontUrl(),
+  example: COLLECTION_ALL_PRODUCTS_PATH,
 })
 
 const trackOrder = (): TemplateButton => ({
@@ -468,6 +509,26 @@ Try karo aur khud decide karo!`,
     buttons: [orderNow(), shopBestsellers()],
     button_url_sources: ['product_url', null],
     sample_values: { body: ['Jesal', 'Homemade Mango Pickle'] },
+  },
+  {
+    trigger_type: 'visit_nudge',
+    template_name: 'wacrm_visit_nudge_v1',
+    category: 'MARKETING',
+    language: WACRM_TEMPLATE_LANGUAGE,
+    body: `Namaste {{1}}! Aap DivyaPrabha Foods pe aaye — bestsellers wait kar rahe hain 🛒
+
+✅ Handmade pickles, no chemical preservatives
+✅ Buy 2 x 250g — FREE shipping
+✅ 10% OFF on ₹749+
+
+Shop Bestsellers pe tap karo.`,
+    variables: ['customer_name'],
+    default_delay_minutes: 90,
+    header_type: 'image',
+    footer_text: 'DivyaPrabha Foods',
+    buttons: [shopBestsellersDynamic()],
+    button_url_sources: ['bestsellers'],
+    sample_values: { body: ['Jesal'] },
   },
   {
     trigger_type: 'order_created',

@@ -4,22 +4,24 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
-## [2026-10-16 00:05] Design (Visitors) — DivyaPrabha-themed unlock FAB + offer card
+## [2026-10-16 00:15] Design (Visitors) — chat-widget unlock bubble + CORS track fix
 
 ### Root Cause
-- Storefront unlock UI was a centered white card with generic WhatsApp green — clashed with DivyaPrabha maroon/cream theme and felt basic.
+- First branded unlock UI still felt heavy (oversized WA icon in CTA, large card).
+- Browser track calls failed CORS: cross-origin `sendBeacon` sends credentials; API lacked `Allow-Credentials`.
 
 ### Objective & Fixes
-- Rebuild `wa-unlock-popup.js` as bottom-right branded FAB + compact cream/maroon offer card.
-- Motions: slide-in, pulse ring, gentle bob, CTA shine, badge breathe; respects `prefers-reduced-motion`.
-- CTA uses brand maroon→clay gradient (not stock green); small WA glyph kept for affordance.
+- Rebuild unlock as chat-widget: pulsing FAB with `10%` badge, then a small speech bubble above it (`Get code` pill).
+- Track flush uses `fetch` + `credentials:'omit'`; CORS echoes Origin and sets `Access-Control-Allow-Credentials: true`.
 
 ### Files Modified
 - `public/identityflow/wa-unlock-popup.js`
+- `public/identityflow/visitor-tracker.js`
+- `src/lib/visitors/store-context.ts`
 - `changes.md`
 
 ### Live
-- Hostinger deploy of this commit. Theme already loads the script URL — hard-refresh the storefront (or wait for CDN). Clear `if_unlock_dismissed` in localStorage to see it again.
+- Deploy; hard-refresh storefront; clear `localStorage.if_unlock_dismissed` to preview.
 
 ## [2026-10-15 23:45] Fix (Bot) — strip Returns & Refund; unlock before FAQ menu
 

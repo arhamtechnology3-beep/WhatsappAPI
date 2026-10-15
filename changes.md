@@ -4,6 +4,26 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-16 01:00] Design (Visitors) — 21st.dev floating unlock widget
+
+### Root Cause
+- Storefront still showed a heavy/basic unlock UI; browsers had cached `wa-unlock-popup.js`, so design deploys looked like “no change”.
+
+### Objective & Fixes
+- New 21st.dev-style floating chat widget: glass preview card LEFT of FAB, DP avatar, soft ping, maroon gradient FAB with `10%` badge, auto-collapse after 9s.
+- Ship as **new URL** `wa-unlock-widget.js` so theme update busts cache; old `wa-unlock-popup.js` now redirects to the widget.
+- Harden: `offerText` via `textContent`, only `https://wa.me/` CTAs; re-arm collapse timer when FAB reopens preview.
+
+### Files Modified
+- `public/identityflow/wa-unlock-widget.js` (new)
+- `public/identityflow/wa-unlock-popup.js` (compat loader)
+- `docs/divyaprabha-visitor-ops.md`, `docs/theme-visitor-recognition.md`
+- `changes.md`
+
+### Live
+- Hostinger deploy + **theme liquid must load `wa-unlock-widget.js`** (replace `wa-unlock-popup.js`).
+- Private window; clear `localStorage.if_unlock_dismissed` to re-test.
+
 ## [2026-10-16 00:15] Design (Visitors) — chat-widget unlock bubble + CORS track fix
 
 ### Root Cause

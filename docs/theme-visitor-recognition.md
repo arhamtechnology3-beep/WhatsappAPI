@@ -19,12 +19,13 @@ legacy tracking Supabase project. Load the CRM-hosted tracker instead:
   };
 </script>
 <script src="https://whatsapp.arhamtechnology.com/identityflow/visitor-tracker.js" defer></script>
-<script src="https://whatsapp.arhamtechnology.com/identityflow/wa-unlock-popup.js" defer></script>
+<script src="https://whatsapp.arhamtechnology.com/identityflow/wa-unlock-widget.js" defer></script>
 ```
 
 Add a theme setting `visitor_hmac_secret` (or hardcode the same value as
 `VISITOR_THEME_HMAC_SECRET` / `ENCRYPTION_KEY` in the CRM env). Never commit
 the secret into git.
+
 
 ## 2. Cart attributes
 
@@ -63,8 +64,8 @@ Or run `scripts/seed-visitor-capture-settings.sql` in the Supabase SQL Editor
   };
 </script>
 <script src="https://whatsapp.arhamtechnology.com/identityflow/visitor-tracker.js" defer></script>
-<script src="https://whatsapp.arhamtechnology.com/identityflow/wa-unlock-popup.js" defer></script>
+<script src="https://whatsapp.arhamtechnology.com/identityflow/wa-unlock-widget.js" defer></script>
 ```
 
-Until Hostinger finishes deploying `main` (`e2d79b0`+), those script URLs 404.
-After deploy they should return `200` with JavaScript.
+Use `wa-unlock-widget.js` (not `wa-unlock-popup.js`) so browsers don’t keep an old cached design.
+

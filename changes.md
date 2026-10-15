@@ -4,6 +4,23 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-15 20:10] Fix (Visitors) — auto-provision store when IdentityFlow stores empty
+
+### Root Cause
+- After custom-domain aliasing, live track still returned `Unknown store`. Hostinger uses env Shopify tokens; IdentityFlow `stores` was never backfilled, so Origin resolution had zero rows.
+
+### Objective & Fixes
+- On allowed storefront Origin, `ensureEnvBackedStore` creates/reactivates `divyaprabhafoods.myshopify.com` under the first workspace/account.
+- Operator SQL: `scripts/seed-divyaprabha-store.sql` (plus existing capture-settings seed).
+
+### Files Modified
+- `src/lib/visitors/store-context.ts`
+- `scripts/seed-divyaprabha-store.sql`
+- `changes.md`
+
+### Live
+- Push to `main` → Hostinger. Then `POST /api/v1/track` with Origin `https://divyaprabhafoods.com` should auto-create the store and return `{ok:true}`.
+
 ## [2026-10-15 20:00] Fix (Visitors) — resolve custom-domain Origin to store
 
 ### Root Cause
@@ -18,7 +35,7 @@ Keep it up to date for **current work and every future change**. `CHANGELOG.md` 
 - `changes.md`
 
 ### Live
-- Deploy with this commit so storefront tracking can ingest events before theme install.
+- Superseded by auto-provision fix if `stores` was empty.
 
 ## [2026-10-15 19:50] Ops (Visitors) — merged to main; seed SQL + theme install notes
 

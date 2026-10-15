@@ -154,7 +154,129 @@ export async function resolveStoreFromOrigin(
     return list[0]
   }
 
+  // Single-tenant Hostinger: IdentityFlow `stores` may never have been
+  // backfilled (Shopify still runs on env tokens). Auto-provision once.
+  if (originAllowed) {
+    const ensured = await ensureEnvBackedStore(supabase, {
+      host,
+      publicHost,
+      envDomain,
+    })
+    if (ensured) return ensured
+  }
+
   return null
+}
+
+/**
+ * Create (or reuse) a store row for the env Shopify domain so visitor
+ * tracking works before a full IdentityFlow Shopify OAuth install.
+ */
+export async function ensureEnvBackedStore(
+  supabase: SupabaseClient,
+  opts: { host: string; publicHost: string; envDomain: string },
+): Promise<VisitorStoreRow | null> {
+  let shopDomain = normalizeShopDomain(
+    opts.envDomain ||
+      process.env.SHOPIFY_STORE_DOMAIN ||
+      process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN ||
+      '',
+  )
+  if (
+    !shopDomain ||
+    shopDomain === 'divyaprabhafoods.com' ||
+    shopDomain === 'www.divyaprabhafoods.com'
+  ) {
+    shopDomain = 'divyaprabhafoods.myshopify.com'
+  }
+  if (!shopDomain.includes('.')) {
+    shopDomain = `${shopDomain}.myshopify.com`
+  }
+
+  const { data: existing } = await supabase
+    .from('stores')
+    .select('id, organization_id, name, shop_domain, status')
+    .eq('shop_domain', shopDomain)
+    .maybeSingle()
+  if (existing) {
+    if (existing.status !== 'active' && existing.status !== 'pending_install') {
+      await supabase
+        .from('stores')
+        .update({ status: 'active', updated_at: new Date().toISOString() })
+        .eq('id', existing.id)
+      return { ...existing, status: 'active' } as VisitorStoreRow
+    }
+    return existing as VisitorStoreRow
+  }
+
+  // Prefer workspace that already claims this shop domain, else first workspace.
+  let orgId: string | null = null
+  let orgName = 'DivyaPrabha Foods'
+  const { data: byShop } = await supabase
+    .from('workspaces')
+    .select('id, name, shopify_shop_domain')
+    .eq('shopify_shop_domain', shopDomain)
+    .maybeSingle()
+  if (byShop?.id) {
+    orgId = byShop.id
+    orgName = byShop.name || orgName
+  } else {
+    const { data: anyWs } = await supabase
+      .from('workspaces')
+      .select('id, name')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    if (anyWs?.id) {
+      orgId = anyWs.id
+      orgName = anyWs.name || orgName
+    }
+  }
+  if (!orgId) {
+    const { data: acct } = await supabase
+      .from('accounts')
+      .select('id, name')
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    if (acct?.id) {
+      orgId = acct.id
+      orgName = acct.name || orgName
+    }
+  }
+  if (!orgId) return null
+
+  const { data: created, error } = await supabase
+    .from('stores')
+    .insert({
+      organization_id: orgId,
+      name: orgName,
+      shop_domain: shopDomain,
+      status: 'active',
+    })
+    .select('id, organization_id, name, shop_domain, status')
+    .maybeSingle()
+
+  if (error) {
+    // Race: another request inserted the same shop_domain.
+    const { data: raced } = await supabase
+      .from('stores')
+      .select('id, organization_id, name, shop_domain, status')
+      .eq('shop_domain', shopDomain)
+      .maybeSingle()
+    if (raced) return raced as VisitorStoreRow
+    console.error('[visitors] ensureEnvBackedStore', error.message)
+    return null
+  }
+
+  // Keep workspace pointer in sync when empty.
+  await supabase
+    .from('workspaces')
+    .update({ shopify_shop_domain: shopDomain })
+    .eq('id', orgId)
+    .is('shopify_shop_domain', null)
+
+  return created as VisitorStoreRow
 }
 
 export function visitorCorsHeaders(origin: string | null): Record<string, string> {

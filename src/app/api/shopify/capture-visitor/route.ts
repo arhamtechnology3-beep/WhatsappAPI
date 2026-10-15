@@ -4,6 +4,8 @@ import { getShopifyAccountContext, matchOrCreateShopifyContact } from '@/lib/sho
 import { fetchShopify } from '@/lib/shopify/shopify-client'
 import { applyShopifyCors, shopifyCorsPreflight } from '@/lib/shopify/cors'
 import { toMetaPhone } from '@/lib/whatsapp/phone-utils'
+import { resolveStoreForAccount } from '@/lib/visitors/account-store'
+import { linkVisitorToContact } from '@/lib/visitors/identify'
 
 export async function OPTIONS(request: Request) {
   return shopifyCorsPreflight(request)
@@ -12,6 +14,7 @@ export async function OPTIONS(request: Request) {
 // POST /api/shopify/capture-visitor
 // Called from smart-cart.js whenever a visitor identifies themselves with their
 // phone number (ID modal, address form, or Shopify customer login).
+// Marketing opt-in is NEVER inferred — only an explicit true checkbox grants it.
 export async function POST(request: Request) {
   const origin = request.headers.get('origin')
   try {
@@ -20,6 +23,12 @@ export async function POST(request: Request) {
     const email: string | null = body.email ? String(body.email).trim().toLowerCase() : null
     const rawName: string | null = body.name ? String(body.name).trim() : null
     const shopifyCustomerId: string | number | null = body.customer_id || body.shopify_customer_id || null
+    const visitorId: string | null = body.visitor_id
+      ? String(body.visitor_id).trim()
+      : body.visitorId
+        ? String(body.visitorId).trim()
+        : null
+    const marketingOptIn = body.marketing_opt_in === true || body.whatsapp_marketing_opt_in === true
 
     if (!rawPhone && !email && !shopifyCustomerId) {
       const res = NextResponse.json({ success: false, error: 'phone or email required' }, { status: 400 })
@@ -52,12 +61,28 @@ export async function POST(request: Request) {
       phone,
       first_name: nameParts[0] || null,
       last_name: nameParts.slice(1).join(' ') || null,
+      // Explicit false when unchecked — never default-opt-in from capture.
+      marketing_opt_in: marketingOptIn,
     })
 
     if (!contact) {
       const res = NextResponse.json({ success: false, error: 'Could not save contact' }, { status: 400 })
       applyShopifyCors(res, origin)
       return res
+    }
+
+    if (visitorId && contact.phone) {
+      const store = await resolveStoreForAccount(supabase, accountId)
+      if (store) {
+        await linkVisitorToContact(supabase, {
+          storeId: store.id,
+          organizationId: store.organization_id,
+          visitorId,
+          phone: contact.phone,
+          contactId: contact.id,
+          source: 'capture',
+        })
+      }
     }
 
     const res = NextResponse.json({

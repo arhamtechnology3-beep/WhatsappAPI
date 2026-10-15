@@ -77,7 +77,7 @@ export async function POST(request: Request) {
       // Search by phone first
       if (phone) {
         const cleanPhone = phone.trim()
-        let searchRes = await fetchShopify(`/customers/search.json?query=phone:${encodeURIComponent(cleanPhone)}&limit=1`)
+        const searchRes = await fetchShopify(`/customers/search.json?query=phone:${encodeURIComponent(cleanPhone)}&limit=1`)
         if (searchRes.customers && searchRes.customers.length > 0) {
           shopifyCustomerId = searchRes.customers[0].id
           // Update customer with latest name/email if we have them

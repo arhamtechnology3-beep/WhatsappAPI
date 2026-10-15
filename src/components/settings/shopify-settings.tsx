@@ -151,12 +151,14 @@ export function ShopifySettings() {
         () => undefined,
       )
       // Load flat transactional rules
-      let { data: rulesData, error: rulesErr } = await supabase
+      const rulesRes = await supabase
         .from('shopify_automation_rules')
         .select('*')
         .eq('account_id', accountId)
         .neq('trigger_type', 'cart_abandoned')
         .order('trigger_type', { ascending: true })
+      let rulesData = rulesRes.data
+      const rulesErr = rulesRes.error
 
       if (rulesErr) console.error('Error fetching rules:', rulesErr.message)
 
@@ -177,11 +179,13 @@ export function ShopifySettings() {
       setRules(rulesData || [])
 
       // Load sequences
-      let { data: seqsData, error: seqsErr } = await supabase
+      const seqsRes = await supabase
         .from('shopify_automation_sequences')
         .select('*')
         .eq('account_id', accountId)
         .order('trigger_type', { ascending: true })
+      let seqsData = seqsRes.data
+      const seqsErr = seqsRes.error
 
       if (seqsErr) console.error('Error fetching sequences:', seqsErr.message)
 

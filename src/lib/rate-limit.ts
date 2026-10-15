@@ -148,6 +148,12 @@ export const RATE_LIMITS = {
    *  instance deploy needs the Redis swap described at the top of
    *  this file (the per-key call sites don't change). */
   publicApi: { limit: 120, windowMs: 60_000 },
+  /** Storefront visitor track batches (per IP). Beacon traffic is
+   *  bursty on navigation; 120/min keeps a tab comfortable. */
+  storefrontTrack: { limit: 120, windowMs: 60_000 },
+  /** Storefront identify / unlock (per IP). Tighter — these mutate
+   *  identity maps and create unlock refs. */
+  storefrontIdentify: { limit: 30, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't

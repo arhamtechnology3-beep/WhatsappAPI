@@ -144,7 +144,7 @@ export async function upsertInstalledStore(
     .maybeSingle();
 
   let fromStatus = existingSub?.status ?? "PENDING_INSTALL";
-  let toStatus = resolution.status;
+  const toStatus = resolution.status;
 
   // Reinstall path: UNINSTALLED → PENDING_INSTALL → apply install resolution
   if (fromStatus === "UNINSTALLED") {

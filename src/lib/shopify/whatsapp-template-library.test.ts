@@ -23,6 +23,7 @@ import {
   REVIEW_REMINDER_TEMPLATE,
   REVIEW_REQUEST_TEMPLATE,
   WHATSAPP_LINK_ORIGIN,
+  appendWcidToSuffix,
 } from './whatsapp-template-library'
 
 describe('SHOPIFY_TEMPLATE_LIBRARY', () => {
@@ -147,6 +148,35 @@ describe('coerceUrlButtonParam', () => {
   it('keeps an already-relative suffix', () => {
     expect(coerceUrlButtonParam(dynamicStorefrontUrl(), '/checkouts/cn/a')).toBe(
       'checkouts/cn/a',
+    )
+  })
+
+  it('preserves wcid while stripping other query junk', () => {
+    expect(
+      coerceUrlButtonParam(
+        dynamicStorefrontUrl(),
+        'https://divyaprabhafoods.com/checkouts/cn/xyz?key=1&wcid=tok',
+      ),
+    ).toBe('checkouts/cn/xyz?wcid=tok')
+  })
+})
+
+describe('appendWcidToSuffix / buildRecipeButtonParams', () => {
+  it('tags checkout URL suffixes with wcid', () => {
+    expect(appendWcidToSuffix('checkouts/cn/a', 'tok')).toBe(
+      'checkouts/cn/a?wcid=tok',
+    )
+    const recipe = recipeByName('wacrm_cart_abandoned_v4')!
+    const params = buildRecipeButtonParams(recipe, {
+      checkout_url: 'https://divyaprabhafoods.com/checkouts/cn/abc',
+      wcid: 'abc123',
+    })
+    expect(params[0]).toBe('checkouts/cn/abc?wcid=abc123')
+  })
+
+  it('includes the visit nudge recipe', () => {
+    expect(recipeByName('wacrm_visit_nudge_v1')?.trigger_type).toBe(
+      'visit_nudge',
     )
   })
 })

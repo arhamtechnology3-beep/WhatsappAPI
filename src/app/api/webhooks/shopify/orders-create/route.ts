@@ -22,6 +22,8 @@ import { scheduleImmediateWhatsAppJobs } from '@/lib/whatsapp/process-send-jobs'
 import { orderCoversCheckout } from '@/lib/shopify/recovery-conversion'
 import { enqueueOwnerOrderAlerts, ownerOrderAlertParams } from '@/lib/shopify/owner-order-alert'
 import { hasWhatsAppPhone } from '@/lib/whatsapp/phone-utils'
+import { extractDpVisitorIdFromOrder, linkVisitorToContact } from '@/lib/visitors/identify'
+import { resolveStoreForAccount } from '@/lib/visitors/account-store'
 
 export async function POST(request: Request) {
   const rawBody = await request.text()
@@ -34,7 +36,7 @@ export async function POST(request: Request) {
 
   const supabase = supabaseAdmin()
   let accountId = ''
-  let topic = 'orders/create'
+  const topic = 'orders/create'
 
   try {
     const payload = JSON.parse(rawBody)
@@ -45,7 +47,7 @@ export async function POST(request: Request) {
     const orderId = String(payload.id)
     const orderNumber = String(payload.order_number)
     const identity = extractShopifyCustomerIdentity(payload)
-    let email = identity.email
+    const email = identity.email
     let phone = identity.phone
     if (!hasWhatsAppPhone(phone)) {
       phone = (await recoverMissingShopifyPhone(payload)) || phone
@@ -83,6 +85,27 @@ export async function POST(request: Request) {
     if (!contact) {
       console.warn('[shopify-webhook] orders-create: skipped — no phone or email in payload')
       return NextResponse.json({ success: true, skipped: true })
+    }
+
+    // Link browser visitor_id (theme cart attribute dp_visitor_id) → contact
+    const dpVisitorId = extractDpVisitorIdFromOrder(payload)
+    if (dpVisitorId && contact.phone) {
+      const store = await resolveStoreForAccount(supabase, accountId)
+      if (store) {
+        await linkVisitorToContact(supabase, {
+          storeId: store.id,
+          organizationId: store.organization_id,
+          visitorId: dpVisitorId,
+          phone: contact.phone,
+          contactId: contact.id,
+          source: 'order',
+        }).catch((err) =>
+          console.warn(
+            '[shopify-webhook] orders-create: visitor link failed:',
+            err instanceof Error ? err.message : err,
+          ),
+        )
+      }
     }
 
     // Resolve pipeline stages

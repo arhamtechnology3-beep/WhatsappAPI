@@ -9,6 +9,9 @@ import {
 import { withShopifyProductImages } from '@/lib/shopify/product-image'
 import { toCustomerStoreUrl } from '@/lib/shopify/storefront-url'
 import { applyShopifyCors, shopifyCorsPreflight } from '@/lib/shopify/cors'
+import { resolveStoreForAccount } from '@/lib/visitors/account-store'
+import { linkVisitorToContact } from '@/lib/visitors/identify'
+import { toMetaPhone } from '@/lib/whatsapp/phone-utils'
 
 export async function OPTIONS(request: Request) {
   return shopifyCorsPreflight(request)
@@ -31,7 +34,10 @@ export async function POST(request: Request) {
       address,
       total_price,
       currency,
-      line_items
+      line_items,
+      visitor_id,
+      visitorId,
+      marketing_opt_in,
     } = body
 
     if (!cart_token) {
@@ -47,12 +53,13 @@ export async function POST(request: Request) {
     const firstName = nameParts[0] || 'Customer'
     const lastName = nameParts.slice(1).join(' ') || 'Customer'
 
-    // Resolve contact
+    // Resolve contact — opt-in only when the storefront checkbox is explicit.
     const contact = await matchOrCreateShopifyContact(supabase, accountId, userId, {
       email: email || null,
       phone: phone || null,
       first_name: firstName,
       last_name: lastName,
+      marketing_opt_in: marketing_opt_in === true,
     })
 
     if (!contact) {
@@ -60,6 +67,22 @@ export async function POST(request: Request) {
         { success: false, error: 'Could not resolve contact' },
         { status: 400, headers: response.headers }
       )
+    }
+
+    const vid = String(visitor_id || visitorId || '').trim()
+    if (vid && (contact.phone || phone)) {
+      const store = await resolveStoreForAccount(supabase, accountId)
+      if (store) {
+        const metaPhone = toMetaPhone(contact.phone || phone) || contact.phone || phone
+        await linkVisitorToContact(supabase, {
+          storeId: store.id,
+          organizationId: store.organization_id,
+          visitorId: vid,
+          phone: metaPhone,
+          contactId: contact.id,
+          source: 'checkout',
+        })
+      }
     }
 
     const totalPriceNum = parseFloat(total_price || '0')

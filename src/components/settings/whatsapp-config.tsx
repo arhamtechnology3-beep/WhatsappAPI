@@ -1156,7 +1156,7 @@ export function WhatsAppConfig() {
                         placeholder="wacrm_opt_in_v1"
                       />
                       <p className="text-[10px] text-muted-foreground leading-relaxed italic">
-                        * Submit this template on Meta Business Suite with button payload 'wacrm_opt_in_confirm' before launching.
+                        * Submit this template on Meta Business Suite with button payload &apos;wacrm_opt_in_confirm&apos; before launching.
                       </p>
                     </div>
 

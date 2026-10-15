@@ -288,7 +288,10 @@ export function visitorCorsHeaders(origin: string | null): Record<string, string
   }
   const normalized = normalizeOrigin(origin)
   if (normalized) {
+    // Echo a concrete Origin (never *) so credentials are legal if a
+    // storefront fetch wrapper forces credentials:'include'.
     headers['Access-Control-Allow-Origin'] = normalized
+    headers['Access-Control-Allow-Credentials'] = 'true'
   }
   return headers
 }

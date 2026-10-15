@@ -127,19 +127,17 @@
     if (!QUEUE.length || !origin) return;
     var batch = QUEUE.splice(0, 25);
     var body = JSON.stringify({ events: batch });
+    // Always use fetch with credentials:'omit'. Cross-origin sendBeacon
+    // attaches cookies and fails CORS when Allow-Credentials is unset.
     try {
-      if (navigator.sendBeacon) {
-        navigator.sendBeacon(trackUrl, new Blob([body], { type: 'application/json' }));
-      } else {
-        fetch(trackUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: body,
-          keepalive: true,
-          mode: 'cors',
-          credentials: 'omit',
-        }).catch(function () {});
-      }
+      fetch(trackUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: body,
+        keepalive: true,
+        mode: 'cors',
+        credentials: 'omit',
+      }).catch(function () {});
     } catch (e) {}
   }
 

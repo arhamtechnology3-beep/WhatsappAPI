@@ -4,6 +4,23 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-16 00:05] Design (Visitors) — DivyaPrabha-themed unlock FAB + offer card
+
+### Root Cause
+- Storefront unlock UI was a centered white card with generic WhatsApp green — clashed with DivyaPrabha maroon/cream theme and felt basic.
+
+### Objective & Fixes
+- Rebuild `wa-unlock-popup.js` as bottom-right branded FAB + compact cream/maroon offer card.
+- Motions: slide-in, pulse ring, gentle bob, CTA shine, badge breathe; respects `prefers-reduced-motion`.
+- CTA uses brand maroon→clay gradient (not stock green); small WA glyph kept for affordance.
+
+### Files Modified
+- `public/identityflow/wa-unlock-popup.js`
+- `changes.md`
+
+### Live
+- Hostinger deploy of this commit. Theme already loads the script URL — hard-refresh the storefront (or wait for CDN). Clear `if_unlock_dismissed` in localStorage to see it again.
+
 ## [2026-10-15 23:45] Fix (Bot) — strip Returns & Refund; unlock before FAQ menu
 
 ### Root Cause

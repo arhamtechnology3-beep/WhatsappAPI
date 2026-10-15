@@ -4,6 +4,28 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-15 23:45] Fix (Bot) — strip Returns & Refund; unlock before FAQ menu
+
+### Root Cause
+- Migration `056` (drop Returns & Refund, new-customer welcome) was never applied on production, so Choose Category still showed Returns & Refund.
+- Unlock message `Hi! Send my DP10 code (ref …)` matched the FAQ keyword "hi", so the menu fired *before* the discount reply.
+
+### Objective & Fixes
+- Runtime strip of Returns/Refund rows when loading flow nodes (`faq-menu-patch.ts`) so Hostinger deploy fixes the menu without waiting on SQL.
+- Idempotent `060_strip_returns_from_faq_menu.sql` for the live DB + template gallery.
+- Claim unlock **before** flow dispatch; skip FAQ when unlock claimed.
+- Talk to Agent hours (Mon–Sat 9 AM–7 PM IST) were already in `agent-request.ts`: item stays in the menu; outside hours the tap gets the “leave a message” reply with **no** Chat button.
+
+### Files Modified
+- `src/lib/flows/faq-menu-patch.ts` (+ test), `src/lib/flows/engine.ts`
+- `src/app/api/whatsapp/webhook/route.ts`
+- `supabase/migrations/060_strip_returns_from_faq_menu.sql`
+- `changes.md`
+
+### Live
+- Deploy this commit to Hostinger (runtime strip + unlock order).
+- Also run `060_strip_returns_from_faq_menu.sql` in Supabase SQL Editor to persist the DB graph (optional once runtime strip is live).
+
 ## [2026-10-15 23:15] Docs (Visitors) — DivyaPrabha theme + settings operator checklist
 
 ### Root Cause

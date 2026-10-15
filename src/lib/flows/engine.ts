@@ -42,6 +42,7 @@ import {
 import { decideFallback, resolveFallbackPolicy } from "./fallback";
 import { lookupShopifyOrderStatus } from "@/lib/shopify/shopify-order-lookup";
 import { expandOrderTrackingShopifyLookup } from "./order-tracking-patch";
+import { stripReturnsRefundFromFaqMenu } from "./faq-menu-patch";
 import { isAgentRequest, sendSupportContact } from "@/lib/support/agent-request";
 import {
   type CollectInputNodeConfig,
@@ -248,8 +249,8 @@ async function loadAllNodes(
     return new Map();
   }
   const map = new Map<string, FlowNodeRow>();
-  const patched = expandOrderTrackingShopifyLookup(
-    (data ?? []) as FlowNodeRow[],
+  const patched = stripReturnsRefundFromFaqMenu(
+    expandOrderTrackingShopifyLookup((data ?? []) as FlowNodeRow[]),
   );
   for (const row of patched) {
     map.set(row.node_key, row);

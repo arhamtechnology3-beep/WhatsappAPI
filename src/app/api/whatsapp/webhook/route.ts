@@ -918,52 +918,6 @@ async function processMessage(
   // trigger installed in migration 003).
   await flagBroadcastReplyIfAny(accountId, contactRecord.id)
 
-  // ============================================================
-  // Flow runner dispatch.
-  //
-  // If the runner consumes the message (it either advanced an active
-  // run or started a new one), we suppress the `new_message_received`
-  // + `keyword_match` automation triggers for this inbound. Customer
-  // is navigating the bot menu, not sending a fresh trigger word
-  // that should fork into automations.
-  //
-  // The relationship-level triggers (`new_contact_created`,
-  // `first_inbound_message`) still fire even when consumed — those
-  // are about WHO is messaging, not what they said.
-  //
-  // Awaited (not fire-and-forget) because we need the `consumed`
-  // result before deciding whether to dispatch automations. The
-  // runner has its own try/catch and never throws. Accounts with
-  // no active flows take the runner's early-exit "no_match" path
-  // basically for free (one indexed SELECT for the active run).
-  // ============================================================
-  const flowResult = await dispatchInboundToFlows({
-    accountId,
-    userId: configOwnerUserId,
-    contactId: contactRecord.id,
-    conversationId: conversation.id,
-    message:
-      interactiveReplyId
-        ? {
-            kind: 'interactive_reply',
-            reply_id: interactiveReplyId,
-            reply_title: contentText ?? '',
-            meta_message_id: message.id,
-          }
-        : {
-            kind: 'text',
-            text: contentText ?? message.text?.body ?? '',
-            meta_message_id: message.id,
-          },
-    isFirstInboundMessage,
-  })
-  const flowConsumed = flowResult.consumed
-
-  // Fire any automations that react to this webhook event. All dispatches
-  // run here (not earlier) so the contact, conversation, and inbound
-  // message all exist before any step — including send_message — runs.
-  // Fire-and-forget: a slow or failing automation must not block the
-  // webhook's 200 OK response to Meta.
   const inboundText = contentText ?? message.text?.body ?? ''
 
   // Load configuration from database for opt-in/opt-out keywords and text
@@ -989,7 +943,10 @@ async function processMessage(
 
   const cleanedText = inboundText.trim().toUpperCase()
 
-  // 0. WhatsApp unlock-offer popup (ref CODE) — OTP-free capture
+  // 0. WhatsApp unlock-offer popup (ref CODE) — OTP-free capture.
+  // Must run BEFORE the FAQ keyword flow: "Hi! Send my DP10 code (ref …)"
+  // otherwise matches "hi" and opens Choose Category on top of the code.
+  let unlockClaimed = false
   try {
     const unlock = await claimWaUnlockFromInbound(supabaseAdmin(), {
       accountId,
@@ -998,6 +955,7 @@ async function processMessage(
       messageText: inboundText,
     })
     if (unlock.claimed) {
+      unlockClaimed = true
       try {
         await sendTextMessage({
           phoneNumberId,
@@ -1019,11 +977,61 @@ async function processMessage(
       } catch (sendErr) {
         console.error('[webhook] unlock reply failed:', sendErr)
       }
-      // Still continue so STOP / flows also process if needed.
     }
   } catch (unlockErr) {
     console.error('[webhook] unlock claim failed:', unlockErr)
   }
+
+  // ============================================================
+  // Flow runner dispatch.
+  //
+  // If the runner consumes the message (it either advanced an active
+  // run or started a new one), we suppress the `new_message_received`
+  // + `keyword_match` automation triggers for this inbound. Customer
+  // is navigating the bot menu, not sending a fresh trigger word
+  // that should fork into automations.
+  //
+  // The relationship-level triggers (`new_contact_created`,
+  // `first_inbound_message`) still fire even when consumed — those
+  // are about WHO is messaging, not what they said.
+  //
+  // Awaited (not fire-and-forget) because we need the `consumed`
+  // result before deciding whether to dispatch automations. The
+  // runner has its own try/catch and never throws. Accounts with
+  // no active flows take the runner's early-exit "no_match" path
+  // basically for free (one indexed SELECT for the active run).
+  // ============================================================
+  // Unlock replies already handled the turn — do not also open FAQ.
+  let flowConsumed = unlockClaimed
+  if (!unlockClaimed) {
+    const flowResult = await dispatchInboundToFlows({
+      accountId,
+      userId: configOwnerUserId,
+      contactId: contactRecord.id,
+      conversationId: conversation.id,
+      message:
+        interactiveReplyId
+          ? {
+              kind: 'interactive_reply',
+              reply_id: interactiveReplyId,
+              reply_title: contentText ?? '',
+              meta_message_id: message.id,
+            }
+          : {
+              kind: 'text',
+              text: contentText ?? message.text?.body ?? '',
+              meta_message_id: message.id,
+            },
+      isFirstInboundMessage,
+    })
+    flowConsumed = flowResult.consumed
+  }
+
+  // Fire any automations that react to this webhook event. All dispatches
+  // run here (not earlier) so the contact, conversation, and inbound
+  // message all exist before any step — including send_message — runs.
+  // Fire-and-forget: a slow or failing automation must not block the
+  // webhook's 200 OK response to Meta.
 
   // 1. Opt-out keyword handler
   const isOptOut = optOutKeywords.some(kw => cleanedText === kw.trim().toUpperCase() || cleanedText.includes(kw.trim().toUpperCase()))

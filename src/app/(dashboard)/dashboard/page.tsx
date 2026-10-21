@@ -28,6 +28,7 @@ import type {
   ResponseTimeSummary,
 } from '@/lib/dashboard/types'
 
+import { FeatureDirectory } from '@/components/dashboard/feature-directory'
 import { MetricCard } from '@/components/dashboard/metric-card'
 import { SkeletonCard } from '@/components/dashboard/skeleton'
 import { QuickActions } from '@/components/dashboard/quick-actions'
@@ -166,11 +167,19 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-5">
-      {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+        <h1 className="text-2xl font-bold text-foreground">Your workspace</h1>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+          Every feature is grouped the same way as the left menu. Use Find a feature in the header, or press Ctrl K (⌘K on Mac), when you know the name but not the page.
+        </p>
+      </div>
+
+      <FeatureDirectory />
+
+      <div>
+        <h2 className="text-base font-semibold text-foreground">How it is going</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Live analytics across conversations, contacts, deals, broadcasts, and automations.
+          Conversations, contacts, deals, messages, and carts for this workspace.
         </p>
       </div>
 

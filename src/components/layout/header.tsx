@@ -17,24 +17,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "@/components/layout/mode-toggle";
-
-const pageTitles: Record<string, string> = {
-  "/dashboard": "Dashboard",
-  "/inbox": "Inbox",
-  "/contacts": "Contacts",
-  "/pipelines": "Pipelines",
-  "/broadcasts": "Broadcasts",
-  "/automations": "Automations",
-  "/settings": "Settings",
-};
-
-function getPageTitle(pathname: string): string {
-  if (pageTitles[pathname]) return pageTitles[pathname];
-  const match = Object.entries(pageTitles).find(([path]) =>
-    pathname.startsWith(path),
-  );
-  return match ? match[1] : "Dashboard";
-}
+import { FeatureSearchButton } from "@/components/layout/feature-search";
+import { resolvePage } from "@/lib/nav/workspace-nav";
 
 interface HeaderProps {
   /** Wired to the shell's drawer state. Used only on mobile — the
@@ -45,7 +29,7 @@ interface HeaderProps {
 export function Header({ onOpenSidebar }: HeaderProps) {
   const pathname = usePathname();
   const { profile, signOut } = useAuth();
-  const title = getPageTitle(pathname);
+  const title = resolvePage(pathname).label;
 
   const initial =
     profile?.full_name?.charAt(0)?.toUpperCase() ??
@@ -53,7 +37,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
     "U";
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border bg-background px-4 lg:px-6">
+    <header className="relative flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4 lg:px-6">
       <div className="flex min-w-0 items-center gap-2">
         {/* Hamburger — mobile only. 44×44 hit target per Apple HIG. */}
         <button
@@ -64,12 +48,17 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         >
           <Menu className="h-5 w-5" />
         </button>
-        <h1 className="truncate text-base font-semibold text-foreground sm:text-lg">
+        <h1 className="max-w-[9rem] truncate text-base font-semibold text-foreground sm:max-w-[14rem] sm:text-lg lg:max-w-xs">
           {title}
         </h1>
       </div>
 
-      <div className="flex items-center gap-1 sm:gap-2">
+      <div className="pointer-events-none absolute inset-x-0 hidden justify-center sm:flex">
+        <FeatureSearchButton className="pointer-events-auto w-full max-w-sm" />
+      </div>
+
+      <div className="ml-auto flex items-center gap-1 sm:gap-2">
+        <FeatureSearchButton className="w-9 justify-center px-0 sm:hidden [&>span]:sr-only [&>kbd]:hidden" />
         <ModeToggle />
 
         <DropdownMenu>

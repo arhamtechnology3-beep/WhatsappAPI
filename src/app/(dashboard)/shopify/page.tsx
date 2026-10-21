@@ -1102,7 +1102,7 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
       {/* Tab Panels */}
       {loading ? (
         <div className="flex h-64 items-center justify-center text-sm text-muted-foreground">
-          <Loader2 className="mr-2 size-5 animate-spin text-primary" /> Loading Shopify App Panel...
+          <Loader2 className="mr-2 size-5 animate-spin text-primary" /> Loading Shopify...
         </div>
       ) : (
         <div className="space-y-6">

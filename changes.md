@@ -1,5 +1,28 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-10-21 16:50] UX (Navigation) — group the menu and put a feature map on the dashboard
+
+### Root Cause
+- The sidebar was one flat list (Dashboard, Shopify App, Inbox, Contacts, CTWA, Pipelines, Broadcasts, Automations, Flows, Integration, plus a separate beta block). Subscribers could not see which page does which job, and the header title only knew seven routes.
+
+### Objective & Fixes
+- One catalog (`src/lib/nav/workspace-nav.ts`) drives the sidebar, the header title, the one-line page guide, and the dashboard map.
+- Sidebar groups: Customers (including Visitors), Sales, Automate, Connect, then account links. IdentityFlow items stay behind the existing flag.
+- Dashboard opens with three steps (connect WhatsApp, add customers, message them) and a card for every feature, in the same groups as the menu. Metrics stay underneath.
+- A one-line “how to use this page” bar sits under the header. It is hidden on the dashboard, the inbox, Shopify, and the flow canvas, which already fill the screen.
+- Header search (and Ctrl/⌘ K) opens every feature by name. Same idea as the command search on Skiper UI and the admin templates on 21st.dev / Framer: a sidebar grouped by job, cards on the home screen, and a way to jump to any page. No template code was copied.
+
+### Files Modified
+- `src/lib/nav/workspace-nav.ts`, `src/lib/nav/workspace-nav.test.ts`
+- `src/components/layout/sidebar.tsx`, `src/components/layout/header.tsx`, `src/components/layout/page-guide.tsx`, `src/components/layout/feature-search.tsx`
+- `src/components/dashboard/feature-directory.tsx`, `src/components/dashboard/quick-actions.tsx`
+- `src/app/(dashboard)/dashboard-shell.tsx`, `src/app/(dashboard)/dashboard/page.tsx`
+- `src/app/(dashboard)/shopify/page.tsx` (loading label only)
+
+### Live
+- This commit on `main` (Hostinger). No migration.
+
+
 This file is the **source of truth** for what changed in this fork (`arhamtechnology3-beep/WhatsappAPI`) for Arham Technology / DivyaPrabha Foods (`whatsapp.arhamtechnology.com`).
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.

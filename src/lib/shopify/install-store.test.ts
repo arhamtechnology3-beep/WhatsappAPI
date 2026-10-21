@@ -40,7 +40,7 @@ function createMockSupabase(state: {
 }) {
   const from = (table: string) => {
     const api: Record<string, unknown> = {};
-    let filters: Array<(row: Row) => boolean> = [];
+    const filters: Array<(row: Row) => boolean> = [];
     let mode: "select" | "insert" | "update" | "upsert" = "select";
     let payload: Row | null = null;
     let single = false;

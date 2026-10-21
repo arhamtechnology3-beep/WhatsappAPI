@@ -62,6 +62,27 @@ export const SHOPIFY_SEQUENCE_BINDINGS = [
       },
     ],
   },
+  {
+    sequenceTrigger: 'inquiry_no_purchase',
+    sequenceName: 'Inquiry No-Purchase Follow-up',
+    steps: [
+      {
+        stepOrder: 1,
+        templateName: 'wacrm_festival_broadcast_v2',
+        delayMinutes: 0,
+      },
+      {
+        stepOrder: 2,
+        templateName: 'wacrm_browse_abandoned_v2',
+        delayMinutes: 1200,
+      },
+      {
+        stepOrder: 3,
+        templateName: 'wacrm_cart_reminder_step2_v2',
+        delayMinutes: 1440,
+      },
+    ],
+  },
 ] as const
 
 export function approvalFromTemplateStatus(status: string | null | undefined): AutomationApproval {

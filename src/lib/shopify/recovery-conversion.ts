@@ -41,3 +41,8 @@ export function shouldStopBrowseDrip(opts: {
 }): boolean {
   return opts.addedToCartAfterStart || opts.orderedAfterStart
 }
+
+/** Inbox inquiry drip stops on any Shopify order for that contact. */
+export function shouldStopInquiryDrip(orderedAfterStart: boolean): boolean {
+  return orderedAfterStart
+}

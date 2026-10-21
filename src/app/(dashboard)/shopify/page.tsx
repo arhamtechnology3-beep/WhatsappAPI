@@ -127,7 +127,7 @@ interface SequenceStep {
 
 interface AutomationSequence {
   id: string
-  trigger_type: 'cart_abandoned' | 'browse_abandoned' | 'shopify_customer_created'
+  trigger_type: 'cart_abandoned' | 'browse_abandoned' | 'shopify_customer_created' | 'inquiry_no_purchase'
   sequence_name: string
   is_active: boolean
   steps: SequenceStep[]
@@ -2117,6 +2117,12 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
                                         ? (step.step_order === 1
                                           ? 'New Shopify contact — festival (30 min)'
                                           : 'Shop-now follow-up (5 hr, 9:30 AM–8:30 PM)')
+                                        : seq.trigger_type === 'inquiry_no_purchase'
+                                          ? (step.step_order === 1
+                                            ? 'Inquiry follow-up — festival (after 4h silence)'
+                                            : step.step_order === 2
+                                              ? 'Inquiry follow-up — product nudge (~20h)'
+                                              : 'Inquiry follow-up — urgency (~24h)')
                                       : `Step ${step.step_order}: ${
                                           step.step_order === 1
                                             ? "Abandoned Cart Reminder"
@@ -2132,6 +2138,8 @@ function getAutoSampleValues(templateName: string, varCount: number): string[] {
                                         ? (step.step_order === 1
                                           ? 'customers/create → wait 30 minutes → wacrm_festival_broadcast_v2.'
                                           : 'Five hours later, only between 9:30 AM and 8:30 PM IST. Image + Shop Now CTA. Stops if they place an order.')
+                                        : seq.trigger_type === 'inquiry_no_purchase'
+                                          ? 'Inbox inquiry, no Shopify order yet. Auto-enrolls after 4h silence (7-day lookback). Stops on purchase or if another recovery drip is already running. Sends only 9:30 AM–8:30 PM IST.'
                                       : step.step_order === 1
                                         ? "First recovery nudge sent quickly to recover the checkout."
                                         : step.step_order === 2

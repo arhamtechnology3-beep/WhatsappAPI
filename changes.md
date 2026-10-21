@@ -36,8 +36,8 @@ Keep it up to date for **current work and every future change**. `CHANGELOG.md` 
 - `ARCHITECTURE.md`, `IMPLEMENTATION_PLAN.md`, `THREAT_MODEL.md`, `changes.md`
 
 ### Live
-- Apply migration `060_owner_subscription_orgs.sql` on Supabase before deploy.
-- No Hostinger deploy in this PR yet.
+- Code: `6647b87` pushed to `main` 2026-10-21 (Hostinger auto-deploy from `main`).
+- Apply full migration `060_owner_subscription_orgs.sql` on Supabase if not already (columns + indexes + backfill + RLS).
 
 ## [2026-10-16 01:05] Copy (Visitors) — unlock reply emphasizes number activated
 

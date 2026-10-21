@@ -20,7 +20,7 @@
 - `changes.md`
 
 ### Live
-- Pending merge to `main`. Apply `062` / `scripts/fix-workspaces-insert-rls.sql` on Supabase; Hostinger needs `SUPABASE_SERVICE_ROLE_KEY` (already used by cron).
+- Code: `ed60b4b` on `main` (Hostinger). Apply `062` / `scripts/fix-workspaces-insert-rls.sql` on Supabase (belt-and-braces; create API now uses service role). Hard-refresh and retry **Pickle Affair**.
 
 ## [2026-10-21 12:40] Fix (Billing) — Add another store blocked without owner subscription
 

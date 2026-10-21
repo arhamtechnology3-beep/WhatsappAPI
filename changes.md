@@ -16,7 +16,7 @@
 - `changes.md`
 
 ### Live
-- Pending merge to `main`.
+- Code: `6652c11` on `main` (Hostinger). No migration.
 
 ## [2026-10-21 12:20] Fix (UI) — store switcher + Add another store visible at top of sidebar
 

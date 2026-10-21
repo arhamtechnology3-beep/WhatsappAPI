@@ -1,24 +1,26 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
+import { supabaseAdmin } from '@/lib/automations/admin-client'
 import {
   OrganizationCapError,
-  attachOrganizationToOwnerSubscription,
   countOwnedOrganizations,
-  organizationCreationAllowed,
   resolveOrBootstrapOwnerSubscription,
 } from '@/lib/billing/owner-subscription'
+import { createOwnedWorkspace } from '@/lib/workspaces/create-owned-workspace'
 
 export async function GET() {
   try {
     const supabase = await createClient()
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get all workspaces the user is member of
     const { data: memberships, error } = await supabase
       .from('workspace_members')
       .select('role, workspaces(id, name, slug, plan, status, default_currency, subscription_id)')
@@ -28,13 +30,24 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Claim / bootstrap login subscription for legacy orgs (no owner_user_id yet)
-    const ownerSub = await resolveOrBootstrapOwnerSubscription(supabase, user.id)
-    const ownedCount = await countOwnedOrganizations(supabase, user.id)
+    // Service role: claim/bootstrap login subscription for legacy orgs
+    const admin = supabaseAdmin()
+    const ownerSub = await resolveOrBootstrapOwnerSubscription(admin, user.id)
+    const ownedCount = await countOwnedOrganizations(admin, user.id)
 
     const workspaces = (memberships ?? [])
-      .filter((m: any) => m.workspaces?.id)
-      .map((m: any) => ({
+      .filter((m: { workspaces?: { id?: string } | null }) => m.workspaces?.id)
+      .map((m: {
+        role: string
+        workspaces: {
+          id: string
+          name: string
+          slug: string
+          plan: string
+          status: string
+          default_currency: string
+        }
+      }) => ({
         id: m.workspaces.id,
         name: m.workspaces.name,
         slug: m.workspaces.slug,
@@ -56,8 +69,9 @@ export async function GET() {
           }
         : null,
     })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Internal server error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }
 
@@ -65,109 +79,45 @@ export async function POST(request: Request) {
   try {
     const supabase = await createClient()
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { name } = await request.json()
-    if (!name || !name.trim()) {
+    const body = await request.json()
+    const name = typeof body?.name === 'string' ? body.name : ''
+    if (!name.trim()) {
       return NextResponse.json({ error: 'Workspace name is required' }, { status: 400 })
     }
 
-    // Cap check before create (owned count does not yet include this org).
-    // Bootstrap missing owner subscription so existing DivyaPrabha logins
-    // are not stuck with "active trial required" when adding store #2.
-    const ownerSub = await resolveOrBootstrapOwnerSubscription(supabase, user.id)
-    const ownedCount = await countOwnedOrganizations(supabase, user.id)
-    const allowed = organizationCreationAllowed({
-      subscription: ownerSub,
-      ownedCount,
+    // Authenticated user is verified above; writes use service role so
+    // workspaces INSERT is not blocked by RLS (no membership yet).
+    const result = await createOwnedWorkspace(supabaseAdmin(), {
+      ownerUserId: user.id,
+      name,
     })
-    if (!allowed.ok) {
-      return NextResponse.json({ error: allowed.reason }, { status: 403 })
-    }
 
-    // Generate unique slug
-    const baseSlug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-')
-    let slug = baseSlug
-    let suffix = 1
-    
-    while (true) {
-      const { data: existing } = await supabase
-        .from('workspaces')
-        .select('id')
-        .eq('slug', slug)
-        .maybeSingle()
-      if (!existing) break
-      slug = `${baseSlug}-${suffix++}`
-    }
-
-    // Create workspace
-    const { data: workspace, error: wsError } = await supabase
-      .from('workspaces')
-      .insert({ name: name.trim(), slug })
-      .select()
-      .single()
-
-    if (wsError || !workspace) {
-      return NextResponse.json({ error: wsError?.message || 'Failed to create workspace' }, { status: 500 })
-    }
-
-    // Add user as owner
-    const { error: memberError } = await supabase
-      .from('workspace_members')
-      .insert({
-        workspace_id: workspace.id,
-        user_id: user.id,
-        role: 'owner',
-      })
-
-    if (memberError) {
-      // Clean up workspace if membership addition fails
-      await supabase.from('workspaces').delete().eq('id', workspace.id)
-      return NextResponse.json({ error: memberError.message }, { status: 500 })
-    }
-
-    try {
-      await attachOrganizationToOwnerSubscription(supabase, {
-        ownerUserId: user.id,
-        organizationId: workspace.id,
-      })
-    } catch (err) {
-      await supabase.from('workspace_members').delete().eq('workspace_id', workspace.id)
-      await supabase.from('workspaces').delete().eq('id', workspace.id)
-      if (err instanceof OrganizationCapError) {
-        return NextResponse.json({ error: err.message }, { status: 403 })
-      }
-      throw err
-    }
-
-    // Set as active workspace in cookies
     const cookieStore = await cookies()
-    cookieStore.set('wacrm_active_workspace_id', workspace.id, { path: '/', httpOnly: false, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 })
-
-    const refreshed = await resolveOrBootstrapOwnerSubscription(supabase, user.id)
-    const newOwnedCount = await countOwnedOrganizations(supabase, user.id)
+    cookieStore.set('wacrm_active_workspace_id', result.workspace.id, {
+      path: '/',
+      httpOnly: false,
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 365,
+    })
 
     return NextResponse.json({
       success: true,
-      workspace: {
-        id: workspace.id,
-        name: workspace.name,
-        slug: workspace.slug,
-        role: 'owner',
-      },
-      subscription: refreshed
-        ? {
-            status: refreshed.status,
-            planId: refreshed.planId,
-            maxOrganizations: refreshed.maxOrganizations,
-            ownedOrganizations: newOwnedCount,
-          }
-        : null,
+      workspace: result.workspace,
+      subscription: result.subscription,
     })
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })
+  } catch (err: unknown) {
+    if (err instanceof OrganizationCapError) {
+      return NextResponse.json({ error: err.message }, { status: 403 })
+    }
+    const message = err instanceof Error ? err.message : 'Internal server error'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
 }

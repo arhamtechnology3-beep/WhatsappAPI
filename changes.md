@@ -1,5 +1,27 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-10-21 12:50] Fix (Billing) — Add another store RLS block on workspaces insert
+
+### Root Cause
+- `workspaces` had SELECT/UPDATE RLS only — no INSERT. Creating “Pickle Affair” failed with `new row violates row-level security policy for table "workspaces"`.
+- Membership cannot exist before the workspace row, so user-scoped insert can never pass “member of this workspace” checks.
+
+### Objective & Fixes
+- Migration `062_workspaces_insert_rls.sql`: authenticated INSERT on `workspaces`; owner DELETE; explicit `workspace_members` INSERT.
+- `createOwnedWorkspace` + workspaces POST uses **service role** after session auth (bypasses chicken-and-egg RLS). Cap checks unchanged.
+- Unit tests cover create, plan-cap reject, and membership rollback.
+- Ops: `scripts/fix-workspaces-insert-rls.sql` (same as 062) for Supabase SQL Editor.
+
+### Files Modified
+- `supabase/migrations/062_workspaces_insert_rls.sql`
+- `scripts/fix-workspaces-insert-rls.sql`
+- `src/lib/workspaces/create-owned-workspace.ts` (+ test)
+- `src/app/api/workspaces/route.ts`
+- `changes.md`
+
+### Live
+- Pending merge to `main`. Apply `062` / `scripts/fix-workspaces-insert-rls.sql` on Supabase; Hostinger needs `SUPABASE_SERVICE_ROLE_KEY` (already used by cron).
+
 ## [2026-10-21 12:40] Fix (Billing) — Add another store blocked without owner subscription
 
 ### Root Cause

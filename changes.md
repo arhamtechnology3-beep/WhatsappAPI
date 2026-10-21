@@ -18,7 +18,7 @@
 - `changes.md`
 
 ### Live
-- Pending merge to `main`. Also run `scripts/bootstrap-owner-subscriptions.sql` on Supabase for an immediate fix.
+- Code: `68f73b0` on `main` (Hostinger). Optional immediate DB fix: run `scripts/bootstrap-owner-subscriptions.sql` in Supabase SQL Editor, then retry **Add another store**.
 
 ## [2026-10-21 12:30] Fix (UI) — store dropdown crash (“This page couldn’t load”)
 

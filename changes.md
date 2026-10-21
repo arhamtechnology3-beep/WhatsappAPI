@@ -1,5 +1,23 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-10-21 17:30] UX (Theme) — light Arham brand as the default
+
+### Root Cause
+- The app defaulted to dark mode with a violet accent. The logo is blue with a red mark, so the live workspace did not look like the brand, and the sidebar repeated the signed-in person under the header.
+
+### Objective & Fixes
+- Default mode is light. Default accent is Arham blue (`oklch(0.52 0.15 252)`), with the logo red as the second chart color.
+- First visit after this change resets a saved dark/violet choice once (`wacrm.appearance.v2`). Appearance can still switch back to dark or another accent.
+- Sidebar and sign-in use the color wordmark (`public/logo-brand.png`). The account menu stays in the header, so the sidebar no longer repeats the name.
+
+### Files Modified
+- `src/lib/themes.ts`, `src/app/globals.css`, `src/app/layout.tsx`
+- `src/components/layout/sidebar.tsx`, `src/app/(auth)/login/page.tsx`
+- `public/logo-brand.png`
+
+### Live
+- This commit on `main` (Hostinger). No migration.
+
 ## [2026-10-21 16:50] UX (Navigation) — group the menu and put a feature map on the dashboard
 
 ### Root Cause

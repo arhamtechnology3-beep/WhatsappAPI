@@ -5,6 +5,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/hooks/use-theme";
 import { ThemedToaster } from "@/components/themed-toaster";
 import {
+  BRAND_RESET_KEY,
   DEFAULT_MODE,
   DEFAULT_THEME,
   MODE_STORAGE_KEY,
@@ -39,8 +40,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#020617",
-  colorScheme: "dark light",
+  themeColor: "#f7f9fc",
+  colorScheme: "light dark",
 };
 
 // Inline boot script — runs before React hydrates so the user's
@@ -60,12 +61,18 @@ const THEME_BOOT_SCRIPT = `
     var THEME_KEY = ${JSON.stringify(STORAGE_KEY)};
     var THEME_DEFAULT = ${JSON.stringify(DEFAULT_THEME)};
     var THEMES = ${JSON.stringify(THEME_IDS)};
-    var savedTheme = localStorage.getItem(THEME_KEY);
-    d.dataset.theme = THEMES.indexOf(savedTheme) !== -1 ? savedTheme : THEME_DEFAULT;
-
     var MODE_KEY = ${JSON.stringify(MODE_STORAGE_KEY)};
     var MODE_DEFAULT = ${JSON.stringify(DEFAULT_MODE)};
     var MODES = ${JSON.stringify(MODES)};
+    var RESET_KEY = ${JSON.stringify(BRAND_RESET_KEY)};
+    if (!localStorage.getItem(RESET_KEY)) {
+      localStorage.setItem(THEME_KEY, THEME_DEFAULT);
+      localStorage.setItem(MODE_KEY, MODE_DEFAULT);
+      localStorage.setItem(RESET_KEY, "1");
+    }
+    var savedTheme = localStorage.getItem(THEME_KEY);
+    d.dataset.theme = THEMES.indexOf(savedTheme) !== -1 ? savedTheme : THEME_DEFAULT;
+
     var savedMode = localStorage.getItem(MODE_KEY);
     d.dataset.mode = MODES.indexOf(savedMode) !== -1 ? savedMode : MODE_DEFAULT;
   } catch (_e) {

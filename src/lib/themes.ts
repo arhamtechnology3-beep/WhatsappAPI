@@ -14,6 +14,7 @@
  */
 
 export const THEME_IDS = [
+  "arham",
   "violet",
   "emerald",
   "cobalt",
@@ -23,7 +24,7 @@ export const THEME_IDS = [
 
 export type ThemeId = (typeof THEME_IDS)[number];
 
-export const DEFAULT_THEME: ThemeId = "violet";
+export const DEFAULT_THEME: ThemeId = "arham";
 
 export const STORAGE_KEY = "wacrm.theme";
 
@@ -32,20 +33,27 @@ export const STORAGE_KEY = "wacrm.theme";
  *
  * The CSS variables live in `src/app/globals.css` under
  * `html[data-mode="..."]` blocks (neutral surfaces only). Applied
- * at runtime via `document.documentElement.dataset.mode`. Dark is
- * the historical default and stays the app's identity; light is the
- * opt-in eye-strain-friendly alternative.
+ * at runtime via `document.documentElement.dataset.mode`. Light is
+ * the default. Dark remains available from Appearance.
  *
  * Persisted under its own localStorage key so it composes freely
- * with the accent choice (you can run Violet-light or Violet-dark).
+ * with the accent choice. Light is the product default (the Arham
+ * wordmark is blue on white). Dark stays available from Appearance.
  */
 export const MODES = ["light", "dark"] as const;
 
 export type Mode = (typeof MODES)[number];
 
-export const DEFAULT_MODE: Mode = "dark";
+export const DEFAULT_MODE: Mode = "light";
 
 export const MODE_STORAGE_KEY = "wacrm.mode";
+
+/**
+ * One-shot key. The boot script sets light + Arham the first time this
+ * is missing, so browsers that saved the old dark/violet default pick
+ * up the brand. After that, Appearance choices stick.
+ */
+export const BRAND_RESET_KEY = "wacrm.appearance.v2";
 
 export function isMode(value: unknown): value is Mode {
   return (
@@ -67,6 +75,12 @@ export interface ThemeMeta {
 }
 
 export const THEMES: ReadonlyArray<ThemeMeta> = [
+  {
+    id: "arham",
+    name: "Arham",
+    tagline: "Logo blue, with the red mark as a second color.",
+    swatch: "oklch(0.52 0.15 252)",
+  },
   {
     id: "violet",
     name: "Violet",

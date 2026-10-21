@@ -212,6 +212,85 @@ export function organizationCreationAllowed(opts: {
 }
 
 /**
+ * Legacy logins may already own a workspace but have no
+ * `subscriptions.owner_user_id` (migration 060 backfill missed them, or
+ * they never installed Shopify billing). Claim an existing org-linked
+ * subscription or bootstrap a growth trial so "Add another store" works.
+ */
+export async function resolveOrBootstrapOwnerSubscription(
+  supabase: SupabaseClient,
+  ownerUserId: string,
+  now: Date = new Date(),
+): Promise<OwnerSubscriptionRow | null> {
+  const existing = await getOwnerSubscription(supabase, ownerUserId);
+  if (existing) return existing;
+
+  const { data: membership } = await supabase
+    .from("workspace_members")
+    .select("workspace_id")
+    .eq("user_id", ownerUserId)
+    .eq("role", "owner")
+    .order("joined_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (!membership?.workspace_id) return null;
+
+  const organizationId = membership.workspace_id as string;
+
+  const { data: workspace } = await supabase
+    .from("workspaces")
+    .select("subscription_id")
+    .eq("id", organizationId)
+    .maybeSingle();
+
+  if (workspace?.subscription_id) {
+    await supabase
+      .from("subscriptions")
+      .update({
+        owner_user_id: ownerUserId,
+        updated_at: now.toISOString(),
+      })
+      .eq("id", workspace.subscription_id);
+    const claimed = await getOwnerSubscription(supabase, ownerUserId);
+    if (claimed) return claimed;
+  }
+
+  // Subscription keyed by organization_id but missing owner_user_id
+  const { data: orgSub } = await supabase
+    .from("subscriptions")
+    .select("id")
+    .eq("organization_id", organizationId)
+    .is("owner_user_id", null)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (orgSub?.id) {
+    await supabase
+      .from("subscriptions")
+      .update({
+        owner_user_id: ownerUserId,
+        updated_at: now.toISOString(),
+      })
+      .eq("id", orgSub.id);
+    await supabase
+      .from("workspaces")
+      .update({ subscription_id: orgSub.id })
+      .eq("id", organizationId)
+      .is("subscription_id", null);
+    const claimed = await getOwnerSubscription(supabase, ownerUserId);
+    if (claimed) return claimed;
+  }
+
+  return ensureOwnerSubscription(supabase, {
+    ownerUserId,
+    organizationId,
+    now,
+  });
+}
+
+/**
  * Ensure the login has a subscription row. Creates a TRIALING growth
  * subscription on first organization when none exists.
  */

@@ -1,5 +1,25 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-10-21 12:40] Fix (Billing) — Add another store blocked without owner subscription
+
+### Root Cause
+- Existing logins already owned a workspace but had no `subscriptions.owner_user_id` (060 backfill skipped orgs with no prior subscription row).
+- `organizationCreationAllowed` then returned: “An active trial or paid subscription is required…” when creating store #2 (e.g. Pickle Affair).
+
+### Objective & Fixes
+- `resolveOrBootstrapOwnerSubscription`: claim an org/store-linked subscription for the login, or create a TRIALING growth plan (3 orgs).
+- Workspaces GET/POST call this before the cap check so Add another store works for legacy accounts.
+- Ops SQL: `scripts/bootstrap-owner-subscriptions.sql` (run in Supabase if needed before deploy).
+
+### Files Modified
+- `src/lib/billing/owner-subscription.ts` (+ test)
+- `src/app/api/workspaces/route.ts`
+- `scripts/bootstrap-owner-subscriptions.sql`
+- `changes.md`
+
+### Live
+- Pending merge to `main`. Also run `scripts/bootstrap-owner-subscriptions.sql` on Supabase for an immediate fix.
+
 ## [2026-10-21 12:30] Fix (UI) — store dropdown crash (“This page couldn’t load”)
 
 ### Root Cause

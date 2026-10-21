@@ -5,8 +5,8 @@ import {
   OrganizationCapError,
   attachOrganizationToOwnerSubscription,
   countOwnedOrganizations,
-  getOwnerSubscription,
   organizationCreationAllowed,
+  resolveOrBootstrapOwnerSubscription,
 } from '@/lib/billing/owner-subscription'
 
 export async function GET() {
@@ -28,18 +28,21 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    const ownerSub = await getOwnerSubscription(supabase, user.id)
+    // Claim / bootstrap login subscription for legacy orgs (no owner_user_id yet)
+    const ownerSub = await resolveOrBootstrapOwnerSubscription(supabase, user.id)
     const ownedCount = await countOwnedOrganizations(supabase, user.id)
 
-    const workspaces = (memberships ?? []).map((m: any) => ({
-      id: m.workspaces.id,
-      name: m.workspaces.name,
-      slug: m.workspaces.slug,
-      plan: m.workspaces.plan,
-      status: m.workspaces.status,
-      default_currency: m.workspaces.default_currency,
-      role: m.role,
-    }))
+    const workspaces = (memberships ?? [])
+      .filter((m: any) => m.workspaces?.id)
+      .map((m: any) => ({
+        id: m.workspaces.id,
+        name: m.workspaces.name,
+        slug: m.workspaces.slug,
+        plan: m.workspaces.plan,
+        status: m.workspaces.status,
+        default_currency: m.workspaces.default_currency,
+        role: m.role,
+      }))
 
     return NextResponse.json({
       workspaces,
@@ -72,8 +75,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Workspace name is required' }, { status: 400 })
     }
 
-    // Cap check before create (owned count does not yet include this org)
-    const ownerSub = await getOwnerSubscription(supabase, user.id)
+    // Cap check before create (owned count does not yet include this org).
+    // Bootstrap missing owner subscription so existing DivyaPrabha logins
+    // are not stuck with "active trial required" when adding store #2.
+    const ownerSub = await resolveOrBootstrapOwnerSubscription(supabase, user.id)
     const ownedCount = await countOwnedOrganizations(supabase, user.id)
     const allowed = organizationCreationAllowed({
       subscription: ownerSub,
@@ -142,7 +147,7 @@ export async function POST(request: Request) {
     const cookieStore = await cookies()
     cookieStore.set('wacrm_active_workspace_id', workspace.id, { path: '/', httpOnly: false, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 })
 
-    const refreshed = await getOwnerSubscription(supabase, user.id)
+    const refreshed = await resolveOrBootstrapOwnerSubscription(supabase, user.id)
     const newOwnedCount = await countOwnedOrganizations(supabase, user.id)
 
     return NextResponse.json({

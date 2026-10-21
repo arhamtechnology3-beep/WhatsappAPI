@@ -92,4 +92,16 @@ describe("organizationCreationAllowed", () => {
       }),
     ).toEqual({ ok: true });
   });
+
+  it("rejects a second org when subscription is still missing", () => {
+    const result = organizationCreationAllowed({
+      subscription: null,
+      ownedCount: 1,
+      now: NOW,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toMatch(/active trial or paid subscription/i);
+    }
+  });
 });

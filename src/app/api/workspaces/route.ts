@@ -1,6 +1,13 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
+import {
+  OrganizationCapError,
+  attachOrganizationToOwnerSubscription,
+  countOwnedOrganizations,
+  getOwnerSubscription,
+  organizationCreationAllowed,
+} from '@/lib/billing/owner-subscription'
 
 export async function GET() {
   try {
@@ -14,12 +21,15 @@ export async function GET() {
     // Get all workspaces the user is member of
     const { data: memberships, error } = await supabase
       .from('workspace_members')
-      .select('role, workspaces(id, name, slug, plan, status, default_currency)')
+      .select('role, workspaces(id, name, slug, plan, status, default_currency, subscription_id)')
       .eq('user_id', user.id)
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
+
+    const ownerSub = await getOwnerSubscription(supabase, user.id)
+    const ownedCount = await countOwnedOrganizations(supabase, user.id)
 
     const workspaces = (memberships ?? []).map((m: any) => ({
       id: m.workspaces.id,
@@ -31,7 +41,18 @@ export async function GET() {
       role: m.role,
     }))
 
-    return NextResponse.json({ workspaces })
+    return NextResponse.json({
+      workspaces,
+      subscription: ownerSub
+        ? {
+            status: ownerSub.status,
+            planId: ownerSub.planId,
+            maxOrganizations: ownerSub.maxOrganizations,
+            ownedOrganizations: ownedCount,
+            trialEnd: ownerSub.trialEnd?.toISOString() ?? null,
+          }
+        : null,
+    })
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })
   }
@@ -49,6 +70,17 @@ export async function POST(request: Request) {
     const { name } = await request.json()
     if (!name || !name.trim()) {
       return NextResponse.json({ error: 'Workspace name is required' }, { status: 400 })
+    }
+
+    // Cap check before create (owned count does not yet include this org)
+    const ownerSub = await getOwnerSubscription(supabase, user.id)
+    const ownedCount = await countOwnedOrganizations(supabase, user.id)
+    const allowed = organizationCreationAllowed({
+      subscription: ownerSub,
+      ownedCount,
+    })
+    if (!allowed.ok) {
+      return NextResponse.json({ error: allowed.reason }, { status: 403 })
     }
 
     // Generate unique slug
@@ -92,9 +124,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: memberError.message }, { status: 500 })
     }
 
+    try {
+      await attachOrganizationToOwnerSubscription(supabase, {
+        ownerUserId: user.id,
+        organizationId: workspace.id,
+      })
+    } catch (err) {
+      await supabase.from('workspace_members').delete().eq('workspace_id', workspace.id)
+      await supabase.from('workspaces').delete().eq('id', workspace.id)
+      if (err instanceof OrganizationCapError) {
+        return NextResponse.json({ error: err.message }, { status: 403 })
+      }
+      throw err
+    }
+
     // Set as active workspace in cookies
     const cookieStore = await cookies()
     cookieStore.set('wacrm_active_workspace_id', workspace.id, { path: '/', httpOnly: false, sameSite: 'lax', maxAge: 60 * 60 * 24 * 365 })
+
+    const refreshed = await getOwnerSubscription(supabase, user.id)
+    const newOwnedCount = await countOwnedOrganizations(supabase, user.id)
 
     return NextResponse.json({
       success: true,
@@ -103,7 +152,15 @@ export async function POST(request: Request) {
         name: workspace.name,
         slug: workspace.slug,
         role: 'owner',
-      }
+      },
+      subscription: refreshed
+        ? {
+            status: refreshed.status,
+            planId: refreshed.planId,
+            maxOrganizations: refreshed.maxOrganizations,
+            ownedOrganizations: newOwnedCount,
+          }
+        : null,
     })
   } catch (err: any) {
     return NextResponse.json({ error: err.message || 'Internal server error' }, { status: 500 })

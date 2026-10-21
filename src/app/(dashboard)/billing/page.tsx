@@ -12,6 +12,7 @@ interface PlanRow {
   currency: string;
   monthly_price: number;
   trial_days: number;
+  max_organizations?: number;
 }
 
 interface Entitlements {
@@ -22,11 +23,28 @@ interface Entitlements {
   limits: Record<string, number>;
 }
 
+interface OrgRow {
+  id: string;
+  name: string;
+  shopDomain: string | null;
+  whatsappConnected: boolean;
+}
+
+interface SubscriptionSummary {
+  status: string;
+  planId: string;
+  maxOrganizations: number;
+  ownedOrganizations: number;
+  trialEnd: string | null;
+}
+
 export default function BillingPage() {
   const { profile, profileLoading } = useAuth();
   const enabled = isIdentityFlowNavEnabled(profile?.beta_features);
   const [plans, setPlans] = useState<PlanRow[]>([]);
   const [entitlements, setEntitlements] = useState<Entitlements | null>(null);
+  const [subscription, setSubscription] = useState<SubscriptionSummary | null>(null);
+  const [organizations, setOrganizations] = useState<OrgRow[]>([]);
   const [storeId, setStoreId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -43,6 +61,8 @@ export default function BillingPage() {
       if (plansRes.ok) {
         const body = await plansRes.json();
         setPlans(body.data?.plans ?? []);
+        setSubscription(body.data?.subscription ?? null);
+        setOrganizations(body.data?.organizations ?? []);
       }
       if (currentRes.ok) {
         const body = await currentRes.json();
@@ -67,14 +87,14 @@ export default function BillingPage() {
     return (
       <IdentityFlowGatedPage
         title="Billing"
-        description="Enable IdentityFlow nav to manage per-store plans."
+        description="Enable IdentityFlow nav to manage your plan across store organizations."
       />
     );
   }
 
   const subscribe = async (planId: string) => {
     if (!storeId) {
-      setMessage("Connect a Shopify store first.");
+      setMessage("Connect a Shopify store in this organization first.");
       return;
     }
     setBusy(planId);
@@ -95,37 +115,78 @@ export default function BillingPage() {
         return;
       }
       setEntitlements(body.data?.entitlements ?? entitlements);
-      setMessage("Subscription activated for this store.");
+      setMessage("Subscription activated for your login — all your store organizations share this plan.");
+      const refresh = await fetch("/api/v1/billing/subscribe");
+      if (refresh.ok) {
+        const refreshed = await refresh.json();
+        setSubscription(refreshed.data?.subscription ?? null);
+        setOrganizations(refreshed.data?.organizations ?? []);
+      }
     } finally {
       setBusy(null);
     }
   };
+
+  const status = subscription?.status ?? entitlements?.status ?? "—";
+  const planName = subscription?.planId ?? entitlements?.plan ?? "none";
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-foreground">Billing</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Per-store plans with a 7-day trial. Prices come from the database — not
-          this page. WhatsApp inbox is billed separately from IdentityFlow modules.
+          One subscription per login. Each Shopify store is a separate organization
+          with its own WhatsApp number. Prices come from the database — not this page.
         </p>
       </div>
 
-      {entitlements ? (
-        <div className="rounded-xl border border-border bg-card p-4 text-sm">
-          <p>
-            Status: <strong className="uppercase">{entitlements.status}</strong>
+      <div className="rounded-xl border border-border bg-card p-4 text-sm space-y-1">
+        <p>
+          Status: <strong className="uppercase">{status}</strong>
+        </p>
+        <p>
+          Plan: <strong>{planName}</strong>
+        </p>
+        {subscription ? (
+          <p className="text-muted-foreground">
+            Store organizations: {subscription.ownedOrganizations} of{" "}
+            {subscription.maxOrganizations}
           </p>
-          <p>
-            Plan: <strong>{entitlements.plan}</strong>
-          </p>
+        ) : null}
+        {entitlements ? (
           <p className="text-muted-foreground">
             Campaigns: {entitlements.features.campaigns ? "on" : "locked"} · Events
             limit: {entitlements.limits.monthlyTrackedEvents}
           </p>
+        ) : null}
+      </div>
+
+      {organizations.length > 0 ? (
+        <div className="space-y-2">
+          <h2 className="text-sm font-semibold text-foreground">Your stores</h2>
+          <ul className="divide-y divide-border rounded-xl border border-border bg-card">
+            {organizations.map((org) => (
+              <li
+                key={org.id}
+                className="flex flex-col gap-0.5 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="font-medium text-foreground">{org.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {org.shopDomain || "No Shopify store connected"}
+                  </p>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  WhatsApp: {org.whatsappConnected ? "connected" : "not connected"}
+                </p>
+              </li>
+            ))}
+          </ul>
         </div>
       ) : (
-        <p className="text-sm text-muted-foreground">No active store selected.</p>
+        <p className="text-sm text-muted-foreground">
+          No store organizations yet. Use the workspace switcher to add one.
+        </p>
       )}
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -142,16 +203,18 @@ export default function BillingPage() {
               </span>
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              {plan.trial_days}-day trial on first install
+              {plan.trial_days}-day trial · up to{" "}
+              {plan.max_organizations ?? "—"} store
+              {(plan.max_organizations ?? 0) === 1 ? "" : "s"}
             </p>
             <Button
               className="mt-4"
-              disabled={!!busy || entitlements?.plan === plan.plan_id}
+              disabled={!!busy || planName === plan.plan_id}
               onClick={() => void subscribe(plan.plan_id)}
             >
               {busy === plan.plan_id
                 ? "Working…"
-                : entitlements?.plan === plan.plan_id
+                : planName === plan.plan_id
                   ? "Current"
                   : "Select"}
             </Button>

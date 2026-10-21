@@ -95,6 +95,55 @@ describe("computeStoreEntitlements", () => {
     expect(result.limits.campaigns).toBe(20);
   });
 
+  it("gives the same entitlements to two organizations sharing one login subscription", () => {
+    const sharedSub = {
+      status: "ACTIVE" as const,
+      planId: "growth",
+    };
+    const sharedPlan = {
+      ...GROWTH_PLAN,
+      usageLimits: {
+        ...GROWTH_PLAN.usageLimits,
+        maxOrganizations: 3,
+      },
+    };
+    const orgA = computeStoreEntitlements({
+      store: STORE_A,
+      actor: {
+        userId: "user-1",
+        organizationId: "org-1",
+        orgRole: "owner",
+        storeMemberRole: "owner",
+      },
+      subscription: sharedSub,
+      plan: sharedPlan,
+    });
+    const storeC = {
+      ...STORE_A,
+      id: "store-c",
+      organizationId: "org-1b",
+      shopDomain: "c.myshopify.com",
+    };
+    // Same owner acting inside a second org they own — entitlements still
+    // come from the shared login subscription payload.
+    const orgB = computeStoreEntitlements({
+      store: { ...storeC, organizationId: "org-1" },
+      actor: {
+        userId: "user-1",
+        organizationId: "org-1",
+        orgRole: "owner",
+        storeMemberRole: "owner",
+      },
+      subscription: sharedSub,
+      plan: sharedPlan,
+    });
+    expect(orgA.status).toBe(orgB.status);
+    expect(orgA.plan).toBe(orgB.plan);
+    expect(orgA.features).toEqual(orgB.features);
+    expect(orgA.limits.maxOrganizations).toBe(3);
+    expect(orgB.limits.maxOrganizations).toBe(3);
+  });
+
   it("locks paid features after trial expiry even if status is still TRIALING", () => {
     const result = computeStoreEntitlements({
       store: STORE_A,

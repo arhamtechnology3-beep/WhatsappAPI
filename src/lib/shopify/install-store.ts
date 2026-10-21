@@ -1,9 +1,20 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { encrypt } from "@/lib/whatsapp/encryption";
 import { resolveInstallSubscription } from "@/lib/billing/trial";
-import { transitionSubscription } from "@/lib/billing/subscription-state";
+import {
+  ensureOwnerSubscription,
+  getOwnerSubscription,
+  getSubscriptionForOrganization,
+} from "@/lib/billing/owner-subscription";
 import { writeAuditLog } from "@/lib/audit/log";
 import { normalizeShopDomain } from "./store-credentials";
+
+export class StoreInstallError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StoreInstallError";
+  }
+}
 
 export interface UpsertInstalledStoreOpts {
   organizationId: string;
@@ -16,8 +27,8 @@ export interface UpsertInstalledStoreOpts {
 }
 
 /**
- * Idempotent install/reinstall: upsert store + encrypted connection +
- * subscription without resetting trial history.
+ * Idempotent install/reinstall for one Shopify shop per organization.
+ * Billing stays on the login subscription — never inserts a second row.
  */
 export async function upsertInstalledStore(
   supabase: SupabaseClient,
@@ -26,21 +37,40 @@ export async function upsertInstalledStore(
   const shopDomain = normalizeShopDomain(opts.shopDomain);
   const now = new Date();
 
-  let { data: store } = await supabase
+  // Refuse if this domain already belongs to another organization.
+  const { data: existingByDomain } = await supabase
     .from("stores")
-    .select("id, organization_id, status")
-    .eq("organization_id", opts.organizationId)
+    .select("id, organization_id, shop_domain, status")
     .eq("shop_domain", shopDomain)
     .maybeSingle();
 
-  if (!store) {
-    const { data: byDomain } = await supabase
-      .from("stores")
-      .select("id, organization_id, status")
-      .eq("shop_domain", shopDomain)
-      .maybeSingle();
-    store = byDomain;
+  if (
+    existingByDomain &&
+    existingByDomain.organization_id !== opts.organizationId
+  ) {
+    throw new StoreInstallError(
+      "This Shopify store is already connected to another organization. Switch to that organization or contact support.",
+    );
   }
+
+  // One shop per organization — refuse a second domain.
+  const { data: orgStore } = await supabase
+    .from("stores")
+    .select("id, organization_id, shop_domain, status")
+    .eq("organization_id", opts.organizationId)
+    .maybeSingle();
+
+  if (
+    orgStore &&
+    orgStore.shop_domain &&
+    normalizeShopDomain(orgStore.shop_domain) !== shopDomain
+  ) {
+    throw new StoreInstallError(
+      "This organization already has a Shopify store. Create another organization from the workspace switcher to connect a second store.",
+    );
+  }
+
+  let store = existingByDomain ?? orgStore ?? null;
 
   if (!store) {
     const { data: created, error } = await supabase
@@ -52,7 +82,7 @@ export async function upsertInstalledStore(
         shopify_shop_id: opts.shopifyShopId ?? null,
         status: "active",
       })
-      .select("id, organization_id, status")
+      .select("id, organization_id, shop_domain, status")
       .single();
     if (error || !created) {
       throw new Error(error?.message || "Failed to create store");
@@ -75,6 +105,7 @@ export async function upsertInstalledStore(
       .from("stores")
       .update({
         name: opts.shopName,
+        shop_domain: shopDomain,
         shopify_shop_id: opts.shopifyShopId ?? null,
         status: "active",
         updated_at: now.toISOString(),
@@ -98,7 +129,21 @@ export async function upsertInstalledStore(
     { onConflict: "store_id" },
   );
 
-  // Trial history lookup (never reset)
+  // Resolve the login subscription (do not create a per-store row).
+  let ownerSub =
+    (opts.actorUserId
+      ? await getOwnerSubscription(supabase, opts.actorUserId)
+      : null) ??
+    (await getSubscriptionForOrganization(supabase, opts.organizationId));
+
+  if (!ownerSub && opts.actorUserId) {
+    ownerSub = await ensureOwnerSubscription(supabase, {
+      ownerUserId: opts.actorUserId,
+      organizationId: opts.organizationId,
+      now,
+    });
+  }
+
   const { data: historyRow } = await supabase
     .from("shop_trial_history")
     .select(
@@ -107,8 +152,10 @@ export async function upsertInstalledStore(
     .eq("shop_domain", shopDomain)
     .maybeSingle();
 
+  const paidActive = ownerSub?.status === "ACTIVE";
   const resolution = resolveInstallSubscription({
     now,
+    paidActive,
     history: historyRow
       ? {
           shopDomain: historyRow.shop_domain,
@@ -119,7 +166,22 @@ export async function upsertInstalledStore(
       : null,
   });
 
-  if (resolution.shouldRecordHistory && resolution.trialStart && resolution.trialEnd) {
+  // If the login already has a subscription, never reset ACTIVE/TRIALING
+  // from a reinstall. Only fill trial dates when bootstrapping.
+  let toStatus = ownerSub?.status ?? resolution.status;
+  if (paidActive) {
+    toStatus = "ACTIVE";
+  } else if (ownerSub?.status === "TRIALING") {
+    toStatus = "TRIALING";
+  } else if (!ownerSub) {
+    toStatus = resolution.status;
+  }
+
+  if (
+    resolution.shouldRecordHistory &&
+    resolution.trialStart &&
+    resolution.trialEnd
+  ) {
     const { data: existingHistory } = await supabase
       .from("shop_trial_history")
       .select("id")
@@ -137,53 +199,49 @@ export async function upsertInstalledStore(
     }
   }
 
-  const { data: existingSub } = await supabase
-    .from("subscriptions")
-    .select("id, status")
-    .eq("store_id", store.id)
-    .maybeSingle();
-
-  let fromStatus = existingSub?.status ?? "PENDING_INSTALL";
-  const toStatus = resolution.status;
-
-  // Reinstall path: UNINSTALLED → PENDING_INSTALL → apply install resolution
-  if (fromStatus === "UNINSTALLED") {
-    try {
-      fromStatus = transitionSubscription("UNINSTALLED", "REINSTALLED");
-    } catch {
-      fromStatus = "PENDING_INSTALL";
-    }
-  }
-
-  await supabase.from("subscriptions").upsert(
-    {
-      store_id: store.id,
+  if (ownerSub) {
+    const fromStatus = ownerSub.status;
+    const patch: Record<string, unknown> = {
       organization_id: opts.organizationId,
-      plan_id: "growth",
-      status: toStatus,
-      trial_start: resolution.trialStart?.toISOString() ?? null,
-      trial_end: resolution.trialEnd?.toISOString() ?? null,
+      store_id: store.id,
       updated_at: now.toISOString(),
-    },
-    { onConflict: "store_id" },
-  );
+    };
 
-  const { data: sub } = await supabase
-    .from("subscriptions")
-    .select("id")
-    .eq("store_id", store.id)
-    .maybeSingle();
+    // Only move UNINSTALLED → apply resolution; never demote ACTIVE.
+    if (fromStatus === "UNINSTALLED") {
+      patch.status = toStatus;
+      if (resolution.trialStart) {
+        patch.trial_start = resolution.trialStart.toISOString();
+      }
+      if (resolution.trialEnd) {
+        patch.trial_end = resolution.trialEnd.toISOString();
+      }
+    } else if (
+      !ownerSub.trialStart &&
+      resolution.trialStart &&
+      toStatus === "TRIALING"
+    ) {
+      patch.trial_start = resolution.trialStart.toISOString();
+      patch.trial_end = resolution.trialEnd?.toISOString() ?? null;
+      patch.status = toStatus;
+    }
 
-  if (sub?.id) {
+    await supabase.from("subscriptions").update(patch).eq("id", ownerSub.id);
+
+    await supabase
+      .from("workspaces")
+      .update({ subscription_id: ownerSub.id })
+      .eq("id", opts.organizationId);
+
     await supabase.from("subscription_events").insert({
-      subscription_id: sub.id,
+      subscription_id: ownerSub.id,
       store_id: store.id,
       organization_id: opts.organizationId,
-      from_status: existingSub?.status ?? null,
-      to_status: toStatus,
-      event: resolution.trialReused ? "REINSTALLED" : "INSTALL_SUCCEEDED",
+      from_status: fromStatus,
+      to_status: (patch.status as string) ?? fromStatus,
+      event: resolution.trialReused || paidActive ? "REINSTALLED" : "INSTALL_SUCCEEDED",
       actor_user_id: opts.actorUserId ?? null,
-      metadata: { shopDomain, trialReused: resolution.trialReused },
+      metadata: { shopDomain, trialReused: resolution.trialReused, paidActive },
     });
   }
 
@@ -200,6 +258,10 @@ export async function upsertInstalledStore(
   return { storeId: store.id, subscriptionStatus: toStatus };
 }
 
+/**
+ * Mark a single shop uninstalled. Does NOT cancel the login subscription
+ * — Jason's other organizations keep their plan.
+ */
 export async function markStoreUninstalled(
   supabase: SupabaseClient,
   shopDomainRaw: string,
@@ -214,7 +276,6 @@ export async function markStoreUninstalled(
     .maybeSingle();
 
   if (!store) {
-    // Legacy: suspend workspace by domain
     await supabase
       .from("workspaces")
       .update({ status: "suspended" })
@@ -236,26 +297,28 @@ export async function markStoreUninstalled(
     })
     .eq("store_id", store.id);
 
-  const { data: sub } = await supabase
-    .from("subscriptions")
-    .select("id, status")
-    .eq("store_id", store.id)
-    .maybeSingle();
+  const ownerSub = await getSubscriptionForOrganization(
+    supabase,
+    store.organization_id,
+  );
 
-  if (sub) {
-    await supabase
-      .from("subscriptions")
-      .update({ status: "UNINSTALLED", updated_at: now })
-      .eq("id", sub.id);
+  if (ownerSub) {
+    // Clear billing store pointer if this shop was the charging store.
+    if (ownerSub.storeId === store.id) {
+      await supabase
+        .from("subscriptions")
+        .update({ store_id: null, updated_at: now })
+        .eq("id", ownerSub.id);
+    }
 
     await supabase.from("subscription_events").insert({
-      subscription_id: sub.id,
+      subscription_id: ownerSub.id,
       store_id: store.id,
       organization_id: store.organization_id,
-      from_status: sub.status,
-      to_status: "UNINSTALLED",
+      from_status: ownerSub.status,
+      to_status: ownerSub.status,
       event: "UNINSTALLED",
-      metadata: { shopDomain },
+      metadata: { shopDomain, storeOnly: true },
     });
   }
 

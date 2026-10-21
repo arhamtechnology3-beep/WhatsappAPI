@@ -15,6 +15,7 @@ export const LOCKED_FEATURES = {
 export const ZERO_LIMITS = {
   monthlyTrackedEvents: 0,
   campaigns: 0,
+  maxOrganizations: 0,
 } as const;
 
 export type EntitlementFeatures = {
@@ -29,6 +30,7 @@ export type EntitlementFeatures = {
 export type EntitlementLimits = {
   monthlyTrackedEvents: number;
   campaigns: number;
+  maxOrganizations: number;
 };
 
 export interface PlanEntitlements {
@@ -75,6 +77,8 @@ function asLimits(raw: unknown): EntitlementLimits {
     monthlyTrackedEvents:
       typeof o.monthlyTrackedEvents === "number" ? o.monthlyTrackedEvents : 0,
     campaigns: typeof o.campaigns === "number" ? o.campaigns : 0,
+    maxOrganizations:
+      typeof o.maxOrganizations === "number" ? o.maxOrganizations : 0,
   };
 }
 

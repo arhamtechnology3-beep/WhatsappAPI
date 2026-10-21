@@ -30,8 +30,9 @@ Shopify
 | Organization | `workspaces.id` (= `accounts.id`) |
 | Store | `stores.organization_id` |
 | Shopify token | `shopify_connections.encrypted_access_token` |
-| Subscription | `subscriptions` (one current row per store) |
+| Subscription | `subscriptions` (one current row per login via `owner_user_id`; orgs link via `workspaces.subscription_id`) |
 | Trial history | `shop_trial_history` keyed by shop domain / shop id |
+| Store ↔ org | One Shopify shop per organization (`stores.organization_id` unique); each org has its own WhatsApp number |
 
 Active org cookie: `wacrm_active_workspace_id`. Set only by `POST /api/workspaces/switch` after membership check. Middleware must not copy `?workspace_id=` into it.
 
@@ -60,10 +61,12 @@ PENDING_INSTALL → TRIALING → ACTIVE
                  UNINSTALLED (from any state)
 ```
 
-- Trial: 7 calendar days UTC, starts only after successful install
-- Reinstall does not grant a new trial (`shop_trial_history`)
+- Trial: 7 calendar days UTC on the **login** subscription (first organization bootstraps it)
+- One subscription covers every organization the owner creates, up to `plans.max_organizations`
+- Each Shopify store is its own organization with its own WhatsApp number — never two shops in one org
+- Reinstall does not grant a new trial (`shop_trial_history`) and does not demote an `ACTIVE` login subscription
 - Plans are rows in `plans`, not frontend constants
-- `getStoreEntitlements` is the only feature gate for IdentityFlow paid modules
+- `getStoreEntitlements` reads the organization → login subscription (not a per-store billing row)
 - Existing WhatsApp inbox / recovery does **not** require entitlements in Phase 0
 - Env-token Shopify client (`src/lib/shopify/shopify-client.ts`) remains the live fallback
 

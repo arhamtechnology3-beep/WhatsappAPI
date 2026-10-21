@@ -17,11 +17,23 @@ import { Label } from "@/components/ui/label";
 import { ChevronDown, Plus, Building2, Loader2 } from "lucide-react";
 
 export function WorkspaceSwitcher() {
-  const { workspaces, activeWorkspace, switchWorkspace, createWorkspace } = useAuth();
+  const {
+    workspaces,
+    activeWorkspace,
+    switchWorkspace,
+    createWorkspace,
+    subscriptionCapacity,
+  } = useAuth();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
+
+  const ownedCount =
+    subscriptionCapacity?.ownedOrganizations ??
+    workspaces.filter((w) => w.role === "owner").length;
+  const maxOrgs = subscriptionCapacity?.maxOrganizations ?? null;
+  const atCap = maxOrgs != null && ownedCount >= maxOrgs;
 
   const handleCreateWorkspace = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,7 +44,6 @@ export function WorkspaceSwitcher() {
       const ws = await createWorkspace(newWorkspaceName);
       setIsDialogOpen(false);
       setNewWorkspaceName("");
-      // Switch to new workspace
       await switchWorkspace(ws.id);
     } catch (err: any) {
       setError(err.message || "Failed to create workspace");
@@ -48,14 +59,14 @@ export function WorkspaceSwitcher() {
           <div className="flex items-center gap-2.5 truncate">
             <Building2 className="size-4 shrink-0 text-primary" />
             <span className="truncate font-medium text-foreground">
-              {activeWorkspace?.name || "Select Workspace"}
+              {activeWorkspace?.name || "Select store"}
             </span>
           </div>
           <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56 bg-popover text-popover-foreground border border-border">
           <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-            Workspaces
+            Store organizations
           </DropdownMenuLabel>
           <DropdownMenuSeparator className="bg-border" />
           <div className="max-h-[160px] overflow-y-auto">
@@ -81,12 +92,21 @@ export function WorkspaceSwitcher() {
             ))}
           </div>
           <DropdownMenuSeparator className="bg-border" />
+          {maxOrgs != null ? (
+            <p className="px-3 py-1 text-[10px] text-muted-foreground">
+              {ownedCount} of {maxOrgs} stores on your plan
+            </p>
+          ) : null}
           <DropdownMenuItem
-            onClick={() => setIsDialogOpen(true)}
-            className="flex items-center gap-2 px-3 py-2 text-primary focus:bg-accent focus:text-primary cursor-pointer font-semibold"
+            onClick={() => {
+              if (atCap) return;
+              setIsDialogOpen(true);
+            }}
+            disabled={atCap}
+            className="flex items-center gap-2 px-3 py-2 text-primary focus:bg-accent focus:text-primary cursor-pointer font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="size-4" />
-            Create Workspace
+            {atCap ? "Store limit reached" : "Add another store"}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -95,18 +115,24 @@ export function WorkspaceSwitcher() {
         <DialogContent className="max-w-sm bg-card border border-border text-foreground">
           <DialogHeader>
             <DialogTitle className="text-base font-bold text-foreground">
-              Create New Workspace
+              Add another store
             </DialogTitle>
           </DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            Each Shopify store gets its own organization and WhatsApp number.
+            {maxOrgs != null
+              ? ` You are using ${ownedCount} of ${maxOrgs} on your plan.`
+              : null}
+          </p>
           <form onSubmit={handleCreateWorkspace} className="space-y-4 pt-2">
             <div className="space-y-1.5">
               <Label htmlFor="ws-name" className="text-xs text-muted-foreground">
-                Workspace Name
+                Store / organization name
               </Label>
               <Input
                 id="ws-name"
                 type="text"
-                placeholder="e.g. Acme Corp"
+                placeholder="e.g. Pickle Affair"
                 value={newWorkspaceName}
                 onChange={(e) => setNewWorkspaceName(e.target.value)}
                 className="bg-muted border-border text-foreground text-xs"

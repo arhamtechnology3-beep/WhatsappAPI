@@ -18,6 +18,7 @@ import {
   computeStoreEntitlements,
   type StoreEntitlements,
 } from "@/lib/billing/entitlements";
+import { getSubscriptionForOrganization } from "@/lib/billing/owner-subscription";
 import type { SubscriptionStatus } from "@/lib/billing/subscription-state";
 import { SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-state";
 
@@ -197,23 +198,25 @@ export async function getStoreEntitlements(
     throw new ForbiddenError("Store is not in this organization");
   }
 
-  const { data: subRow } = await actor.supabase
-    .from("subscriptions")
-    .select("status, plan_id, trial_end")
-    .eq("store_id", storeId)
-    .maybeSingle();
+  // Entitlements come from the login subscription shared across the
+  // owner's organizations — not a per-store billing row.
+  const ownerSub = await getSubscriptionForOrganization(
+    actor.supabase,
+    accessible.store.organizationId,
+  );
 
-  const planId = typeof subRow?.plan_id === "string" ? subRow.plan_id : null;
+  const planId = ownerSub?.planId ?? null;
   let planRow: {
     plan_id: string;
     feature_entitlements: unknown;
     usage_limits: unknown;
+    max_organizations?: number | null;
   } | null = null;
 
   if (planId) {
     const { data } = await actor.supabase
       .from("plans")
-      .select("plan_id, feature_entitlements, usage_limits")
+      .select("plan_id, feature_entitlements, usage_limits, max_organizations")
       .eq("plan_id", planId)
       .maybeSingle();
     planRow = data;
@@ -225,6 +228,14 @@ export async function getStoreEntitlements(
     actor.accountId,
   );
 
+  const usageLimits = {
+    ...((planRow?.usage_limits as Record<string, unknown>) ?? {}),
+    maxOrganizations:
+      typeof planRow?.max_organizations === "number"
+        ? planRow.max_organizations
+        : ownerSub?.maxOrganizations ?? 0,
+  };
+
   return computeStoreEntitlements({
     store: accessible.store,
     actor: {
@@ -234,20 +245,20 @@ export async function getStoreEntitlements(
       storeMemberRole:
         memberships.find((m) => m.storeId === storeId)?.role ?? null,
     },
-    subscription: subRow
+    subscription: ownerSub
       ? {
-          status: isSubscriptionStatus(subRow.status)
-            ? subRow.status
+          status: isSubscriptionStatus(ownerSub.status)
+            ? ownerSub.status
             : "PENDING_INSTALL",
           planId: planId ?? "none",
-          trialEnd: subRow.trial_end ? new Date(subRow.trial_end) : null,
+          trialEnd: ownerSub.trialEnd,
         }
       : null,
     plan: planRow
       ? {
           planId: planRow.plan_id,
           featureEntitlements: planRow.feature_entitlements,
-          usageLimits: planRow.usage_limits,
+          usageLimits,
         }
       : null,
   });

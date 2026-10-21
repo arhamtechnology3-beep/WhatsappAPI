@@ -10,6 +10,10 @@ import {
   loadPlanOffer,
   shopifyAppBillingProvider,
 } from "@/lib/billing/shopify-billing";
+import {
+  countOwnedOrganizations,
+  getOwnerSubscription,
+} from "@/lib/billing/owner-subscription";
 import { resolveStoreCredentials } from "@/lib/shopify/store-credentials";
 import { writeAuditLog } from "@/lib/audit/log";
 
@@ -59,6 +63,7 @@ export async function POST(request: Request) {
         organizationId: account.accountId,
         planId: plan.planId,
         shopifySubscriptionId: `mock_${plan.planId}_${Date.now()}`,
+        ownerUserId: account.userId,
       });
       const entitlements = await getStoreEntitlements(
         accessible.store.id,
@@ -83,14 +88,22 @@ export async function POST(request: Request) {
     });
 
     if (result.shopifySubscriptionId) {
-      await account.supabase
-        .from("subscriptions")
-        .update({
-          shopify_subscription_id: result.shopifySubscriptionId,
-          plan_id: plan.planId,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("store_id", accessible.store.id);
+      const ownerSub = await getOwnerSubscription(
+        account.supabase,
+        account.userId,
+      );
+      if (ownerSub) {
+        await account.supabase
+          .from("subscriptions")
+          .update({
+            shopify_subscription_id: result.shopifySubscriptionId,
+            plan_id: plan.planId,
+            store_id: accessible.store.id,
+            organization_id: account.accountId,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", ownerSub.id);
+      }
     }
 
     await writeAuditLog(account.supabase, {
@@ -119,12 +132,88 @@ export async function GET() {
     const { data: plans } = await account.supabase
       .from("plans")
       .select(
-        "plan_id, display_name, currency, monthly_price, annual_price, trial_days, feature_entitlements, usage_limits",
+        "plan_id, display_name, currency, monthly_price, annual_price, trial_days, feature_entitlements, usage_limits, max_organizations",
       )
       .eq("active", true)
       .order("monthly_price", { ascending: true });
 
-    return ok({ plans: plans ?? [] });
+    const ownerSub = await getOwnerSubscription(
+      account.supabase,
+      account.userId,
+    );
+    const ownedCount = await countOwnedOrganizations(
+      account.supabase,
+      account.userId,
+    );
+
+    // Organizations the caller owns, with shop + WhatsApp status
+    const { data: ownedMemberships } = await account.supabase
+      .from("workspace_members")
+      .select("workspace_id, workspaces(id, name)")
+      .eq("user_id", account.userId)
+      .eq("role", "owner");
+
+    const orgIds = (ownedMemberships ?? [])
+      .map((m: { workspace_id: string }) => m.workspace_id)
+      .filter(Boolean);
+
+    const organizations: Array<{
+      id: string;
+      name: string;
+      shopDomain: string | null;
+      whatsappConnected: boolean;
+    }> = [];
+
+    if (orgIds.length > 0) {
+      const { data: stores } = await account.supabase
+        .from("stores")
+        .select("organization_id, shop_domain, status")
+        .in("organization_id", orgIds);
+
+      const { data: waConfigs } = await account.supabase
+        .from("whatsapp_config")
+        .select("account_id, phone_number_id")
+        .in("account_id", orgIds);
+
+      const storeByOrg = new Map(
+        (stores ?? []).map((s) => [s.organization_id, s]),
+      );
+      const waByOrg = new Set(
+        (waConfigs ?? [])
+          .filter((w) => w.phone_number_id)
+          .map((w) => w.account_id),
+      );
+
+      for (const m of ownedMemberships ?? []) {
+        const raw = m.workspaces as
+          | { id: string; name: string }
+          | { id: string; name: string }[]
+          | null;
+        const ws = Array.isArray(raw) ? raw[0] : raw;
+        if (!ws) continue;
+        const store = storeByOrg.get(ws.id);
+        organizations.push({
+          id: ws.id,
+          name: ws.name,
+          shopDomain: store?.shop_domain ?? null,
+          whatsappConnected: waByOrg.has(ws.id),
+        });
+      }
+    }
+
+    return ok({
+      plans: plans ?? [],
+      subscription: ownerSub
+        ? {
+            status: ownerSub.status,
+            planId: ownerSub.planId,
+            maxOrganizations: ownerSub.maxOrganizations,
+            ownedOrganizations: ownedCount,
+            trialEnd: ownerSub.trialEnd?.toISOString() ?? null,
+          }
+        : null,
+      organizations,
+    });
   } catch (err) {
     return toApiErrorResponse(err);
   }

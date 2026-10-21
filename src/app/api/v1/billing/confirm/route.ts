@@ -7,6 +7,7 @@ import { cookies } from "next/headers";
 /**
  * Return URL after merchant approves a Shopify App Subscription.
  * charge_id / chargeId may be present depending on API version.
+ * Activates the login subscription — all of the owner's organizations inherit ACTIVE.
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -55,6 +56,7 @@ export async function GET(request: Request) {
     organizationId: store.organization_id,
     planId,
     shopifySubscriptionId: chargeId,
+    ownerUserId: user.id,
   });
 
   const cookieStore = await cookies();

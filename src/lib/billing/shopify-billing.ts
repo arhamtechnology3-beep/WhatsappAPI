@@ -126,42 +126,79 @@ export async function activateVerifiedSubscription(
     organizationId: string;
     planId: string;
     shopifySubscriptionId: string | null;
+    ownerUserId: string;
   },
 ): Promise<void> {
   const now = new Date().toISOString();
+
   const { data: existing } = await supabase
     .from("subscriptions")
-    .select("id, status")
-    .eq("store_id", opts.storeId)
+    .select("id, status, owner_user_id")
+    .eq("owner_user_id", opts.ownerUserId)
     .maybeSingle();
 
-  await supabase.from("subscriptions").upsert(
-    {
+  if (existing?.id) {
+    await supabase
+      .from("subscriptions")
+      .update({
+        store_id: opts.storeId,
+        organization_id: opts.organizationId,
+        plan_id: opts.planId,
+        status: "ACTIVE",
+        shopify_subscription_id: opts.shopifySubscriptionId,
+        updated_at: now,
+      })
+      .eq("id", existing.id);
+
+    await supabase
+      .from("workspaces")
+      .update({ subscription_id: existing.id })
+      .eq("id", opts.organizationId);
+
+    await supabase.from("subscription_events").insert({
+      subscription_id: existing.id,
+      store_id: opts.storeId,
+      organization_id: opts.organizationId,
+      from_status: existing.status ?? null,
+      to_status: "ACTIVE",
+      event: "SUBSCRIPTION_APPROVED",
+      actor_user_id: opts.ownerUserId,
+      metadata: { shopifySubscriptionId: opts.shopifySubscriptionId },
+    });
+    return;
+  }
+
+  const { data: created, error } = await supabase
+    .from("subscriptions")
+    .insert({
+      owner_user_id: opts.ownerUserId,
       store_id: opts.storeId,
       organization_id: opts.organizationId,
       plan_id: opts.planId,
       status: "ACTIVE",
       shopify_subscription_id: opts.shopifySubscriptionId,
       updated_at: now,
-    },
-    { onConflict: "store_id" },
-  );
-
-  const { data: sub } = await supabase
-    .from("subscriptions")
+    })
     .select("id")
-    .eq("store_id", opts.storeId)
-    .maybeSingle();
+    .single();
 
-  if (sub?.id) {
-    await supabase.from("subscription_events").insert({
-      subscription_id: sub.id,
-      store_id: opts.storeId,
-      organization_id: opts.organizationId,
-      from_status: existing?.status ?? null,
-      to_status: "ACTIVE",
-      event: "SUBSCRIPTION_APPROVED",
-      metadata: { shopifySubscriptionId: opts.shopifySubscriptionId },
-    });
+  if (error || !created) {
+    throw new Error(error?.message || "Failed to activate subscription");
   }
+
+  await supabase
+    .from("workspaces")
+    .update({ subscription_id: created.id })
+    .eq("id", opts.organizationId);
+
+  await supabase.from("subscription_events").insert({
+    subscription_id: created.id,
+    store_id: opts.storeId,
+    organization_id: opts.organizationId,
+    from_status: null,
+    to_status: "ACTIVE",
+    event: "SUBSCRIPTION_APPROVED",
+    actor_user_id: opts.ownerUserId,
+    metadata: { shopifySubscriptionId: opts.shopifySubscriptionId },
+  });
 }

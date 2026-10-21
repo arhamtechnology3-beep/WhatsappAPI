@@ -268,8 +268,31 @@ export default function ShopifyDashboardPage() {
   const [agentPassword, setAgentPassword] = useState('')
   const [creatingAgent, setCreatingAgent] = useState(false)
   const [agentsList, setAgentsList] = useState<{ id: string; name: string; email: string }[]>([])
+  const [orgStoreDomain, setOrgStoreDomain] = useState<string | null>(null)
 
-  const storeDomain = process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN || "divyaprabhafoods.myshopify.com"
+  // Prefer the active organization's connected shop over the host env domain.
+  const storeDomain =
+    orgStoreDomain ||
+    process.env.NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN ||
+    "divyaprabhafoods.myshopify.com"
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetch("/api/v1/stores/current")
+        if (!res.ok) return
+        const body = await res.json()
+        const domain = body.data?.store?.shopDomain as string | null | undefined
+        if (!cancelled && domain) setOrgStoreDomain(domain)
+      } catch {
+        // keep env fallback
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [accountId])
 
   const loadData = useCallback(async () => {
     if (!accountId) {

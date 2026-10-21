@@ -66,6 +66,14 @@ interface AccountSummary {
   default_currency: string;
 }
 
+export interface SubscriptionCapacity {
+  status: string;
+  planId: string;
+  maxOrganizations: number;
+  ownedOrganizations: number;
+  trialEnd: string | null;
+}
+
 interface AuthContextValue {
   user: User | null;
   profile: Profile | null;
@@ -88,6 +96,7 @@ interface AuthContextValue {
   activeWorkspace: any | null;
   switchWorkspace: (workspaceId: string) => Promise<void>;
   createWorkspace: (name: string) => Promise<any>;
+  subscriptionCapacity: SubscriptionCapacity | null;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -100,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Workspaces state
   const [workspaces, setWorkspaces] = useState<any[]>(() => getCachedData<any[]>("user_workspaces") || []);
+  const [subscriptionCapacity, setSubscriptionCapacity] = useState<SubscriptionCapacity | null>(null);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(
     () => readClientWorkspaceId(),
   );
@@ -116,6 +126,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const list = data.workspaces || [];
         setWorkspaces(list);
         setCachedData("user_workspaces", list);
+        if (data.subscription) {
+          setSubscriptionCapacity({
+            status: data.subscription.status,
+            planId: data.subscription.planId,
+            maxOrganizations: data.subscription.maxOrganizations,
+            ownedOrganizations: data.subscription.ownedOrganizations,
+            trialEnd: data.subscription.trialEnd ?? null,
+          });
+        } else {
+          setSubscriptionCapacity(null);
+        }
 
         const cookieActiveId = readClientWorkspaceId();
         const currentActive = list.find((w: any) => w.id === cookieActiveId) || list[0] || null;
@@ -322,6 +343,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         activeWorkspace,
         switchWorkspace,
         createWorkspace,
+        subscriptionCapacity,
         ...derived,
       }}
     >
@@ -357,6 +379,7 @@ export function useAuth(): AuthContextValue {
       activeWorkspace: null,
       switchWorkspace: async () => {},
       createWorkspace: async () => ({}),
+      subscriptionCapacity: null,
     };
   }
   return ctx;

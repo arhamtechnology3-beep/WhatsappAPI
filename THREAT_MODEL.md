@@ -36,7 +36,7 @@ Scope: tenant isolation, billing entitlements, Shopify secrets, visitor ingest, 
 
 **Threat:** Uninstall/reinstall resets a 7-day trial.
 
-**Control:** `shop_trial_history` keyed by shop domain / Shopify shop id. `resolveInstallSubscription` reuses historical trial dates and will not start a second trial.
+**Control:** Login subscription is one row per `owner_user_id`. `shop_trial_history` is keyed by shop domain / Shopify shop id. Reinstall with an `ACTIVE` login subscription stays `ACTIVE` (`paidActive`). Creating another organization does not start a new trial.
 
 ### Token theft
 

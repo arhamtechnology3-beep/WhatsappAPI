@@ -8,6 +8,7 @@ import {
   verifyStorefrontSignature,
 } from "@/lib/tracking/events";
 import { computeStoreEntitlements } from "@/lib/billing/entitlements";
+import { getSubscriptionForOrganization } from "@/lib/billing/owner-subscription";
 import type { SubscriptionStatus } from "@/lib/billing/subscription-state";
 import { SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-state";
 
@@ -102,17 +103,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unknown store" }, { status: 404, headers });
   }
 
-  const { data: sub } = await supabase
-    .from("subscriptions")
-    .select("status, plan_id, trial_end")
-    .eq("store_id", store.id)
-    .maybeSingle();
+  const ownerSub = await getSubscriptionForOrganization(
+    supabase,
+    store.organization_id,
+  );
 
-  const { data: plan } = sub?.plan_id
+  const { data: plan } = ownerSub?.planId
     ? await supabase
         .from("plans")
-        .select("plan_id, feature_entitlements, usage_limits")
-        .eq("plan_id", sub.plan_id)
+        .select("plan_id, feature_entitlements, usage_limits, max_organizations")
+        .eq("plan_id", ownerSub.planId)
         .maybeSingle()
     : { data: null };
 
@@ -131,20 +131,26 @@ export async function POST(request: Request) {
       orgRole: "owner",
       storeMemberRole: "owner",
     },
-    subscription: sub
+    subscription: ownerSub
       ? {
-          status: (SUBSCRIPTION_STATUSES as readonly string[]).includes(sub.status)
-            ? (sub.status as SubscriptionStatus)
+          status: (SUBSCRIPTION_STATUSES as readonly string[]).includes(ownerSub.status)
+            ? (ownerSub.status as SubscriptionStatus)
             : "PENDING_INSTALL",
-          planId: sub.plan_id,
-          trialEnd: sub.trial_end ? new Date(sub.trial_end) : null,
+          planId: ownerSub.planId,
+          trialEnd: ownerSub.trialEnd,
         }
       : null,
     plan: plan
       ? {
           planId: plan.plan_id,
           featureEntitlements: plan.feature_entitlements,
-          usageLimits: plan.usage_limits,
+          usageLimits: {
+            ...((plan.usage_limits as Record<string, unknown>) ?? {}),
+            maxOrganizations:
+              typeof plan.max_organizations === "number"
+                ? plan.max_organizations
+                : ownerSub?.maxOrganizations ?? 0,
+          },
         }
       : null,
   });

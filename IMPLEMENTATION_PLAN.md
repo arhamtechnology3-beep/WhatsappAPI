@@ -7,16 +7,17 @@ Source of truth for product rules: the Shopify identity/retention spec. This fil
 ## Current vs target
 
 ```text
-Spec:  User → Organization → Stores (Shopify connection + subscription + data)
-Repo:  User → accounts ≈ workspaces (1:1 UUID) → optional shopify_shop_domain
+Spec:  User → Subscription → Organization(s) → one Shopify store + one WhatsApp each
+Repo:  User → owner subscription → workspaces (= orgs) → one stores row per org
 ```
 
-v1 mapping (no third tenant table):
+v1 mapping:
 
-- Organization = `accounts` / `workspaces` (keep 1:1 ID sync)
-- Store = new `stores` child of `organization_id`
+- Login subscription = `subscriptions.owner_user_id` (one current row); orgs link via `workspaces.subscription_id`
+- Organization = `accounts` / `workspaces` (keep 1:1 ID sync); one Shopify shop + one WhatsApp number each
 - WhatsApp inbox stays org-scoped
-- Identity, events, campaigns, and SaaS billing are store-scoped
+- Identity, events, campaigns remain store-scoped under that org
+- Cap: `plans.max_organizations` (starter 1 / growth 3 / scale 10)
 
 ## Stack (locked)
 
@@ -24,7 +25,7 @@ v1 mapping (no third tenant table):
 - Supabase Postgres + Auth + RLS
 - Postgres job rows + `/api/cron/tick` (no Redis/BullMQ in MVP)
 - Cashfree = cart checkout recovery only, never store subscriptions
-- Store billing = provider interface; default = Shopify App Billing, 7-day trial per store
+- Login billing = provider interface; default = Shopify App Billing, 7-day trial per login (shared across owned orgs)
 - `SHOPIFY_STORE_DOMAIN` + `SHOPIFY_ADMIN_API_TOKEN` remain the single-tenant runtime fallback until Phase 1 per-store tokens
 
 ## Phase 0 — Foundation (this slice)

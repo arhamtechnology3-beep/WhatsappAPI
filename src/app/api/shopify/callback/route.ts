@@ -7,7 +7,7 @@ import {
   OAUTH_STATE_COOKIE,
   verifyShopifyOAuthHmac,
 } from '@/lib/shopify/oauth-hmac'
-import { upsertInstalledStore } from '@/lib/shopify/install-store'
+import { StoreInstallError, upsertInstalledStore } from '@/lib/shopify/install-store'
 import { STORE_COOKIE, storeCookieOptions } from '@/lib/auth/store-cookie'
 import { WORKSPACE_COOKIE, workspaceCookieOptions } from '@/lib/auth/workspace-cookie'
 import { normalizeShopDomain } from '@/lib/shopify/store-credentials'
@@ -245,6 +245,7 @@ export async function GET(request: Request) {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Internal server error'
     console.error('[shopify-callback] Error:', err)
-    return NextResponse.json({ error: message }, { status: 500 })
+    const status = err instanceof StoreInstallError ? 409 : 500
+    return NextResponse.json({ error: message }, { status })
   }
 }

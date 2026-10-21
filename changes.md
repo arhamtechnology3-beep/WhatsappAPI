@@ -4,6 +4,41 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-21 16:20] Feat (Billing) — one login subscription, one organization per Shopify store
+
+### Root Cause
+- Subscriptions were `UNIQUE (store_id)`, so each Shopify shop got its own plan.
+- Creating workspaces had no cap and no link to a login subscription.
+- Install could attach a second shop to the same org and could reset a paid plan on reinstall.
+
+### Objective & Fixes
+- One current subscription per login (`subscriptions.owner_user_id`); owned orgs point at it via `workspaces.subscription_id`.
+- Plans gain `max_organizations` (starter 1 / growth 3 / scale 10).
+- One Shopify shop per organization (unique `stores.organization_id`); shop domain is globally unique.
+- Workspace create attaches to the owner's subscription and enforces the org cap; first org bootstraps a trial.
+- Shopify install refuses a second domain on the same org; reinstall with `ACTIVE` stays `ACTIVE` and does not insert another subscription.
+- Uninstall marks the shop only — does not cancel the login subscription.
+- Billing UI lists the login plan and all owned store organizations (shop + WhatsApp status).
+- Workspace switcher is “add another store” with plan usage (e.g. 2 of 3).
+
+### Files Modified
+- `supabase/migrations/060_owner_subscription_orgs.sql`
+- `src/lib/billing/owner-subscription.ts` (+ tests)
+- `src/lib/billing/entitlements.ts`, `shopify-billing.ts`
+- `src/lib/shopify/install-store.ts` (+ tests)
+- `src/lib/auth/store.ts`
+- `src/app/api/workspaces/route.ts`
+- `src/app/api/v1/billing/subscribe/route.ts`, `confirm/route.ts`
+- `src/app/api/v1/events/ingest/route.ts`
+- `src/app/api/shopify/callback/route.ts`
+- `src/hooks/use-auth.tsx`, `src/components/dashboard/workspace-switcher.tsx`
+- `src/app/(dashboard)/billing/page.tsx`, `shopify/page.tsx`
+- `ARCHITECTURE.md`, `IMPLEMENTATION_PLAN.md`, `THREAT_MODEL.md`, `changes.md`
+
+### Live
+- Apply migration `060_owner_subscription_orgs.sql` on Supabase before deploy.
+- No Hostinger deploy in this PR yet.
+
 ## [2026-10-16 01:05] Copy (Visitors) — unlock reply emphasizes number activated
 
 ### Root Cause

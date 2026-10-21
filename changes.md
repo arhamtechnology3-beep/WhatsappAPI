@@ -15,7 +15,7 @@
 - `changes.md`
 
 ### Live
-- Pending merge to `main`.
+- Code: `fda85e0` on `main` (Hostinger). No migration.
 
 ## [2026-10-21 17:30] UX (Theme) — light Arham brand as the default
 

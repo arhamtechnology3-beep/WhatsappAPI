@@ -66,7 +66,8 @@ Keep it up to date for **current work and every future change**. `CHANGELOG.md` 
 - `docs/whatsapp-template-setup.md`, `changes.md`
 
 ### Live
-- Apply `061_inquiry_no_purchase_drip.sql` on Supabase, then deploy this branch to `main` (Hostinger). TM-style contacts enroll on the next cron tick once quiet ≥4h with no order.
+- Migration `061` applied on Supabase (2026-10-21).
+- Code: `1a89138` on `main` (Hostinger auto-deploy). Quiet no-order inquirers enroll on the next `/api/cron/tick`.
 
 ## [2026-10-21 16:20] Feat (Billing) — one login subscription, one organization per Shopify store
 

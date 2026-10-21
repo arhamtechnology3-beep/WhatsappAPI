@@ -21,6 +21,7 @@
 
 ### Live
 - Code: `ed60b4b` on `main` (Hostinger). Apply `062` / `scripts/fix-workspaces-insert-rls.sql` on Supabase (belt-and-braces; create API now uses service role). Hard-refresh and retry **Pickle Affair**.
+- Follow-up: typecheck fix for GET memberships → workspaces join (PostgREST array typing).
 
 ## [2026-10-21 12:40] Fix (Billing) — Add another store blocked without owner subscription
 

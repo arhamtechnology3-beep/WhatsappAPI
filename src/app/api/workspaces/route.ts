@@ -35,27 +35,41 @@ export async function GET() {
     const ownerSub = await resolveOrBootstrapOwnerSubscription(admin, user.id)
     const ownedCount = await countOwnedOrganizations(admin, user.id)
 
-    const workspaces = (memberships ?? [])
-      .filter((m: { workspaces?: { id?: string } | null }) => m.workspaces?.id)
-      .map((m: {
-        role: string
-        workspaces: {
-          id: string
-          name: string
-          slug: string
-          plan: string
-          status: string
-          default_currency: string
-        }
-      }) => ({
-        id: m.workspaces.id,
-        name: m.workspaces.name,
-        slug: m.workspaces.slug,
-        plan: m.workspaces.plan,
-        status: m.workspaces.status,
-        default_currency: m.workspaces.default_currency,
-        role: m.role,
-      }))
+    // PostgREST may type the embedded `workspaces` relation as an array;
+    // normalize to a single org row (one workspace per membership).
+    const workspaces = (memberships ?? []).flatMap((m) => {
+      const raw = m.workspaces as
+        | {
+            id: string
+            name: string
+            slug: string
+            plan: string
+            status: string
+            default_currency: string
+          }
+        | Array<{
+            id: string
+            name: string
+            slug: string
+            plan: string
+            status: string
+            default_currency: string
+          }>
+        | null
+      const ws = Array.isArray(raw) ? raw[0] : raw
+      if (!ws?.id) return []
+      return [
+        {
+          id: ws.id,
+          name: ws.name,
+          slug: ws.slug,
+          plan: ws.plan,
+          status: ws.status,
+          default_currency: ws.default_currency,
+          role: m.role as string,
+        },
+      ]
+    })
 
     return NextResponse.json({
       workspaces,

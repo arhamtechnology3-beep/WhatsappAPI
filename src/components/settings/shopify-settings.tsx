@@ -342,6 +342,7 @@ export function ShopifySettings() {
       case 'cart_abandoned': return 'Cart Abandonment Recovery'
       case 'browse_abandoned': return 'Browse Abandonment Recovery'
       case 'shopify_customer_created': return 'New Shopify Contact Welcome'
+      case 'inquiry_no_purchase': return 'Inquiry No-Purchase Follow-up'
       case 'order_created': return 'Order Confirmed'
       case 'cod_confirmation': return 'COD Confirmation'
       case 'order_fulfilled': return 'Order Shipped'

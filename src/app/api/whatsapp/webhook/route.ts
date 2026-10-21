@@ -770,6 +770,16 @@ async function processMessage(
     return
   }
 
+  // Defer inquiry→purchase drip so we do not nag during an active chat.
+  try {
+    const { deferInquiryFollowupOnInbound } = await import(
+      '@/lib/followups/inquiry-followup'
+    )
+    await deferInquiryFollowupOnInbound(supabaseAdmin(), contactRecord.id)
+  } catch (deferErr) {
+    console.error('[webhook] inquiry defer failed:', deferErr)
+  }
+
   // COD Auto-confirmation handler when interactive quick-reply buttons are clicked
   if (interactiveReplyId === 'wacrm_opt_in_confirm') {
     try {

@@ -52,4 +52,19 @@ describe('shouldClampWelcomeFollowup', () => {
       }),
     ).toBe(false)
   })
+
+  it('clamps every inquiry no-purchase step into IST hours', () => {
+    expect(
+      shouldClampWelcomeFollowup({
+        triggerType: 'inquiry_no_purchase',
+        currentStep: 1,
+      }),
+    ).toBe(true)
+    expect(
+      shouldClampWelcomeFollowup({
+        triggerType: 'inquiry_no_purchase',
+        currentStep: 3,
+      }),
+    ).toBe(true)
+  })
 })

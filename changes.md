@@ -4,6 +4,29 @@ This file is the **source of truth** for what changed in this fork (`arhamtechno
 
 Keep it up to date for **current work and every future change**. `CHANGELOG.md` is the upstream wacrm product log; do not mix fork-specific production fixes into that file.
 
+## [2026-10-21 11:15] Feat (Inbox) — automatic inquiry → purchase follow-up drip
+
+### Root Cause
+- Agents had to ask for one-off follow-ups when a WhatsApp inquirer never bought (e.g. “I’ll order” then silence, 24h window expired).
+- Cart/browse/welcome drips only cover storefront events — not inbox product inquiries with no Shopify order.
+
+### Objective & Fixes
+- New sequence trigger `inquiry_no_purchase`: after ≥4h silence (7-day lookback), auto-enroll contacts who messaged but have **zero** Shopify orders and are not already in another recovery drip.
+- Tight ~2-day drip (IST 9:30–20:30): `wacrm_festival_broadcast_v2` → `wacrm_browse_abandoned_v2` (~20h) → `wacrm_cart_reminder_step2_v2` (~24h). Product title/URL inferred from recent chat links/keywords when possible.
+- Stops on any order; new inbound defers the next send by 4h. Engaged inbox leads without opt-in get `whatsapp_marketing_opt_in` from source `inbox_inquiry` (respects explicit opt-out).
+- Enrollment runs at the start of the existing sequence cron tick (Hostinger `/api/cron/tick`).
+
+### Files Modified
+- `supabase/migrations/061_inquiry_no_purchase_drip.sql`
+- `src/lib/followups/inquiry-followup.ts` (+ test)
+- `src/lib/shopify/sequence-cron.ts`, `automation-bindings.ts`, `send-window.ts` (+ test), `recovery-conversion.ts`
+- `src/app/api/whatsapp/webhook/route.ts`
+- `src/app/(dashboard)/shopify/page.tsx`, `src/components/settings/shopify-settings.tsx`
+- `docs/whatsapp-template-setup.md`, `changes.md`
+
+### Live
+- Apply `061_inquiry_no_purchase_drip.sql` on Supabase, then deploy this branch to `main` (Hostinger). TM-style contacts enroll on the next cron tick once quiet ≥4h with no order.
+
 ## [2026-10-21 16:20] Feat (Billing) — one login subscription, one organization per Shopify store
 
 ### Root Cause

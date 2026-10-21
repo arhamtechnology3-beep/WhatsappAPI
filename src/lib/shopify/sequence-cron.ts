@@ -7,7 +7,9 @@ import { findOrCreateConversation } from '@/lib/inbox/find-or-create-conversatio
 import {
   shouldStopBrowseDrip,
   shouldStopCartDrip,
+  shouldStopInquiryDrip,
 } from '@/lib/shopify/recovery-conversion'
+import { enrollInquiryFollowups } from '@/lib/followups/inquiry-followup'
 import {
   clampToIstSendWindow,
   shouldClampWelcomeFollowup,
@@ -43,8 +45,18 @@ export async function runShopifySequenceCron() {
 
   let sequencesProcessed = 0
   let messagesSent = 0
+  let inquiryEnroll: { scanned: number; enrolled: number; skipped: number } | null =
+    null
 
   try {
+    // 1) Enroll inbox inquirers who never purchased (tight 2-day drip)
+    try {
+      inquiryEnroll = await enrollInquiryFollowups(supabase)
+    } catch (enrollErr) {
+      console.error('[shopify-sequence-cron] inquiry enroll failed:', enrollErr)
+      inquiryEnroll = { scanned: 0, enrolled: 0, skipped: 0 }
+    }
+
     // 2) Find all active in-flight sequences where next_send_at is due
     const { data: trackings } = await supabase
       .from('shopify_recovery_tracking')
@@ -129,6 +141,14 @@ export async function runShopifySequenceCron() {
             .limit(1)
             .maybeSingle()
           isConverted = !!laterOrder
+        } else if (triggerType === 'inquiry_no_purchase') {
+          const { data: anyOrder } = await supabase
+            .from('shopify_orders')
+            .select('id')
+            .eq('contact_id', tracking.contact_id)
+            .limit(1)
+            .maybeSingle()
+          isConverted = shouldStopInquiryDrip(!!anyOrder)
         }
 
         if (isConverted) {
@@ -216,7 +236,8 @@ export async function runShopifySequenceCron() {
         const requiresOptIn =
           tracking.current_step > 1 ||
           sequence.trigger_type === 'browse_abandoned' ||
-          sequence.trigger_type === 'shopify_customer_created'
+          sequence.trigger_type === 'shopify_customer_created' ||
+          sequence.trigger_type === 'inquiry_no_purchase'
         const hasConsent = !!(contact?.whatsapp_marketing_opt_in || contact?.marketing_opt_in)
         if (requiresOptIn && !hasConsent) {
           // Stop tracking sequence immediately if contact did not opt in
@@ -250,6 +271,10 @@ export async function runShopifySequenceCron() {
           const meta = tracking.metadata || {}
           productName = meta.product_title || 'product'
           totalPrice = parseFloat(meta.price || '0').toFixed(2)
+          productUrl = meta.product_url || ''
+        } else if (sequence.trigger_type === 'inquiry_no_purchase') {
+          const meta = tracking.metadata || {}
+          productName = meta.product_title || 'handmade pickles'
           productUrl = meta.product_url || ''
         }
 
@@ -383,6 +408,7 @@ export async function runShopifySequenceCron() {
       success: true,
       sequencesProcessed,
       messagesSent,
+      inquiryEnroll,
     })
   } catch (err: any) {
     console.error('[shopify-sequence-cron] internal error:', err)

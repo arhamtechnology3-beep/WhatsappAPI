@@ -66,7 +66,7 @@ export function WorkspaceSwitcher() {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-56 bg-popover text-popover-foreground border border-border">
           <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-            Store organizations
+            Your stores (each has its own WhatsApp)
           </DropdownMenuLabel>
           <DropdownMenuSeparator className="bg-border" />
           <div className="max-h-[160px] overflow-y-auto">

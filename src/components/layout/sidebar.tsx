@@ -103,6 +103,16 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           </button>
         </div>
 
+        {/* Store org switcher — top of sidebar so “Add another store”
+            (and per-store WhatsApp) is obvious, not buried under nav. */}
+        <div className="shrink-0 space-y-2 border-b border-sidebar-border px-3 py-3">
+          <p className="px-1 text-[11px] font-semibold tracking-[0.09em] text-muted-foreground uppercase">
+            Store & WhatsApp
+          </p>
+          <WorkspaceSwitcher />
+          {identityFlowNav ? <StoreSwitcher /> : null}
+        </div>
+
         {/* Main navigation — grouped by job so a new subscriber can
             scan Customers / Sales / Automate instead of one flat list. */}
         <nav className="flex-1 overflow-y-auto px-3 py-3" aria-label="Workspace">
@@ -144,13 +154,6 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
           </ul>
         </nav>
 
-        {/* User section */}
-        <div className="shrink-0 border-t border-sidebar-border p-3">
-          <div className="space-y-2 px-1">
-            <WorkspaceSwitcher />
-            {identityFlowNav ? <StoreSwitcher /> : null}
-          </div>
-        </div>
       </aside>
     </>
   );

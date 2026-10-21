@@ -1,5 +1,22 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-10-21 12:20] Fix (UI) — store switcher + Add another store visible at top of sidebar
+
+### Root Cause
+- After the nav regroup, `WorkspaceSwitcher` (Add another store / plan cap) sat at the **bottom** of the sidebar under a long menu, so the one-login → multi-store work looked “not shipped.”
+
+### Objective & Fixes
+- Move the store organization switcher to the **top** of the sidebar (under the logo), labeled **Store & WhatsApp**.
+- Dropdown copy clarifies each store org has its own WhatsApp number.
+
+### Files Modified
+- `src/components/layout/sidebar.tsx`
+- `src/components/dashboard/workspace-switcher.tsx`
+- `changes.md`
+
+### Live
+- Pending merge to `main`.
+
 ## [2026-10-21 17:30] UX (Theme) — light Arham brand as the default
 
 ### Root Cause

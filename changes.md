@@ -1,5 +1,23 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-10-21 12:30] Fix (UI) — store dropdown crash (“This page couldn’t load”)
+
+### Root Cause
+- `DropdownMenuLabel` was wired to Base UI `Menu.GroupLabel`, which **must** be inside `Menu.Group`. Opening **Store & WhatsApp** rendered the label without a group → throw → whole tab crashed.
+
+### Objective & Fixes
+- Harden `DropdownMenuLabel` to a plain presentation `div` (same pattern as the header account menu).
+- Wrap workspace/store switcher items in `DropdownMenuGroup` and guard empty workspace lists.
+
+### Files Modified
+- `src/components/ui/dropdown-menu.tsx`
+- `src/components/dashboard/workspace-switcher.tsx`
+- `src/components/dashboard/store-switcher.tsx`
+- `changes.md`
+
+### Live
+- Pending merge to `main`.
+
 ## [2026-10-21 12:20] Fix (UI) — store switcher + Add another store visible at top of sidebar
 
 ### Root Cause

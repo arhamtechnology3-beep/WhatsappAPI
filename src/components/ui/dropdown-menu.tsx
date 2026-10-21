@@ -53,23 +53,32 @@ function DropdownMenuGroup({ ...props }: MenuPrimitive.Group.Props) {
   return <MenuPrimitive.Group data-slot="dropdown-menu-group" {...props} />
 }
 
+/**
+ * Section label inside a menu. Base UI `GroupLabel` throws unless it is
+ * inside `Menu.Group`, which crashed the Store & WhatsApp dropdown. Use a
+ * plain presentation div instead (same idea as the header account menu).
+ */
 function DropdownMenuLabel({
   className,
   inset,
+  children,
   ...props
-}: MenuPrimitive.GroupLabel.Props & {
+}: React.ComponentProps<"div"> & {
   inset?: boolean
 }) {
   return (
-    <MenuPrimitive.GroupLabel
+    <div
       data-slot="dropdown-menu-label"
-      data-inset={inset}
+      data-inset={inset ? "" : undefined}
+      role="presentation"
       className={cn(
         "px-1.5 py-1 text-xs font-medium text-muted-foreground data-inset:pl-7",
         className
       )}
       {...props}
-    />
+    >
+      {children}
+    </div>
   )
 }
 

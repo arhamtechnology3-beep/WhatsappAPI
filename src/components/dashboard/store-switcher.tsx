@@ -5,6 +5,7 @@ import { ChevronDown, Store } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -86,29 +87,30 @@ export function StoreSwitcher() {
           align="start"
           className="w-56 border border-border bg-popover text-popover-foreground"
         >
-          <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Stores
-            {status ? ` · ${status}` : ""}
-            {plan && plan !== "none" ? ` · ${plan}` : ""}
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator className="bg-border" />
-          {stores.length === 0 ? (
-            <div className="px-3 py-2 text-xs text-muted-foreground">
-              Connect a Shopify store to start a 7-day trial.
-            </div>
-          ) : (
-            stores.map((store) => (
-              <DropdownMenuItem
-                key={store.id}
-                onClick={() => void switchStore(store.id)}
-                className={`cursor-pointer px-3 py-1.5 focus:bg-accent focus:text-accent-foreground ${
-                  store.id === activeId ? "bg-accent/40 font-semibold" : ""
-                }`}
-              >
-                <span className="truncate">{store.name}</span>
-              </DropdownMenuItem>
-            ))
-          )}
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Stores
+              {status ? ` · ${status}` : ""}
+              {plan && plan !== "none" ? ` · ${plan}` : ""}
+            </DropdownMenuLabel>
+            {stores.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-muted-foreground">
+                Connect a Shopify store to start a 7-day trial.
+              </div>
+            ) : (
+              stores.map((store) => (
+                <DropdownMenuItem
+                  key={store.id}
+                  onClick={() => void switchStore(store.id)}
+                  className={`cursor-pointer px-3 py-1.5 focus:bg-accent focus:text-accent-foreground ${
+                    store.id === activeId ? "bg-accent/40 font-semibold" : ""
+                  }`}
+                >
+                  <span className="truncate">{store.name}</span>
+                </DropdownMenuItem>
+              ))
+            )}
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
       {error ? <p className="mt-1 px-1 text-[11px] text-destructive">{error}</p> : null}

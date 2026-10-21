@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -29,9 +30,10 @@ export function WorkspaceSwitcher() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
 
+  const list = Array.isArray(workspaces) ? workspaces : [];
   const ownedCount =
     subscriptionCapacity?.ownedOrganizations ??
-    workspaces.filter((w) => w.role === "owner").length;
+    list.filter((w) => w?.role === "owner").length;
   const maxOrgs = subscriptionCapacity?.maxOrganizations ?? null;
   const atCap = maxOrgs != null && ownedCount >= maxOrgs;
 
@@ -44,9 +46,9 @@ export function WorkspaceSwitcher() {
       const ws = await createWorkspace(newWorkspaceName);
       setIsDialogOpen(false);
       setNewWorkspaceName("");
-      await switchWorkspace(ws.id);
-    } catch (err: any) {
-      setError(err.message || "Failed to create workspace");
+      if (ws?.id) await switchWorkspace(ws.id);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create workspace");
     } finally {
       setCreating(false);
     }
@@ -64,38 +66,47 @@ export function WorkspaceSwitcher() {
           </div>
           <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-56 bg-popover text-popover-foreground border border-border">
-          <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-            Your stores (each has its own WhatsApp)
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator className="bg-border" />
-          <div className="max-h-[160px] overflow-y-auto">
-            {workspaces.map((ws) => (
-              <DropdownMenuItem
-                key={ws.id}
-                onClick={() => {
-                  if (ws.id !== activeWorkspace?.id) {
-                    switchWorkspace(ws.id);
-                  }
-                }}
-                className={`flex items-center justify-between px-3 py-1.5 focus:bg-accent focus:text-accent-foreground cursor-pointer ${
-                  ws.id === activeWorkspace?.id ? "bg-accent/40 font-semibold" : ""
-                }`}
-              >
-                <span className="truncate">{ws.name}</span>
-                {ws.role && (
-                  <span className="text-[9px] uppercase tracking-wider bg-primary/10 text-primary px-1 rounded font-medium">
-                    {ws.role}
-                  </span>
-                )}
-              </DropdownMenuItem>
-            ))}
-          </div>
+        <DropdownMenuContent
+          align="start"
+          className="w-56 bg-popover text-popover-foreground border border-border"
+        >
+          {/* Base UI MenuGroupLabel must be inside Menu.Group or the page crashes. */}
+          <DropdownMenuGroup className="max-h-[160px] overflow-y-auto">
+            <DropdownMenuLabel className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              Your stores (each has its own WhatsApp)
+            </DropdownMenuLabel>
+            {list.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-muted-foreground">
+                No store organization yet.
+              </div>
+            ) : (
+              list.map((ws) => (
+                <DropdownMenuItem
+                  key={ws.id}
+                  onClick={() => {
+                    if (ws.id !== activeWorkspace?.id) {
+                      void switchWorkspace(ws.id);
+                    }
+                  }}
+                  className={`flex items-center justify-between px-3 py-1.5 focus:bg-accent focus:text-accent-foreground cursor-pointer ${
+                    ws.id === activeWorkspace?.id ? "bg-accent/40 font-semibold" : ""
+                  }`}
+                >
+                  <span className="truncate">{ws.name}</span>
+                  {ws.role ? (
+                    <span className="text-[9px] uppercase tracking-wider bg-primary/10 text-primary px-1 rounded font-medium">
+                      {ws.role}
+                    </span>
+                  ) : null}
+                </DropdownMenuItem>
+              ))
+            )}
+          </DropdownMenuGroup>
           <DropdownMenuSeparator className="bg-border" />
           {maxOrgs != null ? (
-            <p className="px-3 py-1 text-[10px] text-muted-foreground">
+            <div className="px-3 py-1 text-[10px] text-muted-foreground">
               {ownedCount} of {maxOrgs} stores on your plan
-            </p>
+            </div>
           ) : null}
           <DropdownMenuItem
             onClick={() => {
@@ -138,7 +149,7 @@ export function WorkspaceSwitcher() {
                 className="bg-muted border-border text-foreground text-xs"
               />
             </div>
-            {error && <p className="text-xs text-red-400">{error}</p>}
+            {error ? <p className="text-xs text-red-400">{error}</p> : null}
             <div className="flex justify-end gap-2 pt-2 border-t border-border/40">
               <Button
                 type="button"

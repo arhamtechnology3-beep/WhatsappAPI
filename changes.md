@@ -1,5 +1,21 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-10-23 17:45] Ops (Broadcasts) — Farmdidi festival outreach script
+
+### Root Cause
+- Competitor Farmdidi follower sheets (29 phones) need the DivyaPrabha festival template plus the default no-purchase shop-now follow-up. Cloud agents cannot see `~/Downloads` or production secrets without them being provided.
+
+### Objective & Fixes
+- Add `scripts/farmdidi-festival-outreach.ts`: build tagged import CSV from xlsx/CSV, upsert contacts with marketing opt-in + `farmdidi` tag, send approved `wacrm_festival_broadcast_v2`, enroll welcome-drip step 2 (`wacrm_shop_now_followup_v1`) with IST send-window clamp. Skips re-enrollment when an in-progress recovery row already exists.
+- Run with `.env.local` (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ENCRYPTION_KEY`) and `--source /path/to/farmdidi.xlsx`. Supports `--dry-run` / `--skip-send`.
+
+### Files Modified
+- `scripts/farmdidi-festival-outreach.ts`
+- `changes.md`
+
+### Live
+- Ops script only — not required on Hostinger until an operator runs it against production Supabase. No migration.
+
 ## [2026-10-21 12:50] Fix (Billing) — Add another store RLS block on workspaces insert
 
 ### Root Cause

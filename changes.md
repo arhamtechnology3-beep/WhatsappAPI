@@ -7,9 +7,9 @@
 - Hostinger **Auto-fix all** is unsafe here (can force wrong majors / break the Next app).
 
 ### Objective & Fixes
-- Bump `next` + `eslint-config-next` to **16.4.6** (pulls patched `sharp`).
+- Bump `next` to **16.4.6** (pulls patched `sharp`). Keep `eslint-config-next` at **16.2.6** and pin `eslint-plugin-react-hooks@7.0.1` (7.1.1 adds repo-wide react-hooks errors unrelated to this security fix).
 - `npm audit fix` (no `--force`) + bump `shadcn` / `vitest` where safe.
-- Overrides: `proxy-addr@^2.0.8`, `body-parser@^2.4.0`, `@modelcontextprotocol/sdk@^1.32.2`.
+- Overrides: `proxy-addr@^2.0.8`, `body-parser@^2.4.0`, `@modelcontextprotocol/sdk@^1.32.2`, `eslint-plugin-react-hooks@7.0.1`.
 - Audit: **0 critical** (was 2). Remaining highs are mostly eslint/vitest/shadcn CLI (dev tooling), not the production request path.
 
 ### Files Modified

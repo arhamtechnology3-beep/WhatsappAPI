@@ -1,5 +1,3 @@
-import type { NextConfig } from "next";
-
 /**
  * Baseline security headers applied to every response.
  *
@@ -15,6 +13,11 @@ import type { NextConfig } from "next";
  *   - Permissions-Policy: we don't use camera / microphone / etc, so
  *     deny them. A supply-chain compromise or a forgotten plugin
  *     can't silently opt back in.
+ *
+ * Hostinger note: keep this as `.mjs` (not `.ts`). Hostinger's glibc
+ * cannot load Next 16.3+ native SWC, so config loading falls back to
+ * WASM; a TypeScript `next.config.ts` then fails before `next build
+ * --webpack` can run. Plain ESM avoids that SWC/TS config path.
  */
 const SECURITY_HEADERS = [
   {
@@ -58,12 +61,13 @@ const SECURITY_HEADERS = [
       "form-action 'self'",
     ].join("; "),
   },
-] as const;
+];
 
-const nextConfig: NextConfig = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   devIndicators: {
     appIsrStatus: false,
-  } as any,
+  },
   /**
    * Cache-Control policy.
    *

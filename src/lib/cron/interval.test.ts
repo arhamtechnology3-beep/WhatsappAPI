@@ -6,7 +6,8 @@ import {
 } from './interval'
 
 describe('resolveCronIntervalMs', () => {
-  it('defaults when unset or invalid', () => {
+  it('defaults to 90 minutes when unset or invalid', () => {
+    expect(DEFAULT_CRON_INTERVAL_MS).toBe(90 * 60 * 1000)
     expect(resolveCronIntervalMs(undefined)).toBe(DEFAULT_CRON_INTERVAL_MS)
     expect(resolveCronIntervalMs('')).toBe(DEFAULT_CRON_INTERVAL_MS)
     expect(resolveCronIntervalMs('nope')).toBe(DEFAULT_CRON_INTERVAL_MS)

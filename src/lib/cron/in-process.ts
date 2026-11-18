@@ -26,7 +26,7 @@ function cronGlobal(): CronGlobal {
  *
  * Skip on Vercel (platform cron covers it). Hostinger should still add
  * an hPanel cron to GET /api/cron/tick so a sleeping Node process wakes
- * even if this timer is paused. Default cadence is 5 minutes (override
+ * even if this timer is paused. Default cadence is 90 minutes (override
  * with `CRON_INTERVAL_MS`); overlapping ticks are single-flight locked.
  */
 export function startInProcessCron() {

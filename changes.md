@@ -1,5 +1,23 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-11-18 14:55] Fix (Build) — Hostinger cannot build Next 16.4.6 (GLIBC / SWC)
+
+### Root Cause
+- Hostinger Node 20 image has old glibc (`GLIBC_2.29` missing). Next 16.4.6’s native SWC fails, falls back to wasm, then crashes loading `next.config.ts` (`ERR_MODULE_NOT_FOUND` for hashed `.next.config`).
+- Deploys of #49 / #50 failed; live stayed on `2ff59477` (Next 16.2.6), which still builds.
+
+### Objective & Fixes
+- Pin `next` back to **16.2.6** (last Hostinger-good version).
+- Pin `vitest` back to **^4.1.9** (vitest 5 wants Node ≥22; Hostinger is Node 20).
+- Keep security overrides (`proxy-addr`, `body-parser`, MCP SDK, react-hooks) from #49.
+
+### Files Modified
+- `package.json`, `package-lock.json`
+- `changes.md`
+
+### Live
+- Merge → Hostinger redeploy of main. Confirm Deployments shows **Completed**. No migration.
+
 ## [2026-11-18 13:15] Fix (Ops) — in-process cron off by default on Hostinger
 
 ### Root Cause

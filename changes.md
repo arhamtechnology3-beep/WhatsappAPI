@@ -1,5 +1,24 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-11-18 12:55] Fix (Security) — clear Hostinger critical dependency findings
+
+### Root Cause
+- hPanel Security → Vulnerabilities listed next@14.2.6 RCE, proxy-addr IP spoofing, body-parser DoS, and MCP SDK issues. Live app was already on Next 16.x; remaining critical/high came from an outdated Next pin (16.2.6) plus transitive packages under the shadcn CLI tree.
+- Hostinger **Auto-fix all** is unsafe here (can force wrong majors / break the Next app).
+
+### Objective & Fixes
+- Bump `next` + `eslint-config-next` to **16.4.6** (pulls patched `sharp`).
+- `npm audit fix` (no `--force`) + bump `shadcn` / `vitest` where safe.
+- Overrides: `proxy-addr@^2.0.8`, `body-parser@^2.4.0`, `@modelcontextprotocol/sdk@^1.32.2`.
+- Audit: **0 critical** (was 2). Remaining highs are mostly eslint/vitest/shadcn CLI (dev tooling), not the production request path.
+
+### Files Modified
+- `package.json`, `package-lock.json`
+- `changes.md`
+
+### Live
+- Merge → Hostinger redeploy, then re-run the vulnerability scan. Do **not** click Auto-fix all. No migration.
+
 ## [2026-11-18 12:33] Fix (Ops) — cron every 90 minutes to keep Hostinger plan load low
 
 ### Root Cause

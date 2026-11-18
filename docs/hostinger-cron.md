@@ -13,10 +13,10 @@ Set these env vars on Hostinger (same value is fine for the secrets):
 ```
 AUTOMATION_CRON_SECRET=<long random string>
 CRON_SECRET=<same string>
-CRON_INTERVAL_MS=180000
+CRON_INTERVAL_MS=300000
 ```
 
-`CRON_INTERVAL_MS` is the in-process ticker cadence (milliseconds). Default is **180000 (3 minutes)**. Do not set it below 60000.
+`CRON_INTERVAL_MS` is the in-process ticker cadence (milliseconds). Default is **300000 (5 minutes)**. Do not set it below 60000.
 
 Optional: if you rely only on the hPanel curl below and want zero in-process timer, set `DISABLE_IN_PROCESS_CRON=1`.
 

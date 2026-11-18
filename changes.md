@@ -1,14 +1,15 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
-## [2026-11-18 12:14] Fix (Ops) — lower cron frequency so Hostinger plan load stops pegging at ~100%
+## [2026-11-18 12:27] Fix (Ops) — lower cron frequency so Hostinger plan load stops pegging at ~100%
 
 ### Root Cause
-- In-process ticker + hPanel curl both ran a full 9-job tick every minute. When a tick took longer than 60s (Meta/Shopify/visitor scans), the next minute started another pass with no lock — CPU stacked until Business plan resources hit ~98% and `whatsapp.arhamtechnology.com` returned 503/504.
+- In-process ticker + hPanel curl both ran a full 9-job tick every minute. When a tick took longer than 60s (Meta/Shopify/visitor scans), the next minute started another pass with no lock — CPU stacked until Business plan resources hit ~98% and `whatsapp.arhamtechnology.com` (and PR previews on the same plan) returned 503/504.
 - Retention DELETE, visitor recovery, and inquiry enroll also ran on every minute tick even though they need minutes-to-hours cadence.
+- A 15s post-start first tick competed with boot HTTP on an already saturated plan.
 
 ### Objective & Fixes
 - Single-flight lock on `runAllCronJobs` — overlapping ticks return `{ ok: true, skipped: "already_running" }` instead of stacking.
-- Default in-process interval **3 minutes** (`CRON_INTERVAL_MS`, floor 60s); docs recommend hPanel `*/5 * * * *`.
+- Default in-process interval **5 minutes** (`CRON_INTERVAL_MS`, floor 60s); first tick waits **90s** after `next start`; docs recommend hPanel `*/5 * * * *`.
 - Throttle heavy jobs inside the tick: visitors 5m, identityflow/retention 1h, inquiry enroll 5m (templates 15m / shipments 2h already existed).
 - `vercel.json` schedules relaxed (Hostinger ignores them; hygiene only).
 
@@ -20,7 +21,8 @@
 - `changes.md`
 
 ### Live
-- Merge this PR → Hostinger auto-deploy. Then in hPanel: set cron to `*/5 * * * *`, optionally set `CRON_INTERVAL_MS=180000` (or leave unset), restart Node. No migration.
+- **Immediate (before/without merge):** in hPanel Resources → **Boost resources**; pause or change the live site’s every-minute cron hitting `/api/cron/tick` to `*/5 * * * *`; restart the WhatsApp Node app.
+- Merge this PR → Hostinger auto-deploy. Leave `CRON_INTERVAL_MS` unset (5 min default) or set `300000`. No migration.
 - If load stays high: set `DISABLE_IN_PROCESS_CRON=1` and rely on the 5-minute hPanel curl only.
 
 ## [2026-10-21 12:50] Fix (Billing) — Add another store RLS block on workspaces insert

@@ -1,7 +1,12 @@
 import { cronSecretConfigured } from '@/lib/cron/auth'
 import { resolveCronIntervalMs } from '@/lib/cron/interval'
 
-const FIRST_DELAY_MS = 15_000
+/**
+ * Wait before the first tick so `next start` can answer HTTP (health,
+ * login) before Meta/Shopify/visitor work piles on. On a saturated
+ * Hostinger plan, a 15s first tick was enough to keep nginx at 504.
+ */
+const FIRST_DELAY_MS = 90_000
 
 type CronGlobal = typeof globalThis & {
   __wacrmCronTimer?: ReturnType<typeof setInterval>
@@ -21,7 +26,7 @@ function cronGlobal(): CronGlobal {
  *
  * Skip on Vercel (platform cron covers it). Hostinger should still add
  * an hPanel cron to GET /api/cron/tick so a sleeping Node process wakes
- * even if this timer is paused. Default cadence is 3 minutes (override
+ * even if this timer is paused. Default cadence is 5 minutes (override
  * with `CRON_INTERVAL_MS`); overlapping ticks are single-flight locked.
  */
 export function startInProcessCron() {
@@ -41,7 +46,7 @@ export function startInProcessCron() {
     )
   } else {
     console.info(
-      `[cron] in-process ticker every ${Math.round(intervalMs / 1000)}s (CRON_INTERVAL_MS)`,
+      `[cron] in-process ticker every ${Math.round(intervalMs / 1000)}s after ${Math.round(FIRST_DELAY_MS / 1000)}s warm-up (CRON_INTERVAL_MS)`,
     )
   }
 

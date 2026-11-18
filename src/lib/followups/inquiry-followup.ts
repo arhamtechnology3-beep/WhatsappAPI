@@ -21,8 +21,8 @@ export const INQUIRY_SILENCE_HOURS = 4
 export const INQUIRY_LOOKBACK_DAYS = 7
 /** Defer an in-flight drip this many hours after a new inbound. */
 export const INQUIRY_DEFER_HOURS = 4
-/** Max enrollments per cron tick (keeps Meta/Hostinger load bounded). */
-export const INQUIRY_ENROLL_BATCH = 40
+/** Max enrollments per cron tick (keeps Meta/Hostinger NPROC load bounded). */
+export const INQUIRY_ENROLL_BATCH = 10
 
 const DEFAULT_PRODUCT = 'handmade pickles'
 const STORE_HOST = /divyaprabhafoods\.com/i

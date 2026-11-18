@@ -81,7 +81,8 @@ export async function runShopifyAbandonedCron() {
     }
 
     // 3) PROCESS THE WHATSAPP SEND JOBS QUEUE
-    const sendResult = await processWhatsAppSendJobs({ supabase, limit: 20 })
+    // Small batch: Hostinger Business caps NPROC at 120 across all sites.
+    const sendResult = await processWhatsAppSendJobs({ supabase, limit: 5 })
     jobsProcessed = sendResult.processed
 
     return NextResponse.json({

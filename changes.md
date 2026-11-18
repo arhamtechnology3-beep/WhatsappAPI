@@ -1,5 +1,25 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-11-18 22:55] Fix (Ops) — cut NPROC pressure (2h cron + smaller batches)
+
+### Root Cause
+- Hostinger charts show **Max processes peak 120/120** with hundreds of faults — that is the plan limit causing 503/504, not disk/RAM.
+- Cron + enroll/send batches still spawn too many short-lived processes when the tick runs.
+
+### Objective & Fixes
+- Docs + `vercel.json`: recommend / schedule **every 2 hours** (`0 */2 * * *`).
+- Smaller batches: inquiry enroll **10**, WhatsApp send jobs **5** per tick.
+- Throttle visitors / inquiry enroll to 2h; identityflow retention to 6h.
+- Add `docs/hostinger-nproc-relief.md` + `scripts/hostinger-cleanup.sh` (ffmpeg cache dry-run; hbuilds prune via hPanel only).
+
+### Files Modified
+- `src/lib/cron/tick.ts`, `src/lib/followups/inquiry-followup.ts`, `src/lib/shopify/{abandoned-cron,sequence-cron}.ts`
+- `docs/hostinger-cron.md`, `docs/hostinger-nproc-relief.md`, `scripts/hostinger-cleanup.sh`
+- `vercel.json`, `changes.md`
+
+### Live
+- Merge → Hostinger deploy. **Operator still must:** Stop running processes; set hPanel cron to `0 */2 * * *`; optionally clear `.cache/ffmpeg-static-nodejs` and prune old deployments. No migration.
+
 ## [2026-11-18 14:55] Fix (Build) — Hostinger cannot build Next 16.4.6 (GLIBC / SWC)
 
 ### Root Cause

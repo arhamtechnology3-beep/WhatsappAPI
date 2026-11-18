@@ -8,6 +8,8 @@ import { sweepOpenShipments } from '@/lib/logistics/shipment-sweep'
 import { syncPendingTemplateStatuses } from '@/lib/whatsapp/pending-template-sync'
 import { runOrderFollowupsCron } from '@/lib/followups/order-followups'
 import { runVisitorRecoveryCron } from '@/lib/visitors/recovery-cron'
+import { tryAcquireCronTickLock, releaseCronTickLock } from '@/lib/cron/lock'
+import { shouldRunThrottled } from '@/lib/cron/throttle'
 import { NextResponse } from 'next/server'
 
 type JobName =
@@ -23,8 +25,14 @@ type JobName =
 
 export type CronTickResult = {
   ok: boolean
+  skipped?: 'already_running'
   jobs: Record<JobName, { status: number; body: unknown }>
 }
+
+/** Retention + trial expiry — safe hourly; DELETE every tick burns CPU. */
+const IDENTITYFLOW_INTERVAL_MS = 60 * 60 * 1000
+/** Visitor session scans — minutes of inactivity already; 5 min is enough. */
+const VISITORS_INTERVAL_MS = 5 * 60 * 1000
 
 async function bodyOf(res: Response): Promise<unknown> {
   try {
@@ -46,6 +54,9 @@ async function runJob(name: JobName, fn: () => Promise<Response>) {
 }
 
 async function runIdentityFlowCron(): Promise<Response> {
+  if (!shouldRunThrottled('identityflow', IDENTITYFLOW_INTERVAL_MS)) {
+    return NextResponse.json({ ok: true, skipped: 'throttled' })
+  }
   const supabase = supabaseAdmin()
   const expired = await reconcileTrialExpiry(supabase)
   const retention = await runDataRetention(supabase)
@@ -62,12 +73,15 @@ async function runTemplateStatusSync(): Promise<Response> {
   return NextResponse.json({ ok: true, ...result })
 }
 
-/**
- * Run every delayed-job worker once. Sequential so Hostinger's Node
- * process does not pile Meta/Shopify bursts on the same tick.
- */
-export async function runAllCronJobs(): Promise<CronTickResult> {
-  const jobs: CronTickResult['jobs'] = {
+async function runVisitorsCron(): Promise<Response> {
+  if (!shouldRunThrottled('visitors', VISITORS_INTERVAL_MS)) {
+    return NextResponse.json({ ok: true, skipped: 'throttled', processed: 0 })
+  }
+  return runVisitorRecoveryCron()
+}
+
+function emptyJobs(): CronTickResult['jobs'] {
+  return {
     shopify: { status: 500, body: { error: 'not-run' } },
     sequences: { status: 500, body: { error: 'not-run' } },
     automations: { status: 500, body: { error: 'not-run' } },
@@ -78,24 +92,48 @@ export async function runAllCronJobs(): Promise<CronTickResult> {
     followups: { status: 500, body: { error: 'not-run' } },
     visitors: { status: 500, body: { error: 'not-run' } },
   }
+}
 
-  const runners: Array<[JobName, () => Promise<Response>]> = [
-    ['shopify', runShopifyAbandonedCron],
-    ['sequences', runShopifySequenceCron],
-    ['automations', runAutomationsCron],
-    ['flows', runFlowsCron],
-    ['identityflow', runIdentityFlowCron],
-    ['shipments', runShipmentSweep],
-    ['templates', runTemplateStatusSync],
-    ['followups', runOrderFollowupsCron],
-    ['visitors', runVisitorRecoveryCron],
-  ]
-
-  for (const [name, fn] of runners) {
-    const result = await runJob(name, fn)
-    jobs[name] = { status: result.status, body: result.body }
+/**
+ * Run every delayed-job worker once. Sequential so Hostinger's Node
+ * process does not pile Meta/Shopify bursts on the same tick.
+ *
+ * Overlapping invocations (in-process timer + hPanel curl while a prior
+ * tick is still draining) return `{ skipped: 'already_running' }` instead
+ * of stacking another full pass.
+ */
+export async function runAllCronJobs(): Promise<CronTickResult> {
+  if (!tryAcquireCronTickLock()) {
+    return {
+      ok: true,
+      skipped: 'already_running',
+      jobs: emptyJobs(),
+    }
   }
 
-  const ok = Object.values(jobs).every((job) => job.status >= 200 && job.status < 300)
-  return { ok, jobs }
+  const jobs = emptyJobs()
+
+  try {
+    const runners: Array<[JobName, () => Promise<Response>]> = [
+      ['shopify', runShopifyAbandonedCron],
+      ['sequences', runShopifySequenceCron],
+      ['automations', runAutomationsCron],
+      ['flows', runFlowsCron],
+      ['identityflow', runIdentityFlowCron],
+      ['shipments', runShipmentSweep],
+      ['templates', runTemplateStatusSync],
+      ['followups', runOrderFollowupsCron],
+      ['visitors', runVisitorsCron],
+    ]
+
+    for (const [name, fn] of runners) {
+      const result = await runJob(name, fn)
+      jobs[name] = { status: result.status, body: result.body }
+    }
+
+    const ok = Object.values(jobs).every((job) => job.status >= 200 && job.status < 300)
+    return { ok, jobs }
+  } finally {
+    releaseCronTickLock()
+  }
 }

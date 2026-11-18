@@ -1,6 +1,6 @@
 import { cronSecretConfigured } from '@/lib/cron/auth'
+import { resolveCronIntervalMs } from '@/lib/cron/interval'
 
-const INTERVAL_MS = 60_000
 const FIRST_DELAY_MS = 15_000
 
 type CronGlobal = typeof globalThis & {
@@ -20,8 +20,9 @@ function cronGlobal(): CronGlobal {
  * something else GETs the cron routes (often a dashboard visit).
  *
  * Skip on Vercel (platform cron covers it). Hostinger should still add
- * a 1-minute hPanel cron to GET /api/cron/tick so a sleeping Node
- * process wakes even if this timer is paused.
+ * an hPanel cron to GET /api/cron/tick so a sleeping Node process wakes
+ * even if this timer is paused. Default cadence is 3 minutes (override
+ * with `CRON_INTERVAL_MS`); overlapping ticks are single-flight locked.
  */
 export function startInProcessCron() {
   if (process.env.VERCEL) return
@@ -32,9 +33,15 @@ export function startInProcessCron() {
   if (g.__wacrmCronStarted) return
   g.__wacrmCronStarted = true
 
+  const intervalMs = resolveCronIntervalMs()
+
   if (!cronSecretConfigured()) {
     console.warn(
       '[cron] AUTOMATION_CRON_SECRET / CRON_SECRET is not set — GET /api/cron/tick will 503. In-process ticker still runs while Node is up. Set the secret and add an hPanel cron so a sleeping process still wakes.',
+    )
+  } else {
+    console.info(
+      `[cron] in-process ticker every ${Math.round(intervalMs / 1000)}s (CRON_INTERVAL_MS)`,
     )
   }
 
@@ -42,6 +49,10 @@ export function startInProcessCron() {
     try {
       const { runAllCronJobs } = await import('@/lib/cron/tick')
       const result = await runAllCronJobs()
+      if (result.skipped === 'already_running') {
+        console.warn('[cron] in-process tick skipped — prior tick still running')
+        return
+      }
       if (!result.ok) {
         console.error('[cron] in-process tick had failures', result.jobs)
       }
@@ -55,6 +66,6 @@ export function startInProcessCron() {
     if (g.__wacrmCronTimer) return
     g.__wacrmCronTimer = setInterval(() => {
       void tick()
-    }, INTERVAL_MS)
+    }, intervalMs)
   }, FIRST_DELAY_MS)
 }

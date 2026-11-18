@@ -5,6 +5,7 @@ import { runAllCronJobs } from '@/lib/cron/tick'
 /**
  * Single URL for Hostinger hPanel cron / curl.
  * Hits cart jobs, sequence drips, automation waits, and flow timeouts.
+ * Overlapping calls return 200 with `skipped: "already_running"`.
  */
 export async function GET(request: Request) {
   const denied = authorizeCron(request)

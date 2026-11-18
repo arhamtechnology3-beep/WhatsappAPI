@@ -10,10 +10,14 @@ import {
   shouldStopInquiryDrip,
 } from '@/lib/shopify/recovery-conversion'
 import { enrollInquiryFollowups } from '@/lib/followups/inquiry-followup'
+import { shouldRunThrottled } from '@/lib/cron/throttle'
 import {
   clampToIstSendWindow,
   shouldClampWelcomeFollowup,
 } from '@/lib/shopify/send-window'
+
+/** Inbox inquiry scan is heavy; 5 min is fine vs silence window of hours. */
+const INQUIRY_ENROLL_INTERVAL_MS = 5 * 60 * 1000
 import {
   duplicateTrackingIdsToStop,
   metadataWithSentStep,
@@ -51,7 +55,11 @@ export async function runShopifySequenceCron() {
   try {
     // 1) Enroll inbox inquirers who never purchased (tight 2-day drip)
     try {
-      inquiryEnroll = await enrollInquiryFollowups(supabase)
+      if (shouldRunThrottled('inquiry_enroll', INQUIRY_ENROLL_INTERVAL_MS)) {
+        inquiryEnroll = await enrollInquiryFollowups(supabase)
+      } else {
+        inquiryEnroll = { scanned: 0, enrolled: 0, skipped: 0 }
+      }
     } catch (enrollErr) {
       console.error('[shopify-sequence-cron] inquiry enroll failed:', enrollErr)
       inquiryEnroll = { scanned: 0, enrolled: 0, skipped: 0 }

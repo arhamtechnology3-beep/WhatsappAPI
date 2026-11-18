@@ -1,9 +1,9 @@
 {
   "crons": [
-    { "path": "/api/cron/tick", "schedule": "* * * * *" },
-    { "path": "/api/shopify/cron", "schedule": "* * * * *" },
-    { "path": "/api/shopify/cron/sequences", "schedule": "* * * * *" },
-    { "path": "/api/automations/cron", "schedule": "* * * * *" },
+    { "path": "/api/cron/tick", "schedule": "*/3 * * * *" },
+    { "path": "/api/shopify/cron", "schedule": "*/5 * * * *" },
+    { "path": "/api/shopify/cron/sequences", "schedule": "*/5 * * * *" },
+    { "path": "/api/automations/cron", "schedule": "*/5 * * * *" },
     { "path": "/api/flows/cron", "schedule": "*/5 * * * *" }
   ]
 }

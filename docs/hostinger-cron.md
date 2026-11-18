@@ -15,7 +15,7 @@ AUTOMATION_CRON_SECRET=<long random string>
 CRON_SECRET=<same string>
 ```
 
-Do **not** set `ENABLE_IN_PROCESS_CRON` on shared hosting unless you intentionally want a second timer inside Node. Default is off — the hourly hPanel curl below is enough.
+Do **not** set `ENABLE_IN_PROCESS_CRON` on shared hosting unless you intentionally want a second timer inside Node. Default is off — the hPanel curl below is enough.
 
 Restart the Node app after changing env.
 
@@ -35,11 +35,13 @@ If the panel cannot set headers:
 curl -fsS "https://whatsapp.arhamtechnology.com/api/cron/tick?secret=YOUR_SECRET"
 ```
 
-Schedule: **once per hour** (`0 * * * *`). Do **not** use every-minute or every-5-minute schedules — those push Business plan resources to 100% and cause 503/504.
+Schedule: every **2 hours** (`0 */2 * * *`). The plan’s **Max processes (NPROC) = 120** is shared by all 10 sites; every-minute / hourly ticks under load cause process faults and 503/504.
 
-Overlapping ticks are single-flight locked (`already_running` JSON). Heavy jobs (visitor recovery, retention, inquiry enroll, Shiprocket, template status) are throttled inside the tick.
+Overlapping ticks are single-flight locked (`already_running` JSON). Heavy jobs (visitor recovery, retention, inquiry enroll, Shiprocket, template status) are throttled inside the tick; send/enroll batches are small.
 
 A 200 JSON body with `"ok": true` means workers ran (or a concurrent tick was safely skipped).
+
+See also: [`hostinger-nproc-relief.md`](./hostinger-nproc-relief.md).
 
 ## 3. Shopify webhooks must hit production
 
@@ -54,14 +56,13 @@ not localhost or ngrok. Immediate templates (order confirmed) send when Shopify 
 | Event | Needs you logged in? | Needs cron? |
 | --- | --- | --- |
 | Order confirmed / shipped (webhook) | No | No (Hostinger Node must be up) |
-| Cart abandoned after 30 min | No | Yes (may wait until next hourly tick) |
+| Cart abandoned after 30 min | No | Yes (may wait until next 2h tick) |
 | Cart / browse drip steps | No | Yes |
 | Automation wait steps | No | Yes |
 
-## 5. If plan resources stay near 100%
+## 5. If Max processes (NPROC) hits 120
 
-1. Remember the hPanel “last 24 hours” bar stays high until the overloaded hours roll off — it is not instantaneous.
-2. Confirm hPanel cron is **hourly** (`0 * * * *`) and only one job hits `/api/cron/tick`.
-3. Confirm `ENABLE_IN_PROCESS_CRON` is **unset**.
-4. Use **Boost resources** and **Stop running processes**, then restart the WhatsApp Node app.
-5. Other sites on the same plan (n8n, marketing sites, etc.) also share the 100% budget.
+1. **Stop running processes** + restart WhatsApp Node.
+2. Confirm cron is `0 */2 * * *` and `ENABLE_IN_PROCESS_CRON` is unset.
+3. Prune old `hbuilds` / clear `.cache/ffmpeg-static-nodejs` — see [`hostinger-nproc-relief.md`](./hostinger-nproc-relief.md).
+4. Pause unused apps on the same plan (n8n, idle Node sites).

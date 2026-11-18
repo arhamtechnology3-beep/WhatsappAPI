@@ -16,8 +16,8 @@ import {
   shouldClampWelcomeFollowup,
 } from '@/lib/shopify/send-window'
 
-/** Inbox inquiry scan is heavy; 5 min is fine vs silence window of hours. */
-const INQUIRY_ENROLL_INTERVAL_MS = 5 * 60 * 1000
+/** Inbox inquiry scan is heavy; once per 2h matches hPanel cron cadence. */
+const INQUIRY_ENROLL_INTERVAL_MS = 2 * 60 * 60 * 1000
 import {
   duplicateTrackingIdsToStop,
   metadataWithSentStep,

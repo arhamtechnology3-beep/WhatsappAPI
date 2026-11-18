@@ -29,10 +29,10 @@ export type CronTickResult = {
   jobs: Record<JobName, { status: number; body: unknown }>
 }
 
-/** Retention + trial expiry — safe hourly; DELETE every tick burns CPU. */
-const IDENTITYFLOW_INTERVAL_MS = 60 * 60 * 1000
-/** Visitor session scans — minutes of inactivity already; 5 min is enough. */
-const VISITORS_INTERVAL_MS = 5 * 60 * 1000
+/** Retention + trial expiry — once per 6h; DELETE burns CPU/NPROC. */
+const IDENTITYFLOW_INTERVAL_MS = 6 * 60 * 60 * 1000
+/** Visitor session scans — once per 2h (hPanel cron is also every 2h). */
+const VISITORS_INTERVAL_MS = 2 * 60 * 60 * 1000
 
 async function bodyOf(res: Response): Promise<unknown> {
   try {

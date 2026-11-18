@@ -13,18 +13,15 @@ Set these env vars on Hostinger (same value is fine for the secrets):
 ```
 AUTOMATION_CRON_SECRET=<long random string>
 CRON_SECRET=<same string>
-CRON_INTERVAL_MS=5400000
 ```
 
-`CRON_INTERVAL_MS` is the in-process ticker cadence (milliseconds). Default is **5400000 (90 minutes)**. Do not set it below 60000. Use `3600000` for a 60-minute cadence if you prefer.
-
-Optional: if you rely only on the hPanel curl below and want zero in-process timer, set `DISABLE_IN_PROCESS_CRON=1`.
+Do **not** set `ENABLE_IN_PROCESS_CRON` on shared hosting unless you intentionally want a second timer inside Node. Default is off — the hourly hPanel curl below is enough.
 
 Restart the Node app after changing env.
 
-## 2. Add an hPanel cron (recommended)
+## 2. Add an hPanel cron (required)
 
-The in-process timer only runs while Node is awake. An hPanel cron wakes it and drains due jobs even after idle sleep.
+Without an hPanel cron, delayed jobs only run when something else wakes Node (often a dashboard visit).
 
 Command (prefer header; Hostinger wget can use the query instead):
 
@@ -38,9 +35,9 @@ If the panel cannot set headers:
 curl -fsS "https://whatsapp.arhamtechnology.com/api/cron/tick?secret=YOUR_SECRET"
 ```
 
-Schedule: **once per hour** (`0 * * * *`). Do **not** use every-minute or every-5-minute schedules — those stack with the in-process ticker on Business shared hosting and cause 503/504. (Standard cron cannot express exactly 90 minutes; hourly is the safe panel match. In-process default is 90 minutes.)
+Schedule: **once per hour** (`0 * * * *`). Do **not** use every-minute or every-5-minute schedules — those push Business plan resources to 100% and cause 503/504.
 
-Overlapping ticks are single-flight locked (`already_running` JSON) so a slow Meta/Shopify pass cannot pile a second full run. Heavy jobs (visitor recovery, retention, inquiry enroll, Shiprocket, template status) are throttled inside the tick.
+Overlapping ticks are single-flight locked (`already_running` JSON). Heavy jobs (visitor recovery, retention, inquiry enroll, Shiprocket, template status) are throttled inside the tick.
 
 A 200 JSON body with `"ok": true` means workers ran (or a concurrent tick was safely skipped).
 
@@ -57,13 +54,14 @@ not localhost or ngrok. Immediate templates (order confirmed) send when Shopify 
 | Event | Needs you logged in? | Needs cron? |
 | --- | --- | --- |
 | Order confirmed / shipped (webhook) | No | No (Hostinger Node must be up) |
-| Cart abandoned after 30 min | No | Yes (may wait until next hourly/90-min tick) |
+| Cart abandoned after 30 min | No | Yes (may wait until next hourly tick) |
 | Cart / browse drip steps | No | Yes |
 | Automation wait steps | No | Yes |
 
 ## 5. If plan resources stay near 100%
 
-1. Confirm hPanel cron is **hourly** (`0 * * * *`) — never every minute / every 5 minutes.
-2. Confirm `CRON_INTERVAL_MS` is unset (90 min default) or `5400000` / `3600000`.
-3. Prefer one wake path: set `DISABLE_IN_PROCESS_CRON=1` and rely on the hourly hPanel curl alone.
-4. Use **Boost resources** in hPanel only as a temporary bridge while the deploy rolls out.
+1. Remember the hPanel “last 24 hours” bar stays high until the overloaded hours roll off — it is not instantaneous.
+2. Confirm hPanel cron is **hourly** (`0 * * * *`) and only one job hits `/api/cron/tick`.
+3. Confirm `ENABLE_IN_PROCESS_CRON` is **unset**.
+4. Use **Boost resources** and **Stop running processes**, then restart the WhatsApp Node app.
+5. Other sites on the same plan (n8n, marketing sites, etc.) also share the 100% budget.

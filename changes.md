@@ -1,5 +1,26 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-11-18 23:15] Fix (Security) — clear Hostinger Next RCE findings without breaking deploy
+
+### Root Cause
+- hPanel Security → Vulnerabilities still listed **critical** `next@16.2.6` RCE advisories (GHSA-673q / image / next/og) plus high `vite` / `follow-redirects`.
+- Earlier bump to Next **16.4.6** failed on Hostinger because native SWC needs `GLIBC_2.29`, then TypeScript `next.config.ts` could not load under the WASM fallback.
+
+### Objective & Fixes
+- Re-bump `next` to **16.4.6** (clears critical Next advisories; `npm audit` → **0 critical / 0 high**).
+- Replace `next.config.ts` with **`next.config.mjs`** so Hostinger can load config without native SWC; keep `next build --webpack`.
+- Overrides: `vite@8.1.6`, `follow-redirects@1.16.3`; bump `vitest` to **4.1.12** (Node 20-safe).
+- Leave `eslint-config-next@16.2.6` + `eslint-plugin-react-hooks@7.0.1` pin (avoids unrelated react-hooks lint breakage).
+- Remaining audit noise: moderate `minimatch` under **shadcn CLI** only — do **not** click Hostinger Auto-fix all.
+
+### Files Modified
+- `package.json`, `package-lock.json`
+- `next.config.mjs` (added), `next.config.ts` (removed)
+- `changes.md`
+
+### Live
+- Merge → Hostinger redeploy → confirm Deployments **Completed** → re-run Vulnerabilities scan. No migration.
+
 ## [2026-11-18 22:55] Fix (Ops) — cut NPROC pressure (2h cron + smaller batches)
 
 ### Root Cause

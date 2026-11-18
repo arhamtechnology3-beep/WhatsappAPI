@@ -1,5 +1,23 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-11-18 13:15] Fix (Ops) — in-process cron off by default on Hostinger
+
+### Root Cause
+- After hourly hPanel cron + 90-min ticker, plan “last 24 hours” was still 100% (rolling window) and Node could still keep an in-process timer. Dual wake paths under a saturated Business plan keep CPU high.
+
+### Objective & Fixes
+- In-process ticker is **opt-in** (`ENABLE_IN_PROCESS_CRON=1`). Default: off — hourly hPanel `/api/cron/tick` only.
+- Docs / env example updated. `DISABLE_IN_PROCESS_CRON=1` still forces off.
+
+### Files Modified
+- `src/lib/cron/in-process.ts`
+- `docs/hostinger-cron.md`, `.env.local.example`
+- `changes.md`
+
+### Live
+- Merge → Hostinger redeploy → restart Node. No env change required (default off). No migration.
+- Immediate relief: Boost resources + Stop running processes; the 24h usage bar drops only as overloaded hours age out.
+
 ## [2026-11-18 12:55] Fix (Security) — clear Hostinger critical dependency findings
 
 ### Root Cause

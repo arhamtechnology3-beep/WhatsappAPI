@@ -18,21 +18,27 @@ function cronGlobal(): CronGlobal {
 }
 
 /**
- * Tick delayed automations from `next start` itself.
+ * Optional in-process ticker for delayed automations.
  *
  * Live is Hostinger Node, not Vercel, so vercel.json crons never fire.
- * Without this loop, cart / sequence / wait-step jobs only send when
- * something else GETs the cron routes (often a dashboard visit).
- *
- * Skip on Vercel (platform cron covers it). Hostinger should still add
- * an hPanel cron to GET /api/cron/tick so a sleeping Node process wakes
- * even if this timer is paused. Default cadence is 90 minutes (override
- * with `CRON_INTERVAL_MS`); overlapping ticks are single-flight locked.
+ * Default is **off** on Hostinger shared hosting: rely on the hourly
+ * hPanel curl to `/api/cron/tick` so Node does not keep a second timer
+ * burning CPU. Set `ENABLE_IN_PROCESS_CRON=1` only if you need the
+ * in-process loop (e.g. no hPanel cron). `DISABLE_IN_PROCESS_CRON=1`
+ * still forces off.
  */
 export function startInProcessCron() {
   if (process.env.VERCEL) return
   if (process.env.DISABLE_IN_PROCESS_CRON === '1') return
   if (process.env.NODE_ENV === 'test') return
+  // Opt-in only — Hostinger Business plan saturates when this runs
+  // alongside hPanel cron under load.
+  if (process.env.ENABLE_IN_PROCESS_CRON !== '1') {
+    console.info(
+      '[cron] in-process ticker off (default). Hourly hPanel curl to /api/cron/tick is enough. Set ENABLE_IN_PROCESS_CRON=1 to enable.',
+    )
+    return
+  }
 
   const g = cronGlobal()
   if (g.__wacrmCronStarted) return

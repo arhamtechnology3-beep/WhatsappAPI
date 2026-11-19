@@ -35,11 +35,13 @@ If the panel cannot set headers:
 curl -fsS "https://whatsapp.arhamtechnology.com/api/cron/tick?secret=YOUR_SECRET"
 ```
 
-Schedule: every **2 hours** (`0 */2 * * *`). The plan’s **Max processes (NPROC) = 120** is shared by all 10 sites; every-minute / hourly ticks under load cause process faults and 503/504.
+Schedule: every **1–2 hours** (`0 * * * *` or `0 */2 * * *`). The plan’s **Max processes (NPROC) = 120** is shared by all 10 sites; every-minute ticks cause process faults and 503/504.
 
-Overlapping ticks are single-flight locked (`already_running` JSON). Heavy jobs (visitor recovery, retention, inquiry enroll, Shiprocket, template status) are throttled inside the tick; send/enroll batches are small.
+**Delete any other cron** that hits this site (`/api/shopify/cron`, `/api/automations/cron`, etc.). Those child URLs now return **410** on Hostinger.
 
-A 200 JSON body with `"ok": true` means workers ran (or a concurrent tick was safely skipped).
+Overlapping ticks are single-flight locked (`already_running` JSON). Default **Hostinger light profile** only runs `shopify` + `sequences` + `followups` with tiny batches; heavy jobs stay skipped unless `CRON_PROFILE=full`.
+
+A 200 JSON body with `"ok": true` and `"profile":"hostinger"` means the light workers ran (or a concurrent tick was safely skipped).
 
 See also: [`hostinger-nproc-relief.md`](./hostinger-nproc-relief.md).
 
@@ -63,6 +65,7 @@ not localhost or ngrok. Immediate templates (order confirmed) send when Shopify 
 ## 5. If Max processes (NPROC) hits 120
 
 1. **Stop running processes** + restart WhatsApp Node.
-2. Confirm cron is `0 */2 * * *` and `ENABLE_IN_PROCESS_CRON` is unset.
-3. Prune old `hbuilds` / clear `.cache/ffmpeg-static-nodejs` — see [`hostinger-nproc-relief.md`](./hostinger-nproc-relief.md).
-4. Pause unused apps on the same plan (n8n, idle Node sites).
+2. Confirm **one** cron only (`/api/cron/tick`) and `ENABLE_IN_PROCESS_CRON` is unset.
+3. Optional emergency: set `DISABLE_ALL_CRON=1`, restart, wait for the 24h bar to cool.
+4. Prune old `hbuilds` / clear `.cache/ffmpeg-static-nodejs` — see [`hostinger-nproc-relief.md`](./hostinger-nproc-relief.md).
+5. Pause unused apps on the same plan (n8n, idle Node sites). The meter is **plan-wide**.

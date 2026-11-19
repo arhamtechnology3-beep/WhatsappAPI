@@ -1,4 +1,5 @@
 import { authorizeCron } from '@/lib/cron/auth'
+import { rejectChildCronIfDisabled } from '@/lib/cron/child-route-guard'
 import { runFlowsCron } from '@/lib/flows/cron'
 
 /**
@@ -19,11 +20,13 @@ import { runFlowsCron } from '@/lib/flows/cron'
  * and this one) are independent operations; we keep them on separate
  * URLs so one failing doesn't block the other.
  *
- * Hosting: the Node process ticks this in-process every minute, and
- * Hostinger / Vercel Cron / GitHub Actions can hit GET /api/cron/tick.
- * A 5-minute interval is more than enough for a 24h timeout default.
+ * On Hostinger this child URL returns 410 — use `/api/cron/tick` only.
+ * Vercel Cron hits `/api/cron/tick` which still runs this job.
  */
+
 export async function GET(request: Request) {
+  const child = rejectChildCronIfDisabled()
+  if (child) return child
   const denied = authorizeCron(request)
   if (denied) return denied
   return runFlowsCron()

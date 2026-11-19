@@ -13,7 +13,11 @@ export const maxDuration = 60
 const CUSTOMER_PAGES = 8
 const ORDER_PAGES = 4
 const CHECKOUT_PAGES = 4
-const UPSERT_CONCURRENCY = 8
+/** Hostinger NPROC: keep customer sync serial unless overridden. */
+const UPSERT_CONCURRENCY = Math.max(
+  1,
+  Math.min(8, parseInt(process.env.SHOPIFY_SYNC_CONCURRENCY || '1', 10) || 1),
+)
 
 type ShopifyRecord = Record<string, unknown>
 

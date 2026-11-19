@@ -2,6 +2,10 @@ import { after } from 'next/server'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
+import {
+  cronBatchLimits,
+  isImmediateWhatsAppSendDisabled,
+} from '@/lib/cron/hostinger-profile'
 import { findOrCreateConversation } from '@/lib/inbox/find-or-create-conversation'
 import { isCartSequenceTemplate } from '@/lib/shopify/sequence-dedupe'
 import { hasWhatsAppPhone, toMetaPhone } from '@/lib/whatsapp/phone-utils'
@@ -10,13 +14,19 @@ import { hasWhatsAppPhone, toMetaPhone } from '@/lib/whatsapp/phone-utils'
  * Send delay-0 jobs in the same Hostinger/Node process after the webhook
  * responds. Vercel cron is not available on Hostinger, so queue-only
  * transactional messages otherwise sit pending forever.
+ *
+ * On the Hostinger profile this is capped to 1 job (or fully off via
+ * `DISABLE_IMMEDIATE_WHATSAPP_SEND=1`) so order spikes cannot stack NPROC.
  */
 export function scheduleImmediateWhatsAppJobs(jobIds: string[]): void {
-  const ids = jobIds.filter(Boolean)
+  if (isImmediateWhatsAppSendDisabled()) return
+
+  const limits = cronBatchLimits()
+  const ids = jobIds.filter(Boolean).slice(0, limits.immediateSendJobs)
   if (ids.length === 0) return
 
   const run = () =>
-    processWhatsAppSendJobs({ jobIds: ids }).catch((err) => {
+    processWhatsAppSendJobs({ jobIds: ids, limit: ids.length }).catch((err) => {
       console.error(
         '[process-send-jobs] immediate send failed:',
         err instanceof Error ? err.message : err,
@@ -71,6 +81,7 @@ export async function processWhatsAppSendJobs(opts?: {
 }): Promise<ProcessSendJobsResult> {
   const supabase = opts?.supabase || supabaseAdmin()
   const now = new Date().toISOString()
+  const defaultLimit = cronBatchLimits().sendJobs
   let query = supabase
     .from('whatsapp_send_jobs')
     .select('*')
@@ -78,7 +89,7 @@ export async function processWhatsAppSendJobs(opts?: {
     .lt('attempts', 3)
     .lte('run_at', now)
     .order('created_at', { ascending: true })
-    .limit(opts?.limit ?? 20)
+    .limit(opts?.limit ?? defaultLimit)
 
   if (opts?.jobIds && opts.jobIds.length > 0) {
     query = query.in('id', opts.jobIds)

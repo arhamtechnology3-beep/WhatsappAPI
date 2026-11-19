@@ -1,5 +1,30 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-11-19 13:00] Fix (Ops) — permanent Hostinger NPROC relief (light cron profile)
+
+### Root Cause
+- Plan still shows ~98% because (1) each `/api/cron/tick` still ran a **full 9-job** Meta/Shopify pass even at 2h cadence, (2) child cron URLs + webhook `after()` sends kept stacking work, (3) Hostinger’s bar is **plan-wide NPROC 120 across ~10 sites** — not WhatsApp alone.
+- Interval-only tweaks could not make “permanent” relief while unbounded abandoned/sequence scans and dual wake paths remained.
+
+### Objective & Fixes
+- Default **Hostinger light profile**: only `shopify` + `sequences` + `followups`; heavy jobs skip with `skipped: profile`.
+- Hard caps: abandoned **8**, drips **5**, send jobs **3**, followups **5**, immediate webhook send **1**.
+- Kill switch `DISABLE_ALL_CRON=1`; optional `DISABLE_IMMEDIATE_WHATSAPP_SEND=1`.
+- Child cron routes return **410** on non-Vercel (use `/api/cron/tick` only); `vercel.json` schedules tick alone.
+- Docs: permanent RCA + operator checklist (`docs/hostinger-nproc-relief.md`).
+
+### Files Modified
+- `src/lib/cron/hostinger-profile.ts`, `hostinger-profile.test.ts`, `child-route-guard.ts`, `tick.ts`
+- `src/lib/shopify/{abandoned-cron,sequence-cron}.ts`, `src/lib/followups/order-followups.ts`
+- `src/lib/whatsapp/process-send-jobs.ts`, `src/app/api/shopify/sync-customers/route.ts`
+- Child cron routes under `src/app/api/{shopify,automations,flows,cron}/…`
+- `vercel.json`, `docs/hostinger-*.md`, `.env.local.example`, `changes.md`
+
+### Live
+- Merge → Hostinger deploy Completed → **Stop running processes** + restart Node.
+- Confirm tick JSON shows `"profile":"hostinger"`. Keep **one** hPanel cron. No migration.
+- If still 98% with `DISABLE_ALL_CRON=1`, pressure is other sites on the plan — upgrade or move WhatsApp off shared hosting.
+
 ## [2026-11-18 23:15] Fix (Security) — clear Hostinger Next RCE findings without breaking deploy
 
 ### Root Cause

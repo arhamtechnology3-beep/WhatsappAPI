@@ -1,5 +1,22 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-11-19 17:35 IST] Ops — Pit+Meet festival outreach (import, Option B header, send, enroll)
+
+### Root Cause
+- Fresh WhatsApp audience (~313 numbers) needed import + `pit`/`meet` tags + first festival template send, with the standard welcome shop-now follow-up if they do not order.
+
+### Objective & Fixes
+- Add ops script `scripts/pit-meet-festival-outreach.ts` (Farmdidi-pattern): upsert contacts, tags `pit`+`meet`, marketing opt-in, upload Option B product header to `chat-media`, point `wacrm_festival_broadcast_v2` header at it, send template, enroll welcome drip step 2 (`wacrm_shop_now_followup_v1`). Follow-up stops on **order**, not click.
+
+### Files Modified
+- `scripts/pit-meet-festival-outreach.ts`
+- `changes.md`
+
+### Live
+- Run with `.env.local` (`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ENCRYPTION_KEY`):
+  `npx tsx scripts/pit-meet-festival-outreach.ts --source …/contacts.tsv --header-image …/SELECTED-header-macro.jpg`
+- No migration.
+
 ## [2026-11-18 23:15] Fix (Security) — clear Hostinger Next RCE findings without breaking deploy
 
 ### Root Cause

@@ -1,4 +1,5 @@
 import { authorizeCron } from '@/lib/cron/auth'
+import { rejectChildCronIfDisabled } from '@/lib/cron/child-route-guard'
 import { runAutomationsCron } from '@/lib/automations/cron'
 
 /**
@@ -12,8 +13,13 @@ import { runAutomationsCron } from '@/lib/automations/cron'
  * overlapping invocations don't double-process rows. Best-effort
  * only; expensive SELECT ... FOR UPDATE is avoided in favor of a
  * two-step UPDATE-by-id.
+ *
+ * On Hostinger this child URL returns 410 — use `/api/cron/tick` only.
  */
+
 export async function GET(request: Request) {
+  const child = rejectChildCronIfDisabled()
+  if (child) return child
   const denied = authorizeCron(request)
   if (denied) return denied
   return runAutomationsCron()

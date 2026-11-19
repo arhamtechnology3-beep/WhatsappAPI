@@ -10,23 +10,21 @@ import { runOrderFollowupsCron } from '@/lib/followups/order-followups'
 import { runVisitorRecoveryCron } from '@/lib/visitors/recovery-cron'
 import { tryAcquireCronTickLock, releaseCronTickLock } from '@/lib/cron/lock'
 import { shouldRunThrottled } from '@/lib/cron/throttle'
+import {
+  type CronJobName,
+  enabledCronJobs,
+  isAllCronDisabled,
+  resolveCronProfile,
+} from '@/lib/cron/hostinger-profile'
 import { NextResponse } from 'next/server'
 
-type JobName =
-  | 'shopify'
-  | 'sequences'
-  | 'automations'
-  | 'flows'
-  | 'identityflow'
-  | 'shipments'
-  | 'templates'
-  | 'followups'
-  | 'visitors'
+export type { CronJobName as JobName }
 
 export type CronTickResult = {
   ok: boolean
-  skipped?: 'already_running'
-  jobs: Record<JobName, { status: number; body: unknown }>
+  skipped?: 'already_running' | 'disabled'
+  profile?: string
+  jobs: Record<CronJobName, { status: number; body: unknown }>
 }
 
 /** Retention + trial expiry — once per 6h; DELETE burns CPU/NPROC. */
@@ -42,7 +40,7 @@ async function bodyOf(res: Response): Promise<unknown> {
   }
 }
 
-async function runJob(name: JobName, fn: () => Promise<Response>) {
+async function runJob(name: CronJobName, fn: () => Promise<Response>) {
   try {
     const res = await fn()
     return { name, status: res.status, body: await bodyOf(res) }
@@ -95,26 +93,37 @@ function emptyJobs(): CronTickResult['jobs'] {
 }
 
 /**
- * Run every delayed-job worker once. Sequential so Hostinger's Node
- * process does not pile Meta/Shopify bursts on the same tick.
+ * Run delayed-job workers once. Sequential so Hostinger's Node process
+ * does not pile Meta/Shopify bursts on the same tick.
  *
- * Overlapping invocations (in-process timer + hPanel curl while a prior
- * tick is still draining) return `{ skipped: 'already_running' }` instead
- * of stacking another full pass.
+ * Hostinger default (`CRON_PROFILE` unset): only shopify + sequences +
+ * followups, with tiny batches. Heavy jobs (identityflow, shipments,
+ * visitors, automations, flows, templates) stay off unless
+ * `CRON_PROFILE=full` or `CRON_JOBS=...`.
+ *
+ * Overlapping invocations return `{ skipped: 'already_running' }`.
+ * `DISABLE_ALL_CRON=1` returns `{ skipped: 'disabled' }` (kill switch).
  */
 export async function runAllCronJobs(): Promise<CronTickResult> {
+  const profile = resolveCronProfile()
+  const jobs = emptyJobs()
+
+  if (isAllCronDisabled()) {
+    return { ok: true, skipped: 'disabled', profile, jobs }
+  }
+
   if (!tryAcquireCronTickLock()) {
     return {
       ok: true,
       skipped: 'already_running',
-      jobs: emptyJobs(),
+      profile,
+      jobs,
     }
   }
 
-  const jobs = emptyJobs()
-
   try {
-    const runners: Array<[JobName, () => Promise<Response>]> = [
+    const enabled = enabledCronJobs()
+    const runners: Array<[CronJobName, () => Promise<Response>]> = [
       ['shopify', runShopifyAbandonedCron],
       ['sequences', runShopifySequenceCron],
       ['automations', runAutomationsCron],
@@ -127,12 +136,21 @@ export async function runAllCronJobs(): Promise<CronTickResult> {
     ]
 
     for (const [name, fn] of runners) {
+      if (!enabled.has(name)) {
+        jobs[name] = {
+          status: 200,
+          body: { ok: true, skipped: 'profile', profile },
+        }
+        continue
+      }
       const result = await runJob(name, fn)
       jobs[name] = { status: result.status, body: result.body }
     }
 
-    const ok = Object.values(jobs).every((job) => job.status >= 200 && job.status < 300)
-    return { ok, jobs }
+    const ok = Object.values(jobs).every(
+      (job) => job.status >= 200 && job.status < 300,
+    )
+    return { ok, profile, jobs }
   } finally {
     releaseCronTickLock()
   }

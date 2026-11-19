@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { cronBatchLimits } from '@/lib/cron/hostinger-profile'
 import { enqueueShopifyNotification, initializeCheckoutRecoverySequence, moveDealToStageName } from '@/lib/shopify/shopify-helper'
 import { customerStoreName, toCustomerStoreUrl } from '@/lib/shopify/storefront-url'
 import { processWhatsAppSendJobs } from '@/lib/whatsapp/process-send-jobs'
 
 export async function runShopifyAbandonedCron() {
   const supabase = supabaseAdmin()
+  const limits = cronBatchLimits()
   const thresholdMinutes = parseInt(process.env.ABANDONED_CART_THRESHOLD_MINUTES || '30')
   const thresholdDate = new Date(Date.now() - thresholdMinutes * 60 * 1000).toISOString()
 
@@ -14,12 +16,15 @@ export async function runShopifyAbandonedCron() {
 
   try {
     // 2) ABANDONMENT DETECTION
-    // Find all shopify_checkouts where status = 'open' and created_at <= thresholdDate
+    // Find open checkouts past the threshold — hard-capped so one tick
+    // cannot walk an unbounded backlog on Hostinger NPROC plans.
     const { data: openCheckouts } = await supabase
       .from('shopify_checkouts')
       .select('*, contacts(name, phone, email)')
       .eq('status', 'open')
       .lte('created_at', thresholdDate)
+      .order('created_at', { ascending: true })
+      .limit(limits.abandonedCheckouts)
 
     if (openCheckouts && openCheckouts.length > 0) {
       for (const checkout of openCheckouts) {
@@ -81,8 +86,11 @@ export async function runShopifyAbandonedCron() {
     }
 
     // 3) PROCESS THE WHATSAPP SEND JOBS QUEUE
-    // Small batch: Hostinger Business caps NPROC at 120 across all sites.
-    const sendResult = await processWhatsAppSendJobs({ supabase, limit: 5 })
+    // Tiny batch: Hostinger Business caps NPROC at 120 across all sites.
+    const sendResult = await processWhatsAppSendJobs({
+      supabase,
+      limit: limits.sendJobs,
+    })
     jobsProcessed = sendResult.processed
 
     return NextResponse.json({

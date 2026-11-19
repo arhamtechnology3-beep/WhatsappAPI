@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
+import { cronBatchLimits } from '@/lib/cron/hostinger-profile'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
 import { findOrCreateConversation } from '@/lib/inbox/find-or-create-conversation'
 import { forMetaImageUrl, storefrontProductById } from '@/lib/shopify/product-image'
@@ -35,7 +36,6 @@ const CLAIM_MS = 15 * 60 * 1000
 const RETRY_MS = 30 * 60 * 1000
 const UNAPPROVED_WAIT_MS = 60 * 60 * 1000
 const MAX_ATTEMPTS = 3
-const BATCH = 25
 
 export interface OrderFollowupRow {
   id: string
@@ -278,6 +278,7 @@ export async function runOrderFollowupsCron(): Promise<Response> {
   const db = supabaseAdmin()
   const now = new Date()
   const nowIso = now.toISOString()
+  const batch = cronBatchLimits().followups
 
   const { data: due, error } = await db
     .from('order_followups')
@@ -285,7 +286,7 @@ export async function runOrderFollowupsCron(): Promise<Response> {
     .eq('status', 'active')
     .lte('next_run_at', nowIso)
     .order('next_run_at', { ascending: true })
-    .limit(BATCH)
+    .limit(batch)
   if (error) {
     // Table missing until migration 058 runs.
     return NextResponse.json({ ok: true, skipped: error.message })

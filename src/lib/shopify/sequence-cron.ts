@@ -10,6 +10,7 @@ import {
   shouldStopInquiryDrip,
 } from '@/lib/shopify/recovery-conversion'
 import { enrollInquiryFollowups } from '@/lib/followups/inquiry-followup'
+import { cronBatchLimits } from '@/lib/cron/hostinger-profile'
 import { shouldRunThrottled } from '@/lib/cron/throttle'
 import {
   clampToIstSendWindow,
@@ -45,6 +46,7 @@ async function isTemplateApproved(
 
 export async function runShopifySequenceCron() {
   const supabase = supabaseAdmin()
+  const limits = cronBatchLimits()
   const now = new Date().toISOString()
 
   let sequencesProcessed = 0
@@ -65,7 +67,7 @@ export async function runShopifySequenceCron() {
       inquiryEnroll = { scanned: 0, enrolled: 0, skipped: 0 }
     }
 
-    // 2) Find all active in-flight sequences where next_send_at is due
+    // 2) Find due in-flight sequences — hard-capped per tick (Meta send each).
     const { data: trackings } = await supabase
       .from('shopify_recovery_tracking')
       .select(`
@@ -76,6 +78,7 @@ export async function runShopifySequenceCron() {
       .eq('status', 'in_progress')
       .lte('next_send_at', now)
       .order('created_at', { ascending: true })
+      .limit(limits.sequenceTrackings)
 
     if (trackings && trackings.length > 0) {
       const extraIds = duplicateTrackingIdsToStop(

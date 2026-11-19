@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeCron } from "@/lib/cron/auth";
+import { rejectChildCronIfDisabled } from "@/lib/cron/child-route-guard";
 import { supabaseAdmin } from "@/lib/automations/admin-client";
 import {
   reconcileTrialExpiry,
@@ -7,6 +8,9 @@ import {
 } from "@/lib/ops/retention";
 
 export async function GET(request: Request) {
+  const child = rejectChildCronIfDisabled();
+  if (child) return child;
+
   const denied = authorizeCron(request);
   if (denied) return denied;
 

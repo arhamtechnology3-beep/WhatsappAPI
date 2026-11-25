@@ -125,7 +125,7 @@ function emptyButton(type: TemplateButton['type']): TemplateButton {
 
 export function TemplateManager() {
   const supabase = createClient();
-  const { user, loading: authLoading } = useAuth();
+  const { user, accountId, loading: authLoading } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
@@ -181,20 +181,24 @@ export function TemplateManager() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (!user) {
+    if (!user || !accountId) {
       setLoading(false);
+      setTemplates([]);
       return;
     }
-    fetchTemplates(user.id);
+    fetchTemplates(accountId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authLoading, user?.id]);
+  }, [authLoading, user?.id, accountId]);
 
-  async function fetchTemplates(userId: string) {
+  async function fetchTemplates(acctId: string) {
     try {
+      // Templates are account-scoped (post multi-user). Filtering by the
+      // logged-in user_id hid the whole catalog from teammates / store
+      // switchers even when Meta + Shopify recipes existed on the account.
       const { data, error } = await supabase
         .from('message_templates')
         .select('*')
-        .eq('user_id', userId)
+        .eq('account_id', acctId)
         .order('created_at', { ascending: false });
       if (error) throw error;
       setTemplates(data || []);

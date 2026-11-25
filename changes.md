@@ -1,5 +1,23 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-11-25 18:20 IST] Fix (Settings) — Templates tab empty for account members
+
+### Root Cause
+- Settings → Templates listed `message_templates` filtered by the logged-in `user_id`.
+- Rows are account-scoped (`account_id`). Teammates / store switchers saw **"No templates yet"** even when the WABA still had approved Meta templates and Shopify recipes on the account.
+- **Sync from Meta** also does not re-insert deleted `wacrm_*` recipes (by design).
+
+### Objective & Fixes
+- Load + count templates by `account_id` (same tenancy as send/sync/install recipes).
+
+### Files Modified
+- `src/components/settings/template-manager.tsx`
+- `src/components/settings/settings-overview.tsx`
+- `changes.md`
+
+### Live
+- Merge → Hostinger deploy. If the list is still empty after deploy: **⋯ → Install Shopify recipes**, then submit/sync approvals. No migration.
+
 ## [2026-11-25 17:30 IST] Feature — Product knowledge base + skip ask-name on inbound
 
 ### Root Cause

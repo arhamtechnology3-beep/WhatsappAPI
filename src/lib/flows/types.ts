@@ -374,6 +374,7 @@ export interface DispatchInboundResult {
     | "handed_off"
     | "fallback_fired"
     | "duplicate_inbound_ignored"
+    | "knowledge_replied"
     | "no_match";
 }
 

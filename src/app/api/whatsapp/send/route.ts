@@ -27,6 +27,7 @@ import {
   coerceTemplateButtonParams,
   resolveHeaderMediaUrl,
 } from '@/lib/shopify/whatsapp-template-library'
+import { learnFromAgentReply } from '@/lib/knowledge/learn-from-agent'
 
 async function insertOutboundMessage(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -581,6 +582,21 @@ export async function POST(request: Request) {
       console.error(
         '[flows] pause-on-agent-send threw:',
         err instanceof Error ? err.message : err,
+      )
+    }
+
+    // Teach the product KB from this agent reply when the customer
+    // recently asked a catalog / delivery / purchase question.
+    if (message_type === 'text' && typeof content_text === 'string') {
+      void learnFromAgentReply(supabaseAdmin(), {
+        accountId,
+        conversationId: conversation_id,
+        agentText: content_text,
+      }).catch((err) =>
+        console.error(
+          '[knowledge] learn-from-agent failed:',
+          err instanceof Error ? err.message : err,
+        ),
       )
     }
 

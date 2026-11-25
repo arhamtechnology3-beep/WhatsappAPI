@@ -1,5 +1,35 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-11-25 17:30 IST] Feature — Product knowledge base + skip ask-name on inbound
+
+### Root Cause
+- WhatsApp already sends the customer profile name on every inbound, but first-touch bots still asked for name and ignored free-form product asks (e.g. Gaurang Vora: pickles catalog + Mumbai delivery + full payment).
+- No durable Q&A store, so the same product/shipping questions could not be answered consistently or learned from past chats.
+
+### Objective & Fixes
+- Add `bot_knowledge` (migration 063) with seeded catalog / Mumbai delivery / payment / shipping answers per account; pause first-inbound flows that still `collect_input` name.
+- On inbound product/catalog/delivery intent: answer from KB (combined facets), mark conversation pending, learn unmatched asks as `pending`; skip first-inbound welcome automations that would ask for name again.
+- Skip `collect_input` name prompts when `contacts.name` is already usable.
+- Lead-capture flow template no longer asks for name.
+- When an agent free-texts after a product question, auto-learn that Q&A into `bot_knowledge` (`learn-from-agent`).
+- API `GET/POST/PATCH /api/knowledge` for operators; `scripts/backfill-bot-knowledge.ts` mines past customer→agent pairs into the KB.
+- **This chat (Gaurang Vora):** session expired — cannot free-text from Meta; send a template first, then the ready reply in `/opt/cursor/artifacts/gaurang-vora-reply.txt` (also mirrored in PR notes).
+
+### Files Modified
+- `supabase/migrations/063_bot_knowledge.sql`
+- `src/lib/knowledge/product-inquiry.ts`, `product-inquiry.test.ts`, `answer.ts`, `learn-from-agent.ts`
+- `src/lib/flows/engine.ts`, `types.ts`, `templates.ts`
+- `src/app/api/whatsapp/webhook/route.ts`, `src/app/api/whatsapp/send/route.ts`
+- `src/app/api/knowledge/route.ts`
+- `scripts/backfill-bot-knowledge.ts`
+- `changes.md`
+
+### Live
+- Apply migration **063** on Supabase.
+- Deploy app.
+- Optional: `npx tsx scripts/backfill-bot-knowledge.ts` then `--apply` to learn from past chats.
+- For Gaurang Vora now: Inbox → Templates (reopen window) → paste ready reply after they respond.
+
 ## [2026-11-19 17:35 IST] Ops — Pit+Meet festival outreach (import, Option B header, send, enroll)
 
 ### Root Cause

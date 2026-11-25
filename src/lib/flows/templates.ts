@@ -229,7 +229,7 @@ const LEAD_CAPTURE: FlowTemplate = {
   slug: "lead_capture",
   name: "Lead capture",
   description:
-    "Greet first-time inbounds, capture name + email + company, then hand off to sales with the answers in the note.",
+    "Greet first-time inbounds (WhatsApp already provides the name), capture email + company, then hand off to sales.",
   icon: "UserPlus",
   trigger_type: "first_inbound_message",
   trigger_config: {},
@@ -244,24 +244,15 @@ const LEAD_CAPTURE: FlowTemplate = {
       node_key: "intro",
       node_type: "send_message",
       config: {
-        text: "Welcome! 👋 I'll ask a few quick questions so we can get you to the right person.",
-        next_node_key: "ask_name",
-      } as SendMessageNodeConfig,
-    },
-    {
-      node_key: "ask_name",
-      node_type: "collect_input",
-      config: {
-        prompt_text: "What's your name?",
-        var_key: "name",
+        text: "Welcome! 👋 I'll ask two quick questions so we can get you to the right person.",
         next_node_key: "ask_email",
-      } as CollectInputNodeConfig,
+      } as SendMessageNodeConfig,
     },
     {
       node_key: "ask_email",
       node_type: "collect_input",
       config: {
-        prompt_text: "Thanks {{vars.name}}! What's your work email?",
+        prompt_text: "What's your work email?",
         var_key: "email",
         next_node_key: "ask_company",
       } as CollectInputNodeConfig,
@@ -279,7 +270,7 @@ const LEAD_CAPTURE: FlowTemplate = {
       node_key: "handoff",
       node_type: "handoff",
       config: {
-        note: "New lead — name={{vars.name}}, email={{vars.email}}, company={{vars.company}}.",
+        note: "New lead — email={{vars.email}}, company={{vars.company}}.",
       } as HandoffNodeConfig,
     },
   ],

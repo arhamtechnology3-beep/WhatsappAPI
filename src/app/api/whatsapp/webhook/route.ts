@@ -1013,6 +1013,7 @@ async function processMessage(
   // ============================================================
   // Unlock replies already handled the turn — do not also open FAQ.
   let flowConsumed = unlockClaimed
+  let flowOutcome: string | undefined
   if (!unlockClaimed) {
     const flowResult = await dispatchInboundToFlows({
       accountId,
@@ -1035,6 +1036,7 @@ async function processMessage(
       isFirstInboundMessage,
     })
     flowConsumed = flowResult.consumed
+    flowOutcome = flowResult.outcome
   }
 
   // Fire any automations that react to this webhook event. All dispatches
@@ -1215,7 +1217,11 @@ async function processMessage(
   // so users can pick whichever semantic they want; an automation that
   // listens to only one trigger runs only when that trigger matches.
   if (contactOutcome.wasCreated) automationTriggers.unshift('new_contact_created')
-  if (isFirstInboundMessage) automationTriggers.unshift('first_inbound_message')
+  // Product KB already answered the customer's ask — do not also fire a
+  // first-inbound welcome that asks for their name again.
+  if (isFirstInboundMessage && flowOutcome !== 'knowledge_replied') {
+    automationTriggers.unshift('first_inbound_message')
+  }
   for (const triggerType of automationTriggers) {
     runAutomationsForTrigger({
       accountId,

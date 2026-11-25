@@ -44,6 +44,11 @@ import { lookupShopifyOrderStatus } from "@/lib/shopify/shopify-order-lookup";
 import { expandOrderTrackingShopifyLookup } from "./order-tracking-patch";
 import { stripReturnsRefundFromFaqMenu } from "./faq-menu-patch";
 import { isAgentRequest, sendSupportContact } from "@/lib/support/agent-request";
+import { answerProductInquiry } from "@/lib/knowledge/answer";
+import {
+  hasUsableContactName,
+  isProductInquiry,
+} from "@/lib/knowledge/product-inquiry";
 import {
   type CollectInputNodeConfig,
   type ConditionNodeConfig,
@@ -714,6 +719,33 @@ async function advanceFromNodeKey(
       // Send the prompt and suspend. Customer's next TEXT reply will
       // wake us up via handleReplyForActiveRun's collect_input branch.
       const cfg = node.config as unknown as CollectInputNodeConfig;
+
+      // WhatsApp already sends profile.name on every inbound — skip
+      // "What's your name?" when we already have a usable contact name.
+      if (
+        cfg.var_key &&
+        /^(name|full_name|customer_name)$/i.test(cfg.var_key) &&
+        cfg.next_node_key
+      ) {
+        const { data: contactRow } = await db
+          .from("contacts")
+          .select("name")
+          .eq("id", run.contact_id!)
+          .maybeSingle();
+        const existingName = (contactRow as { name?: string } | null)?.name;
+        if (hasUsableContactName(existingName)) {
+          const newVars = { ...run.vars, [cfg.var_key]: existingName!.trim() };
+          await db.from("flow_runs").update({ vars: newVars }).eq("id", run.id);
+          run.vars = newVars;
+          await logEvent(db, run.id, "node_entered", node.node_key, {
+            skipped_ask_name: true,
+            captured_key: cfg.var_key,
+          });
+          currentKey = cfg.next_node_key;
+          continue;
+        }
+      }
+
       try {
         const { whatsapp_message_id } = await engineSendText({
           accountId: run.account_id,
@@ -950,6 +982,30 @@ export async function dispatchInboundToFlows(
         contactId: input.contactId,
       });
       return { consumed: true, outcome: "handed_off" };
+    }
+
+    // Product / catalog / delivery questions: answer from bot_knowledge
+    // (WhatsApp already gave us the profile name — never ask for it).
+    // Wins over first-inbound welcome menus that would otherwise ignore
+    // the customer's actual ask.
+    if (input.message.kind === "text" && isProductInquiry(input.message.text)) {
+      const { data: contactRow } = await db
+        .from("contacts")
+        .select("name")
+        .eq("id", input.contactId)
+        .maybeSingle();
+      const kb = await answerProductInquiry({
+        db,
+        accountId: input.accountId,
+        userId: input.userId,
+        conversationId: input.conversationId,
+        contactId: input.contactId,
+        text: input.message.text,
+        contactName: (contactRow as { name?: string } | null)?.name ?? null,
+      });
+      if (kb.answered) {
+        return { consumed: true, outcome: "knowledge_replied" };
+      }
     }
 
     // No active run → look for a flow whose entry trigger matches.

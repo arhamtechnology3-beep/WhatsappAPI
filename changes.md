@@ -1,5 +1,22 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-11-26 23:10 IST] Fix (Follow-ups) — catch quiet leads after cron/template outage
+
+### Root Cause
+- Inbox leads (e.g. Gaurang Vora, 6d quiet) got no inquiry drip while cron/templates were broken.
+- 7-day lookback was about to drop them; enroll also parked `next_send_at` at 09:30 IST so sparse ticks could miss the same day.
+
+### Objective & Fixes
+- Inquiry lookback **14 days**, enroll batch **25**.
+- First send: use `shouldDeferOutsideIstWindow` (send immediately when before morning open).
+
+### Files Modified
+- `src/lib/followups/inquiry-followup.ts`, `inquiry-followup.test.ts`
+- `changes.md`
+
+### Live
+- Merge → deploy. Confirm hPanel cron `0 */2 * * *`. Templates must be **APPROVED** (⋯ → Install Shopify recipes if empty). Manual tick once. No migration.
+
 ## [2026-11-26 16:40 IST] Fix (Follow-ups) — daily midnight cron + unapproved steps never sent
 
 ### Root Cause

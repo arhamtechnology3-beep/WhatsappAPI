@@ -83,6 +83,28 @@ export const SHOPIFY_SEQUENCE_BINDINGS = [
       },
     ],
   },
+  {
+    // Website DP10 / unlock popup claims who never purchase.
+    sequenceTrigger: 'offer_unlock_no_purchase',
+    sequenceName: 'Offer Unlock No-Purchase Follow-up',
+    steps: [
+      {
+        stepOrder: 1,
+        templateName: 'wacrm_visit_nudge_v1',
+        delayMinutes: 240,
+      },
+      {
+        stepOrder: 2,
+        templateName: 'wacrm_shop_now_followup_v1',
+        delayMinutes: 1200,
+      },
+      {
+        stepOrder: 3,
+        templateName: 'wacrm_festival_broadcast_v2',
+        delayMinutes: 1440,
+      },
+    ],
+  },
 ] as const
 
 export function approvalFromTemplateStatus(status: string | null | undefined): AutomationApproval {

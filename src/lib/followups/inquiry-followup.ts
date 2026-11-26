@@ -13,7 +13,7 @@ import {
   clampToIstSendWindow,
   shouldDeferOutsideIstWindow,
 } from '@/lib/shopify/send-window'
-import { hasWhatsAppPhone } from '@/lib/whatsapp/phone-utils'
+import { hasWhatsAppPhone, toMetaPhone } from '@/lib/whatsapp/phone-utils'
 
 export const INQUIRY_TRIGGER = 'inquiry_no_purchase' as const
 export const INQUIRY_SEQUENCE_NAME = 'Inquiry No-Purchase Follow-up'
@@ -30,6 +30,12 @@ export const INQUIRY_LOOKBACK_DAYS = 14
 export const INQUIRY_DEFER_HOURS = 4
 /** Max enrollments per cron tick (keeps Meta/Hostinger NPROC load bounded). */
 export const INQUIRY_ENROLL_BATCH = 25
+/**
+ * Conversations to scan per tick. Newest-first used to starve quiet leads
+ * (e.g. 6–7d expired pickle / offer chats) when the inbox has thousands of
+ * newer threads — scan oldest-within-lookback first instead.
+ */
+export const INQUIRY_ENROLL_SCAN = 500
 
 const DEFAULT_PRODUCT = 'handmade pickles'
 const STORE_HOST = /divyaprabhafoods\.com/i
@@ -194,8 +200,174 @@ export async function deferInquiryFollowupOnInbound(
   return (data?.length ?? 0) > 0
 }
 
+type ContactRow = {
+  id: string
+  phone: string | null
+  name: string | null
+  marketing_opt_out_at: string | null
+  marketing_opt_in: boolean | null
+  whatsapp_marketing_opt_in: boolean | null
+}
+
+type EnrollOneResult =
+  | { ok: true; action: 'enrolled' | 'bumped' }
+  | { ok: false; reason: string }
+
+function firstSendAtIso(now: Date): string {
+  const windowDecision = shouldDeferOutsideIstWindow(now)
+  return windowDecision.defer
+    ? windowDecision.nextAt.toISOString()
+    : now.toISOString()
+}
+
 /**
- * Scan recent conversations and enroll eligible no-purchase inquirers.
+ * Enroll one conversation into the inquiry drip (or bump next_send_at when
+ * already in progress so ops can force a same-tick send).
+ */
+export async function enrollInquiryConversation(
+  db: SupabaseClient,
+  conv: { id: string; account_id: string; contact_id: string },
+  opts: {
+    now?: Date
+    /** When true, already-enrolled drips get next_send_at bumped to now. */
+    bumpIfEnrolled?: boolean
+    /** Skip silence / lookback gates (ops phone-targeted enroll). */
+    ignoreTimingGates?: boolean
+  } = {},
+): Promise<EnrollOneResult> {
+  const now = opts.now ?? new Date()
+
+  const lastInbound = await lastCustomerMessageAt(db, conv.id)
+  const { data: contact } = await db
+    .from('contacts')
+    .select(
+      'id, phone, name, marketing_opt_out_at, marketing_opt_in, whatsapp_marketing_opt_in',
+    )
+    .eq('id', conv.contact_id)
+    .maybeSingle()
+
+  const { data: order } = await db
+    .from('shopify_orders')
+    .select('id')
+    .eq('contact_id', conv.contact_id)
+    .limit(1)
+    .maybeSingle()
+
+  const { data: inquirySeq } = await db
+    .from('shopify_automation_sequences')
+    .select('id, is_active')
+    .eq('account_id', conv.account_id)
+    .eq('trigger_type', INQUIRY_TRIGGER)
+    .maybeSingle()
+
+  if (!inquirySeq?.id || !inquirySeq.is_active) {
+    return { ok: false, reason: 'sequence_inactive' }
+  }
+
+  const { data: existingInquiry } = await db
+    .from('shopify_recovery_tracking')
+    .select('id')
+    .eq('contact_id', conv.contact_id)
+    .eq('sequence_id', inquirySeq.id)
+    .eq('status', 'in_progress')
+    .limit(1)
+    .maybeSingle()
+
+  if (existingInquiry?.id) {
+    if (opts.bumpIfEnrolled) {
+      const next = firstSendAtIso(now)
+      await db
+        .from('shopify_recovery_tracking')
+        .update({ next_send_at: next, updated_at: now.toISOString() })
+        .eq('id', existingInquiry.id)
+      return { ok: true, action: 'bumped' }
+    }
+    return { ok: false, reason: 'already_enrolled' }
+  }
+
+  const { data: otherDrip } = await db
+    .from('shopify_recovery_tracking')
+    .select('id')
+    .eq('contact_id', conv.contact_id)
+    .eq('status', 'in_progress')
+    .neq('sequence_id', inquirySeq.id)
+    .limit(1)
+    .maybeSingle()
+
+  const decision = evaluateInquiryEligibility({
+    lastCustomerMessageAt: lastInbound,
+    hasPhone: hasWhatsAppPhone(contact?.phone),
+    hasOrder: !!order,
+    optedOut: !!contact?.marketing_opt_out_at,
+    alreadyInInquiryDrip: false,
+    inOtherRecoveryDrip: !!otherDrip,
+    now,
+  })
+
+  if (!decision.eligible) {
+    if (
+      opts.ignoreTimingGates &&
+      (decision.reason === 'still_active' || decision.reason === 'outside_lookback')
+    ) {
+      // ops force-path: allow enroll despite timing
+    } else {
+      return { ok: false, reason: decision.reason || 'ineligible' }
+    }
+  }
+
+  const c = contact as ContactRow | null
+  if (
+    c &&
+    c.marketing_opt_in !== true &&
+    c.whatsapp_marketing_opt_in !== true
+  ) {
+    await db
+      .from('contacts')
+      .update({
+        whatsapp_marketing_opt_in: true,
+        marketing_opt_in: true,
+        marketing_opt_in_source: 'inbox_inquiry',
+        marketing_opt_in_at: now.toISOString(),
+        updated_at: now.toISOString(),
+      })
+      .eq('id', c.id)
+      .is('marketing_opt_out_at', null)
+  }
+
+  const texts = await recentMessageTexts(db, conv.id)
+  const hint = extractProductHintFromTexts(texts)
+  const firstSendAt = firstSendAtIso(now)
+
+  const { error: insErr } = await db.from('shopify_recovery_tracking').insert({
+    account_id: conv.account_id,
+    contact_id: conv.contact_id,
+    sequence_id: inquirySeq.id,
+    current_step: 1,
+    status: 'in_progress',
+    next_send_at: firstSendAt,
+    metadata: {
+      source: 'inquiry_no_purchase',
+      product_title: hint.product_title,
+      product_url: hint.product_url || null,
+      enrolled_at: now.toISOString(),
+      last_customer_message_at: lastInbound,
+    },
+  })
+
+  if (insErr) {
+    if (insErr.code !== '23505') {
+      console.error('[inquiry-followup] enroll failed:', insErr.message)
+      return { ok: false, reason: insErr.message }
+    }
+    return { ok: false, reason: 'already_enrolled' }
+  }
+  return { ok: true, action: 'enrolled' }
+}
+
+/**
+ * Scan quiet conversations in the lookback window and enroll no-purchase
+ * inquirers. Oldest first so backlog leads (expired pickle / offer chats)
+ * are not starved by the newest 200 inbox threads.
  */
 export async function enrollInquiryFollowups(
   db: SupabaseClient,
@@ -208,13 +380,15 @@ export async function enrollInquiryFollowups(
   // Do not filter on conversation.last_message_at silence — an agent reply
   // after the customer goes quiet would otherwise hide eligible leads.
   // Silence is measured on the last *customer* message below.
+  // Ascending order: oldest-within-lookback enroll first (backlog catch-up).
   const { data: conversations, error } = await db
     .from('conversations')
-    .select('id, account_id, contact_id, last_message_at')
+    .select('id, account_id, contact_id, last_message_at, status')
     .not('contact_id', 'is', null)
     .gte('last_message_at', lookbackStart)
-    .order('last_message_at', { ascending: false })
-    .limit(200)
+    .in('status', ['open', 'pending'])
+    .order('last_message_at', { ascending: true })
+    .limit(INQUIRY_ENROLL_SCAN)
 
   if (error) {
     console.error('[inquiry-followup] conversation scan failed:', error.message)
@@ -230,121 +404,107 @@ export async function enrollInquiryFollowups(
     if (!conv.contact_id || !conv.account_id) continue
     scanned++
 
-    const lastInbound = await lastCustomerMessageAt(db, conv.id)
-    const { data: contact } = await db
-      .from('contacts')
-      .select('id, phone, name, marketing_opt_out_at, marketing_opt_in, whatsapp_marketing_opt_in')
-      .eq('id', conv.contact_id)
-      .maybeSingle()
-
-    const { data: order } = await db
-      .from('shopify_orders')
-      .select('id')
-      .eq('contact_id', conv.contact_id)
-      .limit(1)
-      .maybeSingle()
-
-    const { data: inquirySeq } = await db
-      .from('shopify_automation_sequences')
-      .select('id, is_active')
-      .eq('account_id', conv.account_id)
-      .eq('trigger_type', INQUIRY_TRIGGER)
-      .maybeSingle()
-
-    if (!inquirySeq?.id || !inquirySeq.is_active) {
-      skipped++
-      continue
-    }
-
-    const { data: existingInquiry } = await db
-      .from('shopify_recovery_tracking')
-      .select('id')
-      .eq('contact_id', conv.contact_id)
-      .eq('sequence_id', inquirySeq.id)
-      .eq('status', 'in_progress')
-      .limit(1)
-      .maybeSingle()
-
-    const { data: otherDrip } = await db
-      .from('shopify_recovery_tracking')
-      .select('id')
-      .eq('contact_id', conv.contact_id)
-      .eq('status', 'in_progress')
-      .neq('sequence_id', inquirySeq.id)
-      .limit(1)
-      .maybeSingle()
-
-    const decision = evaluateInquiryEligibility({
-      lastCustomerMessageAt: lastInbound,
-      hasPhone: hasWhatsAppPhone(contact?.phone),
-      hasOrder: !!order,
-      optedOut: !!contact?.marketing_opt_out_at,
-      alreadyInInquiryDrip: !!existingInquiry,
-      inOtherRecoveryDrip: !!otherDrip,
-      now,
-    })
-
-    if (!decision.eligible) {
-      skipped++
-      continue
-    }
-
-    // Engaged inbox lead: they messaged us. Ensure marketing send is allowed
-    // unless they explicitly opted out (already filtered above).
-    if (
-      contact &&
-      contact.marketing_opt_in !== true &&
-      contact.whatsapp_marketing_opt_in !== true
-    ) {
-      await db
-        .from('contacts')
-        .update({
-          whatsapp_marketing_opt_in: true,
-          marketing_opt_in: true,
-          marketing_opt_in_source: 'inbox_inquiry',
-          marketing_opt_in_at: now.toISOString(),
-          updated_at: now.toISOString(),
-        })
-        .eq('id', contact.id)
-        .is('marketing_opt_out_at', null)
-    }
-
-    const texts = await recentMessageTexts(db, conv.id)
-    const hint = extractProductHintFromTexts(texts)
-    // Same-tick send when cron fires before 09:30 IST — do not park at
-    // 09:30 or a sparse/daily schedule will miss the day again.
-    const windowDecision = shouldDeferOutsideIstWindow(now)
-    const firstSendAt = windowDecision.defer
-      ? windowDecision.nextAt.toISOString()
-      : now.toISOString()
-
-    const { error: insErr } = await db.from('shopify_recovery_tracking').insert({
-      account_id: conv.account_id,
-      contact_id: conv.contact_id,
-      sequence_id: inquirySeq.id,
-      current_step: 1,
-      status: 'in_progress',
-      next_send_at: firstSendAt,
-      metadata: {
-        source: 'inquiry_no_purchase',
-        product_title: hint.product_title,
-        product_url: hint.product_url || null,
-        enrolled_at: now.toISOString(),
-        last_customer_message_at: lastInbound,
+    const result = await enrollInquiryConversation(
+      db,
+      {
+        id: conv.id,
+        account_id: conv.account_id,
+        contact_id: conv.contact_id,
       },
-    })
+      { now },
+    )
 
-    if (insErr) {
-      if (insErr.code !== '23505') {
-        console.error('[inquiry-followup] enroll failed:', insErr.message)
-      }
-      skipped++
-      continue
-    }
-    enrolled++
+    if (result.ok && result.action === 'enrolled') enrolled++
+    else skipped++
   }
 
   return { scanned, enrolled, skipped }
+}
+
+/**
+ * Ops: enroll (or bump) specific WhatsApp phones into the inquiry drip.
+ * Used for expired threads the scan missed (e.g. Gaurang / Swapna).
+ */
+export async function enrollInquiryFollowupsByPhones(
+  db: SupabaseClient,
+  phones: string[],
+  now: Date = new Date(),
+): Promise<{
+  enrolled: number
+  bumped: number
+  results: Array<{ phone: string; ok: boolean; action?: string; reason?: string }>
+}> {
+  const targets = [
+    ...new Set(
+      phones
+        .map((p) => toMetaPhone(p))
+        .filter((p) => p.length >= 10),
+    ),
+  ]
+
+  const results: Array<{
+    phone: string
+    ok: boolean
+    action?: string
+    reason?: string
+  }> = []
+  let enrolled = 0
+  let bumped = 0
+
+  for (const phone of targets) {
+    const last10 = phone.slice(-10)
+    const { data: contacts } = await db
+      .from('contacts')
+      .select('id, phone, account_id')
+      .or(`phone.eq.${phone},phone.eq.+${phone},phone.like.%${last10}`)
+      .limit(20)
+
+    const contact = (contacts ?? []).find(
+      (c) => toMetaPhone(c.phone) === phone,
+    )
+    if (!contact?.id || !contact.account_id) {
+      results.push({ phone, ok: false, reason: 'contact_not_found' })
+      continue
+    }
+
+    const { data: conv } = await db
+      .from('conversations')
+      .select('id, account_id, contact_id')
+      .eq('contact_id', contact.id)
+      .eq('account_id', contact.account_id)
+      .order('last_message_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (!conv?.id) {
+      results.push({ phone, ok: false, reason: 'conversation_not_found' })
+      continue
+    }
+
+    const result = await enrollInquiryConversation(
+      db,
+      {
+        id: conv.id,
+        account_id: conv.account_id,
+        contact_id: conv.contact_id,
+      },
+      {
+        now,
+        bumpIfEnrolled: true,
+        ignoreTimingGates: true,
+      },
+    )
+
+    if (result.ok) {
+      if (result.action === 'enrolled') enrolled++
+      if (result.action === 'bumped') bumped++
+      results.push({ phone, ok: true, action: result.action })
+    } else {
+      results.push({ phone, ok: false, reason: result.reason })
+    }
+  }
+
+  return { enrolled, bumped, results }
 }
 
 export async function runInquiryFollowupEnrollmentCron(): Promise<Response> {

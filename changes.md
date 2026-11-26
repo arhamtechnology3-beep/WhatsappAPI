@@ -1,5 +1,31 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-11-27 00:20 IST] Feature (Follow-ups) — DP10 website unlock multi-step drip until purchase
+
+### Root Cause
+- Website unlock (`Hi! Send my DP10 code (ref …)`) only sent the free-form code reply. No marketing drip after that, so leads like Swapna sat Expired with no templates until purchase.
+- Separately, inquiry enroll scanned only the **200 newest** chats (DESC), so quiet pickle leads (Gaurang) were starved.
+
+### Objective & Fixes
+- New sequence `offer_unlock_no_purchase` (visit nudge → shop now → festival). Enrolls on unlock claim; stops on any Shopify order. Post-purchase order follow-ups unchanged.
+- Cron backfill of claimed unlocks (21d) + `GET /api/cron/offer-unlock-enroll`.
+- Inquiry scan: oldest-within-lookback first, limit 500; `GET /api/cron/inquiry-enroll?phones=…`.
+
+### Files Modified
+- `src/lib/followups/offer-unlock-followup.ts`, `offer-unlock-followup.test.ts`
+- `src/lib/followups/inquiry-followup.ts`
+- `src/lib/visitors/unlock-claim.ts`
+- `src/lib/shopify/automation-bindings.ts`, `sequence-cron.ts`, `send-window.ts`
+- `src/app/api/cron/offer-unlock-enroll/route.ts`, `inquiry-enroll/route.ts`
+- `src/app/(dashboard)/shopify/page.tsx`, `src/components/settings/shopify-settings.tsx`
+- `docs/hostinger-cron.md`, `changes.md`
+
+### Live
+- Merge → Hostinger deploy (sequence auto-aligns on next tick).
+- DP10 backlog / Swapna: `curl -fsSL "…/api/cron/offer-unlock-enroll?secret=…&phones=919059227738"`
+- Gaurang inquiry: `curl -fsSL "…/api/cron/inquiry-enroll?secret=…&phones=918879554842"`
+- No migration.
+
 ## [2026-11-26 23:50 IST] Fix (Cron) — stuck `already_running` blocked all follow-ups
 
 ### Root Cause

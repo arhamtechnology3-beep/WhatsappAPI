@@ -3,6 +3,7 @@ import { parseUnlockRefFromMessage, getOrCreateCaptureSettings } from '@/lib/vis
 import { linkVisitorToContact } from '@/lib/visitors/identify'
 import { resolveStoreForAccount } from '@/lib/visitors/account-store'
 import { toMetaPhone } from '@/lib/whatsapp/phone-utils'
+import { enrollOfferUnlockFollowup } from '@/lib/followups/offer-unlock-followup'
 
 export type UnlockClaimResult =
   | { claimed: false }
@@ -117,6 +118,24 @@ export async function claimWaUnlockFromInbound(
   const replyText = alreadyClaimed
     ? `Aapka WhatsApp number pehle se *activated* hai ✅\nAapka code: *${code}* — checkout pe apply karke discount lo.`
     : `Thank you! Aapka WhatsApp number ab is offer ke liye *activated* hai ✅\nAapka code hai *${code}* 🎁\nCheckout pe apply karo aur discount enjoy karo.`
+
+  // Multi-step marketing drip until purchase (stops on any Shopify order).
+  // First claim: wait ~4h after this free-form reply. Re-claim / backlog:
+  // enrollOfferUnlockFollowup is a no-op if already in progress.
+  try {
+    await enrollOfferUnlockFollowup(supabase, {
+      accountId: opts.accountId,
+      contactId: opts.contactId,
+      discountCode: code,
+      refCode: ref,
+      firstDelayHours: alreadyClaimed ? 0 : undefined,
+    })
+  } catch (enrollErr) {
+    console.error(
+      '[unlock-claim] offer unlock follow-up enroll failed:',
+      enrollErr instanceof Error ? enrollErr.message : enrollErr,
+    )
+  }
 
   return {
     claimed: true,

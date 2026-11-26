@@ -13,6 +13,7 @@ import {
   shouldStopInquiryDrip,
 } from '@/lib/shopify/recovery-conversion'
 import { enrollInquiryFollowups } from '@/lib/followups/inquiry-followup'
+import { enrollOfferUnlockBacklog } from '@/lib/followups/offer-unlock-followup'
 import { shouldRunThrottled } from '@/lib/cron/throttle'
 import {
   clampToIstSendWindow,
@@ -20,8 +21,9 @@ import {
   shouldDeferOutsideIstWindow,
 } from '@/lib/shopify/send-window'
 
-/** Inbox inquiry scan is heavy; once per 2h matches hPanel cron cadence. */
+/** Inbox inquiry + unlock backlog scans; once per 2h matches hPanel cron. */
 const INQUIRY_ENROLL_INTERVAL_MS = 2 * 60 * 60 * 1000
+const OFFER_UNLOCK_ENROLL_INTERVAL_MS = 2 * 60 * 60 * 1000
 import {
   duplicateTrackingIdsToStop,
   metadataWithSentStep,
@@ -29,8 +31,11 @@ import {
 } from '@/lib/shopify/sequence-dedupe'
 import {
   CART_STEP3_NO_CODE_TEMPLATE,
+  COLLECTION_ALL_PRODUCTS_PATH,
   isCodedCartStep3Template,
+  storefrontBaseUrl,
 } from '@/lib/shopify/whatsapp-template-library'
+import { toCustomerStoreUrl } from '@/lib/shopify/storefront-url'
 
 async function isTemplateApproved(
   supabase: ReturnType<typeof supabaseAdmin>,
@@ -57,6 +62,8 @@ export async function runShopifySequenceCron() {
   let deferredIstWindow = 0
   let stoppedNoConsent = 0
   let inquiryEnroll: { scanned: number; enrolled: number; skipped: number } | null =
+    null
+  let offerUnlockEnroll: { scanned: number; enrolled: number; skipped: number } | null =
     null
 
   try {
@@ -91,6 +98,18 @@ export async function runShopifySequenceCron() {
     } catch (enrollErr) {
       console.error('[shopify-sequence-cron] inquiry enroll failed:', enrollErr)
       inquiryEnroll = { scanned: 0, enrolled: 0, skipped: 0 }
+    }
+
+    // 1b) Backfill website DP10 / unlock claims who never purchased
+    try {
+      if (shouldRunThrottled('offer_unlock_enroll', OFFER_UNLOCK_ENROLL_INTERVAL_MS)) {
+        offerUnlockEnroll = await enrollOfferUnlockBacklog(supabase)
+      } else {
+        offerUnlockEnroll = { scanned: 0, enrolled: 0, skipped: 0 }
+      }
+    } catch (enrollErr) {
+      console.error('[shopify-sequence-cron] offer unlock enroll failed:', enrollErr)
+      offerUnlockEnroll = { scanned: 0, enrolled: 0, skipped: 0 }
     }
 
     // 2) Find all active in-flight sequences where next_send_at is due
@@ -177,7 +196,10 @@ export async function runShopifySequenceCron() {
             .limit(1)
             .maybeSingle()
           isConverted = !!laterOrder
-        } else if (triggerType === 'inquiry_no_purchase') {
+        } else if (
+          triggerType === 'inquiry_no_purchase' ||
+          triggerType === 'offer_unlock_no_purchase'
+        ) {
           const { data: anyOrder } = await supabase
             .from('shopify_orders')
             .select('id')
@@ -277,7 +299,8 @@ export async function runShopifySequenceCron() {
           tracking.current_step > 1 ||
           sequence.trigger_type === 'browse_abandoned' ||
           sequence.trigger_type === 'shopify_customer_created' ||
-          sequence.trigger_type === 'inquiry_no_purchase'
+          sequence.trigger_type === 'inquiry_no_purchase' ||
+          sequence.trigger_type === 'offer_unlock_no_purchase'
         const hasConsent = !!(contact?.whatsapp_marketing_opt_in || contact?.marketing_opt_in)
         if (requiresOptIn && !hasConsent) {
           // Stop tracking sequence immediately if contact did not opt in
@@ -313,10 +336,18 @@ export async function runShopifySequenceCron() {
           productName = meta.product_title || 'product'
           totalPrice = parseFloat(meta.price || '0').toFixed(2)
           productUrl = meta.product_url || ''
-        } else if (sequence.trigger_type === 'inquiry_no_purchase') {
+        } else if (
+          sequence.trigger_type === 'inquiry_no_purchase' ||
+          sequence.trigger_type === 'offer_unlock_no_purchase'
+        ) {
           const meta = tracking.metadata || {}
           productName = meta.product_title || 'handmade pickles'
-          productUrl = meta.product_url || ''
+          productUrl =
+            meta.product_url ||
+            toCustomerStoreUrl(
+              null,
+              `${storefrontBaseUrl()}/${COLLECTION_ALL_PRODUCTS_PATH}`,
+            )
         }
 
         // Step 3 drops the coupon code once the no-code template is approved;
@@ -374,7 +405,11 @@ export async function runShopifySequenceCron() {
             templateParams = [customerName, productName, discountCode || 'WELCOME10']
           } else if (tn.includes('cart_abandoned') || tn.includes('cart_reminder_step2')) {
             templateParams = [customerName, productName]
-          } else if (tn.includes('festival_broadcast') || tn.includes('shop_now_followup')) {
+          } else if (
+            tn.includes('festival_broadcast') ||
+            tn.includes('shop_now_followup') ||
+            tn.includes('visit_nudge')
+          ) {
             templateParams = [customerName]
           } else if (tn.includes('browse_abandoned')) {
             templateParams = [customerName, productName]
@@ -454,6 +489,7 @@ export async function runShopifySequenceCron() {
       stoppedNoConsent,
       due: trackings?.length ?? 0,
       inquiryEnroll,
+      offerUnlockEnroll,
       hint:
         waitingApproval > 0
           ? 'Drip steps waiting on Meta-approved templates — Install Shopify recipes + Sync from Meta, then ensure status APPROVED.'

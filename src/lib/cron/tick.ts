@@ -26,6 +26,10 @@ type JobName =
 export type CronTickResult = {
   ok: boolean
   skipped?: 'already_running'
+  /** How long the prior tick has held the lock (ms), when skipped. */
+  lockAgeMs?: number
+  /** Set when this tick stole a lock older than the TTL. */
+  lockStolenMs?: number
   jobs: Record<JobName, { status: number; body: unknown }>
 }
 
@@ -103,10 +107,12 @@ function emptyJobs(): CronTickResult['jobs'] {
  * of stacking another full pass.
  */
 export async function runAllCronJobs(): Promise<CronTickResult> {
-  if (!tryAcquireCronTickLock()) {
+  const lock = tryAcquireCronTickLock()
+  if (!lock.acquired) {
     return {
       ok: true,
       skipped: 'already_running',
+      lockAgeMs: lock.ageMs,
       jobs: emptyJobs(),
     }
   }
@@ -132,7 +138,13 @@ export async function runAllCronJobs(): Promise<CronTickResult> {
     }
 
     const ok = Object.values(jobs).every((job) => job.status >= 200 && job.status < 300)
-    return { ok, jobs }
+    return {
+      ok,
+      jobs,
+      ...(lock.stolen && lock.previousAgeMs != null
+        ? { lockStolenMs: lock.previousAgeMs }
+        : {}),
+    }
   } finally {
     releaseCronTickLock()
   }

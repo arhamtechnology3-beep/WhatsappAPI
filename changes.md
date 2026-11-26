@@ -1,5 +1,24 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-11-26 23:50 IST] Fix (Cron) — stuck `already_running` blocked all follow-ups
+
+### Root Cause
+- Manual `/api/cron/tick` returned `ok: true, skipped: "already_running"` with every job `not-run`.
+- Single-flight lock was a bare boolean with **no TTL**. A hung Meta/Shopify job (or overlapping tick) held the lock until Node restart, so every later curl skipped and follow-ups never sent.
+- Ops `curl` without `-L` hit nginx **307** and never ran the app.
+
+### Objective & Fixes
+- Cron tick lock records `startedAt`; after **8 minutes** the next tick **steals** the lock.
+- `already_running` JSON includes `lockAgeMs`; stolen ticks report `lockStolenMs`.
+- Docs: use `curl -fsSL`; restart Node if lock stuck before deploy.
+
+### Files Modified
+- `src/lib/cron/lock.ts`, `lock.test.ts`, `tick.ts`
+- `docs/hostinger-cron.md`, `changes.md`
+
+### Live
+- Merge → Hostinger deploy (or **Restart Node** now to clear the stuck lock, then `curl -fsSL .../api/cron/tick?secret=…`). Expect JSON **without** `skipped`, with `sequences` / `followups` bodies. No migration.
+
 ## [2026-11-26 23:10 IST] Fix (Follow-ups) — catch quiet leads after cron/template outage
 
 ### Root Cause

@@ -26,14 +26,16 @@ Without an hPanel cron, delayed jobs only run when something else wakes Node (of
 Command (prefer header; Hostinger wget can use the query instead):
 
 ```bash
-curl -fsS -H "x-cron-secret: YOUR_SECRET" https://whatsapp.arhamtechnology.com/api/cron/tick
+curl -fsSL -H "x-cron-secret: YOUR_SECRET" https://whatsapp.arhamtechnology.com/api/cron/tick
 ```
 
 If the panel cannot set headers:
 
 ```bash
-curl -fsS "https://whatsapp.arhamtechnology.com/api/cron/tick?secret=YOUR_SECRET"
+curl -fsSL "https://whatsapp.arhamtechnology.com/api/cron/tick?secret=YOUR_SECRET"
 ```
+
+Use **`-L`** so nginx `307` redirects are followed (without it the body is HTML and jobs never run).
 
 Schedule (pick one):
 
@@ -43,9 +45,11 @@ Schedule (pick one):
 
 The plan’s **Max processes (NPROC) = 120** is shared by all 10 sites; every-minute / hourly ticks under load cause process faults and 503/504.
 
-Overlapping ticks are single-flight locked (`already_running` JSON). Heavy jobs (visitor recovery, retention, inquiry enroll, Shiprocket, template status) are throttled inside the tick; send/enroll batches are small.
+Overlapping ticks are single-flight locked (`already_running` JSON + `lockAgeMs`). Heavy jobs (visitor recovery, retention, inquiry enroll, Shiprocket, template status) are throttled inside the tick; send/enroll batches are small.
 
-A 200 JSON body with `"ok": true` means workers ran (or a concurrent tick was safely skipped).
+If every manual tick returns `skipped: "already_running"` for several minutes, a prior tick is hung: **Restart the Node.js app** in hPanel (clears the in-memory lock), then curl again. After deploy, locks older than **8 minutes** are stolen automatically so a stuck job cannot block follow-ups forever.
+
+A 200 JSON body with `"ok": true` and **no** `skipped` means workers ran. `skipped: "already_running"` means another tick still held the lock (safe skip).
 
 See also: [`hostinger-nproc-relief.md`](./hostinger-nproc-relief.md).
 

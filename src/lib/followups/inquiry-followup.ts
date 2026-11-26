@@ -9,7 +9,10 @@
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
-import { clampToIstSendWindow } from '@/lib/shopify/send-window'
+import {
+  clampToIstSendWindow,
+  shouldDeferOutsideIstWindow,
+} from '@/lib/shopify/send-window'
 import { hasWhatsAppPhone } from '@/lib/whatsapp/phone-utils'
 
 export const INQUIRY_TRIGGER = 'inquiry_no_purchase' as const
@@ -17,12 +20,16 @@ export const INQUIRY_SEQUENCE_NAME = 'Inquiry No-Purchase Follow-up'
 
 /** Wait this long after the last customer message before starting the drip. */
 export const INQUIRY_SILENCE_HOURS = 4
-/** Only consider conversations active within this many days. */
-export const INQUIRY_LOOKBACK_DAYS = 7
+/**
+ * Only consider conversations whose last activity is within this many days.
+ * 14d catches the backlog after cron/template outages (7d dropped leads
+ * like quiet pickle inquiries after ~a week).
+ */
+export const INQUIRY_LOOKBACK_DAYS = 14
 /** Defer an in-flight drip this many hours after a new inbound. */
 export const INQUIRY_DEFER_HOURS = 4
 /** Max enrollments per cron tick (keeps Meta/Hostinger NPROC load bounded). */
-export const INQUIRY_ENROLL_BATCH = 10
+export const INQUIRY_ENROLL_BATCH = 25
 
 const DEFAULT_PRODUCT = 'handmade pickles'
 const STORE_HOST = /divyaprabhafoods\.com/i
@@ -304,7 +311,12 @@ export async function enrollInquiryFollowups(
 
     const texts = await recentMessageTexts(db, conv.id)
     const hint = extractProductHintFromTexts(texts)
-    const firstSendAt = clampToIstSendWindow(now).toISOString()
+    // Same-tick send when cron fires before 09:30 IST — do not park at
+    // 09:30 or a sparse/daily schedule will miss the day again.
+    const windowDecision = shouldDeferOutsideIstWindow(now)
+    const firstSendAt = windowDecision.defer
+      ? windowDecision.nextAt.toISOString()
+      : now.toISOString()
 
     const { error: insErr } = await db.from('shopify_recovery_tracking').insert({
       account_id: conv.account_id,

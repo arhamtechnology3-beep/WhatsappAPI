@@ -19,7 +19,10 @@ describe('inquiry follow-up eligibility', () => {
     expect(inquirySilenceElapsed(fiveHoursAgo, NOON_UTC)).toBe(true)
     expect(inquirySilenceElapsed(oneHourAgo, NOON_UTC)).toBe(false)
     expect(inquiryWithinLookback(fiveHoursAgo, NOON_UTC)).toBe(true)
-    expect(inquiryWithinLookback(tenDaysAgo, NOON_UTC)).toBe(false)
+    // 14-day lookback still covers ~10-day-old quiet leads
+    expect(inquiryWithinLookback(tenDaysAgo, NOON_UTC)).toBe(true)
+    const twentyDaysAgo = new Date(NOON_UTC.getTime() - 20 * 86400_000).toISOString()
+    expect(inquiryWithinLookback(twentyDaysAgo, NOON_UTC)).toBe(false)
   })
 
   it('enrolls quiet inquirers with phone and no order', () => {

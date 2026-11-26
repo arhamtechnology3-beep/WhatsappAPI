@@ -19,7 +19,7 @@ Advanced → **Cron Jobs** for `whatsapp.arhamtechnology.com`:
 curl -fsS "https://whatsapp.arhamtechnology.com/api/cron/tick?secret=YOUR_SECRET"
 ```
 
-- Schedule: **`0 */2 * * *`** (every **2 hours** at minute 0)
+- Schedule: **`0 */2 * * *`** (every **2 hours** at minute 0), **or** once daily inside IST hours e.g. **`0 4 * * *`** (09:30 IST). Avoid `0 0 * * *` (05:30 IST) — inquiry follow-ups miss the day.
 - Delete any other job that hits `/api/cron/tick` or runs every minute
 
 Do **not** set `ENABLE_IN_PROCESS_CRON=1` in Environment variables.

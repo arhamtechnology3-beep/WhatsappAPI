@@ -1,5 +1,28 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-11-26 16:40 IST] Fix (Follow-ups) — daily midnight cron + unapproved steps never sent
+
+### Root Cause
+- Hostinger cron was `0 0 * * *` (00:00 UTC = **05:30 IST**). Inquiry / welcome drip steps deferred to **09:30 IST**, but the next tick was **tomorrow** — so follow-ups never left.
+- After templates were wiped/empty, sequence steps stayed `meta_approval_status != approved`, so cron hit **wait** forever even when Meta still had templates.
+
+### Objective & Fixes
+- Before morning IST open: **send on this tick** (do not defer to 09:30 when cron is sparse). After evening close: still defer to next 09:30 IST.
+- Each sequence cron: `alignShopifyAutomations` so step approval tracks `message_templates`.
+- Tick JSON now reports `waitingApproval`, `deferredIstWindow`, `stoppedNoConsent`, `due`.
+- Docs: once-daily cron should be `0 4 * * *` (09:30 IST), not `0 0 * * *`.
+
+### Files Modified
+- `src/lib/shopify/send-window.ts`, `send-window.test.ts`
+- `src/lib/shopify/sequence-cron.ts`
+- `docs/hostinger-cron.md`, `docs/hostinger-nproc-relief.md`
+- `changes.md`
+
+### Live
+- Merge → Hostinger deploy.
+- In hPanel set cron to **`0 4 * * *`** (or keep 2h). Run tick once manually.
+- Settings → Templates: **Install Shopify recipes** if empty; ensure drip templates are **APPROVED**. No migration.
+
 ## [2026-11-25 18:20 IST] Fix (Settings) — Templates tab empty for account members
 
 ### Root Cause

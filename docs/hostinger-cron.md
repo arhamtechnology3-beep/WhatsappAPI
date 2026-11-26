@@ -35,7 +35,13 @@ If the panel cannot set headers:
 curl -fsS "https://whatsapp.arhamtechnology.com/api/cron/tick?secret=YOUR_SECRET"
 ```
 
-Schedule: every **2 hours** (`0 */2 * * *`). The plan’s **Max processes (NPROC) = 120** is shared by all 10 sites; every-minute / hourly ticks under load cause process faults and 503/504.
+Schedule (pick one):
+
+- **Recommended under NPROC pressure:** every **2 hours** — `0 */2 * * *`
+- **Once per day:** run inside IST send hours, e.g. **`0 4 * * *`** (09:30 IST).  
+  Do **not** use `0 0 * * *` (00:00 UTC = 05:30 IST): inquiry/welcome drips used to defer to 09:30 and then never send until the next midnight.
+
+The plan’s **Max processes (NPROC) = 120** is shared by all 10 sites; every-minute / hourly ticks under load cause process faults and 503/504.
 
 Overlapping ticks are single-flight locked (`already_running` JSON). Heavy jobs (visitor recovery, retention, inquiry enroll, Shiprocket, template status) are throttled inside the tick; send/enroll batches are small.
 

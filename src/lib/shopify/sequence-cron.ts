@@ -15,6 +15,7 @@ import {
 import { enrollInquiryFollowups } from '@/lib/followups/inquiry-followup'
 import { shouldRunThrottled } from '@/lib/cron/throttle'
 import {
+  clampToIstSendWindow,
   shouldClampWelcomeFollowup,
   shouldDeferOutsideIstWindow,
 } from '@/lib/shopify/send-window'

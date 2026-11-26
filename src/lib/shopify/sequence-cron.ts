@@ -2,7 +2,10 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { engineSendTemplate } from '@/lib/automations/meta-send'
 import { createShopifyDiscountCode } from '@/lib/shopify/discount-generator'
-import { sequenceStepSendDecision } from '@/lib/shopify/automation-bindings'
+import {
+  alignShopifyAutomations,
+  sequenceStepSendDecision,
+} from '@/lib/shopify/automation-bindings'
 import { findOrCreateConversation } from '@/lib/inbox/find-or-create-conversation'
 import {
   shouldStopBrowseDrip,
@@ -12,8 +15,8 @@ import {
 import { enrollInquiryFollowups } from '@/lib/followups/inquiry-followup'
 import { shouldRunThrottled } from '@/lib/cron/throttle'
 import {
-  clampToIstSendWindow,
   shouldClampWelcomeFollowup,
+  shouldDeferOutsideIstWindow,
 } from '@/lib/shopify/send-window'
 
 /** Inbox inquiry scan is heavy; once per 2h matches hPanel cron cadence. */
@@ -49,10 +52,34 @@ export async function runShopifySequenceCron() {
 
   let sequencesProcessed = 0
   let messagesSent = 0
+  let waitingApproval = 0
+  let deferredIstWindow = 0
+  let stoppedNoConsent = 0
   let inquiryEnroll: { scanned: number; enrolled: number; skipped: number } | null =
     null
 
   try {
+    // 0) Keep drip step approval in sync with message_templates status.
+    // After a template wipe/reinstall, steps stay on not_submitted until
+    // this runs — otherwise every due tracking hits "wait" forever.
+    try {
+      const { data: activeSeqs } = await supabase
+        .from('shopify_automation_sequences')
+        .select('account_id')
+        .eq('is_active', true)
+      const accountIds = [
+        ...new Set((activeSeqs ?? []).map((s) => s.account_id).filter(Boolean)),
+      ] as string[]
+      for (const accountId of accountIds) {
+        await alignShopifyAutomations(supabase, accountId)
+      }
+    } catch (alignErr) {
+      console.error(
+        '[shopify-sequence-cron] align approvals failed:',
+        alignErr instanceof Error ? alignErr.message : alignErr,
+      )
+    }
+
     // 1) Enroll inbox inquirers who never purchased (tight 2-day drip)
     try {
       if (shouldRunThrottled('inquiry_enroll', INQUIRY_ENROLL_INTERVAL_MS)) {
@@ -188,6 +215,7 @@ export async function runShopifySequenceCron() {
 
         const sendDecision = sequenceStepSendDecision(step)
         if (sendDecision === 'wait') {
+          waitingApproval++
           continue
         }
         if (sendDecision === 'skip') {
@@ -202,12 +230,15 @@ export async function runShopifySequenceCron() {
             currentStep: tracking.current_step,
           })
         ) {
-          const clamped = clampToIstSendWindow(new Date())
-          if (clamped.getTime() - Date.now() > 60_000) {
+          // Once-daily cron at 00:00 UTC used to defer to 09:30 IST and
+          // never fire again the same day — follow-ups looked "broken".
+          const windowDecision = shouldDeferOutsideIstWindow(new Date())
+          if (windowDecision.defer) {
+            deferredIstWindow++
             await supabase
               .from('shopify_recovery_tracking')
               .update({
-                next_send_at: clamped.toISOString(),
+                next_send_at: windowDecision.nextAt.toISOString(),
                 updated_at: new Date().toISOString(),
               })
               .eq('id', tracking.id)
@@ -249,6 +280,7 @@ export async function runShopifySequenceCron() {
         const hasConsent = !!(contact?.whatsapp_marketing_opt_in || contact?.marketing_opt_in)
         if (requiresOptIn && !hasConsent) {
           // Stop tracking sequence immediately if contact did not opt in
+          stoppedNoConsent++
           await supabase
             .from('shopify_recovery_tracking')
             .update({ status: 'stopped', updated_at: new Date().toISOString() })
@@ -416,7 +448,15 @@ export async function runShopifySequenceCron() {
       success: true,
       sequencesProcessed,
       messagesSent,
+      waitingApproval,
+      deferredIstWindow,
+      stoppedNoConsent,
+      due: trackings?.length ?? 0,
       inquiryEnroll,
+      hint:
+        waitingApproval > 0
+          ? 'Drip steps waiting on Meta-approved templates — Install Shopify recipes + Sync from Meta, then ensure status APPROVED.'
+          : undefined,
     })
   } catch (err: any) {
     console.error('[shopify-sequence-cron] internal error:', err)

@@ -54,3 +54,30 @@ export function shouldClampWelcomeFollowup(args: {
   if (args.triggerType === 'inquiry_no_purchase') return true
   return args.triggerType === 'shopify_customer_created' && args.currentStep >= 2
 }
+
+/**
+ * Decide whether a welcome/inquiry send should wait for IST daytime.
+ *
+ * Important for once-daily Hostinger cron at 00:00 UTC (05:30 IST):
+ * deferring to 09:30 IST means the next tick is tomorrow — the message
+ * never goes out. So before morning open we **send on this tick**; after
+ * evening close we defer to the next day's 09:30 IST.
+ */
+export function shouldDeferOutsideIstWindow(now: Date = new Date()): {
+  defer: boolean
+  nextAt: Date
+  reason: 'inside' | 'before_open_send_now' | 'after_close'
+} {
+  if (isInsideIstSendWindow(now)) {
+    return { defer: false, nextAt: now, reason: 'inside' }
+  }
+  const { minutes } = istParts(now)
+  if (minutes < WINDOW_START_MIN) {
+    return { defer: false, nextAt: now, reason: 'before_open_send_now' }
+  }
+  return {
+    defer: true,
+    nextAt: clampToIstSendWindow(now),
+    reason: 'after_close',
+  }
+}

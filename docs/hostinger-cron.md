@@ -49,6 +49,30 @@ Overlapping ticks are single-flight locked (`already_running` JSON + `lockAgeMs`
 
 If every manual tick returns `skipped: "already_running"` for several minutes, a prior tick is hung: **Restart the Node.js app** in hPanel (clears the in-memory lock), then curl again. After deploy, locks older than **8 minutes** are stolen automatically so a stuck job cannot block follow-ups forever.
 
+### Force inquiry follow-up for specific chats
+
+Expired quiet leads the scan used to miss (oldest-first scan now catches them). To enroll + send immediately for named phones:
+
+```bash
+curl -fsSL "https://whatsapp.arhamtechnology.com/api/cron/inquiry-enroll?secret=YOUR_SECRET&phones=918879554842"
+```
+
+Expect `enroll.results[].ok: true` and `sequences.body.messagesSent` ≥ 1 when templates are approved.
+
+### Website DP10 / unlock follow-ups
+
+Claims from the site popup (`Hi! Send my DP10 code (ref …)`) enroll into a 3-step drip until purchase. Backfill + send:
+
+```bash
+curl -fsSL "https://whatsapp.arhamtechnology.com/api/cron/offer-unlock-enroll?secret=YOUR_SECRET"
+```
+
+One phone (e.g. Swapna):
+
+```bash
+curl -fsSL "https://whatsapp.arhamtechnology.com/api/cron/offer-unlock-enroll?secret=YOUR_SECRET&phones=919059227738"
+```
+
 A 200 JSON body with `"ok": true` and **no** `skipped` means workers ran. `skipped: "already_running"` means another tick still held the lock (safe skip).
 
 See also: [`hostinger-nproc-relief.md`](./hostinger-nproc-relief.md).

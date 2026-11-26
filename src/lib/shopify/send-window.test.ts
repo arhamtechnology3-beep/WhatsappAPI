@@ -68,6 +68,21 @@ describe('shouldClampWelcomeFollowup', () => {
       }),
     ).toBe(true)
   })
+
+  it('clamps offer-unlock (DP10) drip steps into IST hours', () => {
+    expect(
+      shouldClampWelcomeFollowup({
+        triggerType: 'offer_unlock_no_purchase',
+        currentStep: 1,
+      }),
+    ).toBe(true)
+    expect(
+      shouldClampWelcomeFollowup({
+        triggerType: 'offer_unlock_no_purchase',
+        currentStep: 2,
+      }),
+    ).toBe(true)
+  })
 })
 
 describe('shouldDeferOutsideIstWindow', () => {

@@ -51,7 +51,12 @@ export function shouldClampWelcomeFollowup(args: {
   triggerType: string
   currentStep: number
 }): boolean {
-  if (args.triggerType === 'inquiry_no_purchase') return true
+  if (
+    args.triggerType === 'inquiry_no_purchase' ||
+    args.triggerType === 'offer_unlock_no_purchase'
+  ) {
+    return true
+  }
   return args.triggerType === 'shopify_customer_created' && args.currentStep >= 2
 }
 

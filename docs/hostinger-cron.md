@@ -2,6 +2,8 @@
 
 Delayed WhatsApp jobs (abandoned cart, drip steps, wait steps, flow timeouts) do **not** run on your laptop. They run on the Hostinger Node process at `https://whatsapp.arhamtechnology.com`. Your PC can be off.
 
+Backend DB/Auth: today this is often Supabase Cloud. To run DB/Auth/Realtime on **Hostinger VPS** instead (no supabase.com quota), see [`hostinger-selfhost-supabase.md`](./hostinger-selfhost-supabase.md).
+
 They only looked like they needed a login because live is **not Vercel**. `vercel.json` cron never fires on Hostinger, so jobs sat until someone opened the dashboard (which woke a sleeping Node process).
 
 ## 1. Keep Node running 24/7

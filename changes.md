@@ -1,5 +1,36 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-11-27 22:30 IST] Fix — Free-plan Option A: disable visitor tracking; keep Shopify cart recovery
+
+### Root Cause
+- Supabase Free hit Log Ingestion (~954%) + Egress (~200%) with only 2 MAU.
+- Storefront `page_view` → `tracking_events` / `visitor_sessions` was the main flood; not required for abandoned **cart** (Shopify webhooks + 2h cron).
+- Full Shopify webhook JSON in `shopify_webhook_logs` added unnecessary write/egress volume.
+- Retention deletes previously returned every deleted `id` (egress spike).
+
+### Objective & Fixes
+- Default-off IdentityFlow storefront tracking (`ENABLE_VISITOR_TRACKING=1` to re-enable). `/api/v1/track`, `/api/v1/events/ingest`, browse pixel, and visitor recovery cron no-op when off.
+- Compact `shopify_webhook_logs` payloads via `insertShopifyWebhookLog` (opt-in full: `SHOPIFY_WEBHOOK_LOG_FULL_PAYLOAD=1`).
+- Retention: 14d tracking / 7d webhook logs / 14d visitor sessions; deletes use `count: "exact"` without returning row ids.
+- Theme docs: remove or `disabled: true` the visitor tracker; cart recovery unchanged.
+
+### Files Modified
+- `src/lib/visitors/feature-flags.ts`, `feature-flags.test.ts`
+- `src/app/api/v1/track/route.ts`, `src/app/api/v1/events/ingest/route.ts`
+- `src/lib/visitors/recovery-cron.ts`
+- `src/app/api/shopify/pixel/product-viewed/route.ts`
+- `src/lib/shopify/webhook-log.ts`, `webhook-log.test.ts`
+- `src/lib/logistics/notify.ts`, `src/app/api/webhooks/shopify/**`
+- `src/lib/ops/retention.ts`
+- `public/identityflow/visitor-tracker.js`
+- `docs/theme-visitor-recognition.md`, `.env.local.example`, `changes.md`
+
+### Live
+- Deploy Hostinger Node from this PR. No SQL migration.
+- Theme: remove `visitor-tracker.js` (or set `disabled: true`). Keep cron every **2 hours**.
+- Optional SQL cleanup (Studio) after unblock: `truncate tracking_events;` / delete old `visitor_sessions` / `shopify_webhook_logs`.
+- Do **not** set `ENABLE_VISITOR_TRACKING` until VPS/paid quota.
+
 ## [2026-11-27 11:40 IST] Ops — leave Supabase Cloud; Hostinger VPS self-host guide
 
 ### Root Cause

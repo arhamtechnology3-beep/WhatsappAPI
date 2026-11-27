@@ -11,6 +11,7 @@ import { computeStoreEntitlements } from "@/lib/billing/entitlements";
 import { getSubscriptionForOrganization } from "@/lib/billing/owner-subscription";
 import type { SubscriptionStatus } from "@/lib/billing/subscription-state";
 import { SUBSCRIPTION_STATUSES } from "@/lib/billing/subscription-state";
+import { isVisitorTrackingEnabled } from "@/lib/visitors/feature-flags";
 
 const eventSchema = z.object({
   storeId: z
@@ -51,6 +52,14 @@ export async function OPTIONS(request: Request) {
 export async function POST(request: Request) {
   const origin = request.headers.get("origin");
   const headers = cors(origin);
+
+  if (!isVisitorTrackingEnabled()) {
+    return NextResponse.json(
+      { ok: true, disabled: true, inserted: false },
+      { status: 200, headers },
+    );
+  }
+
   const rawBody = await request.text();
 
   let json: unknown;

@@ -8,6 +8,7 @@ import { applyShopifyCors, shopifyCorsPreflight } from '@/lib/shopify/cors'
 import { hasWhatsAppPhone } from '@/lib/whatsapp/phone-utils'
 import { fetchShopifyProductImage } from '@/lib/shopify/product-image'
 import { toCustomerStoreUrl } from '@/lib/shopify/storefront-url'
+import { isVisitorTrackingEnabled } from '@/lib/visitors/feature-flags'
 
 export async function OPTIONS(request: Request) {
   return shopifyCorsPreflight(request)
@@ -15,6 +16,18 @@ export async function OPTIONS(request: Request) {
 
 export async function POST(request: Request) {
   const origin = request.headers.get('origin')
+
+  // Browse abandonment enrollments are IdentityFlow traffic — off by default.
+  if (!isVisitorTrackingEnabled()) {
+    const res = NextResponse.json({
+      success: true,
+      skipped: true,
+      disabled: true,
+      message: 'Visitor tracking disabled — browse recovery off',
+    })
+    return applyShopifyCors(res, origin)
+  }
+
   const supabase = supabaseAdmin()
 
   try {

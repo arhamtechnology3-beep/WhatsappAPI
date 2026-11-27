@@ -6,6 +6,7 @@ import {
   visitorCorsPreflight,
   visitorJson,
 } from '@/lib/visitors/store-context'
+import { isVisitorTrackingEnabled } from '@/lib/visitors/feature-flags'
 import { ingestVisitorEvents } from '@/lib/visitors/track'
 
 const eventSchema = z.object({
@@ -30,6 +31,17 @@ export async function OPTIONS(request: Request) {
 
 export async function POST(request: Request) {
   const origin = request.headers.get('origin')
+
+  // Option A (Free-plan): ignore storefront page/session events. Theme may
+  // still call this; respond 200 so the tracker does not retry-storm.
+  if (!isVisitorTrackingEnabled()) {
+    return visitorJson(
+      { ok: true, disabled: true, inserted: 0, skipped: 0 },
+      200,
+      origin,
+    )
+  }
+
   const supabase = supabaseAdmin()
 
   const ip =

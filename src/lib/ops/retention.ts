@@ -1,9 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const DEFAULT_EVENT_RETENTION_DAYS = 90;
+/** Tracking/campaign rows — short window to protect Free-plan egress. */
+const DEFAULT_EVENT_RETENTION_DAYS = 14;
+/** Shopify webhook audit rows — debug only. */
+const WEBHOOK_LOG_RETENTION_DAYS = 7;
+/** Visitor session summaries — unused when tracking is off. */
+const VISITOR_SESSION_RETENTION_DAYS = 14;
 
 /**
- * Delete aged tracking / campaign events. Idempotent; safe for cron.
+ * Delete aged tracking / campaign / webhook-log rows.
+ * Avoid `.select("id")` on deletes — returning every deleted id burned egress.
  */
 export async function runDataRetention(
   supabase: SupabaseClient,
@@ -13,59 +19,88 @@ export async function runDataRetention(
   deletedCampaignEvents: number;
   deletedTokens: number;
   deletedUnlocks: number;
+  deletedWebhookLogs: number;
+  deletedVisitorSessions: number;
 }> {
   const days = opts?.retentionDays ?? DEFAULT_EVENT_RETENTION_DAYS;
   const now = opts?.now ?? new Date();
   const cutoff = new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
   const nowIso = now.toISOString();
+  const webhookCutoff = new Date(
+    now.getTime() - WEBHOOK_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const sessionCutoff = new Date(
+    now.getTime() - VISITOR_SESSION_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString();
 
-  const { data: events, error: e1 } = await supabase
+  const { error: e1, count: deletedEventsCount } = await supabase
     .from("tracking_events")
-    .delete()
-    .lt("occurred_at", cutoff)
-    .select("id");
+    .delete({ count: "exact" })
+    .lt("occurred_at", cutoff);
 
-  const { data: campaignEvents, error: e2 } = await supabase
+  const { error: e2, count: deletedCampaignCount } = await supabase
     .from("campaign_events")
-    .delete()
-    .lt("created_at", cutoff)
-    .select("id");
+    .delete({ count: "exact" })
+    .lt("created_at", cutoff);
 
-  const { data: tokens, error: e3 } = await supabase
+  const { error: e3, count: deletedTokensCount } = await supabase
     .from("contact_link_tokens")
-    .delete()
-    .lt("expires_at", nowIso)
-    .select("id");
+    .delete({ count: "exact" })
+    .lt("expires_at", nowIso);
 
-  const { data: unlocks, error: e4 } = await supabase
+  const { error: e4, count: deletedUnlocksCount } = await supabase
     .from("wa_unlock_requests")
-    .delete()
-    .lt("expires_at", nowIso)
-    .select("id");
+    .delete({ count: "exact" })
+    .lt("expires_at", nowIso);
+
+  const { error: e5, count: deletedWebhookCount } = await supabase
+    .from("shopify_webhook_logs")
+    .delete({ count: "exact" })
+    .lt("created_at", webhookCutoff);
+
+  const { error: e6, count: deletedSessionsCount } = await supabase
+    .from("visitor_sessions")
+    .delete({ count: "exact" })
+    .lt("updated_at", sessionCutoff);
 
   if (e1) console.error("[retention] tracking_events", e1.message);
   if (e2) console.error("[retention] campaign_events", e2.message);
   if (e3) console.error("[retention] contact_link_tokens", e3.message);
   if (e4) console.error("[retention] wa_unlock_requests", e4.message);
+  if (e5) console.error("[retention] shopify_webhook_logs", e5.message);
+  if (e6) console.error("[retention] visitor_sessions", e6.message);
 
-  const deletedEvents = events?.length ?? 0;
-  const deletedCampaignEvents = campaignEvents?.length ?? 0;
-  const deletedTokens = tokens?.length ?? 0;
-  const deletedUnlocks = unlocks?.length ?? 0;
+  const deletedEvents = deletedEventsCount ?? 0;
+  const deletedCampaignEvents = deletedCampaignCount ?? 0;
+  const deletedTokens = deletedTokensCount ?? 0;
+  const deletedUnlocks = deletedUnlocksCount ?? 0;
+  const deletedWebhookLogs = deletedWebhookCount ?? 0;
+  const deletedVisitorSessions = deletedSessionsCount ?? 0;
 
   await supabase.from("retention_runs").insert({
     deleted_events: deletedEvents + deletedCampaignEvents,
-    deleted_visitors: 0,
+    deleted_visitors: deletedVisitorSessions,
     metadata: {
       cutoff,
       days,
       deletedCampaignEvents,
       deletedTokens,
       deletedUnlocks,
+      deletedWebhookLogs,
+      deletedVisitorSessions,
+      webhookCutoff,
+      sessionCutoff,
     },
   });
 
-  return { deletedEvents, deletedCampaignEvents, deletedTokens, deletedUnlocks };
+  return {
+    deletedEvents,
+    deletedCampaignEvents,
+    deletedTokens,
+    deletedUnlocks,
+    deletedWebhookLogs,
+    deletedVisitorSessions,
+  };
 }
 
 /**

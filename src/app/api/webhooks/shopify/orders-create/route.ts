@@ -24,6 +24,7 @@ import { enqueueOwnerOrderAlerts, ownerOrderAlertParams } from '@/lib/shopify/ow
 import { hasWhatsAppPhone } from '@/lib/whatsapp/phone-utils'
 import { extractDpVisitorIdFromOrder, linkVisitorToContact } from '@/lib/visitors/identify'
 import { resolveStoreForAccount } from '@/lib/visitors/account-store'
+import { insertShopifyWebhookLog } from '@/lib/shopify/webhook-log'
 
 export async function POST(request: Request) {
   const rawBody = await request.text()
@@ -245,7 +246,7 @@ export async function POST(request: Request) {
     })
     scheduleImmediateWhatsAppJobs(ownerJobIds)
 
-    await supabase.from('shopify_webhook_logs').insert({
+    await insertShopifyWebhookLog(supabase, {
       account_id: accountId,
       topic,
       payload,
@@ -260,7 +261,7 @@ export async function POST(request: Request) {
   } catch (err: any) {
     console.error(`[shopify-webhook] error in ${topic}:`, err)
     if (accountId) {
-      await supabase.from('shopify_webhook_logs').insert({
+      await insertShopifyWebhookLog(supabase, {
         account_id: accountId,
         topic,
         payload: JSON.parse(rawBody || '{}'),

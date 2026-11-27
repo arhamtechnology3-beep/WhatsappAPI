@@ -5,6 +5,7 @@ import {
   getShopifyAccountContext,
   matchOrCreateShopifyContact,
 } from '@/lib/shopify/shopify-helper'
+import { insertShopifyWebhookLog } from '@/lib/shopify/webhook-log'
 
 export async function POST(request: Request) {
   const rawBody = await request.text()
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
       marketing_opt_in: acceptsMarketing,
     })
 
-    await supabase.from('shopify_webhook_logs').insert({
+    await insertShopifyWebhookLog(supabase, {
       account_id: accountId,
       topic: 'customers/update',
       payload,
@@ -50,7 +51,7 @@ export async function POST(request: Request) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('[shopify-webhook] error in customers/update:', err)
     if (accountId) {
-      await supabase.from('shopify_webhook_logs').insert({
+      await insertShopifyWebhookLog(supabase, {
         account_id: accountId,
         topic: 'customers/update',
         payload: JSON.parse(rawBody || '{}'),

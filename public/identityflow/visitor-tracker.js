@@ -94,6 +94,12 @@
     }
   }
 
+  // Free-plan Option A: CRM ignores /api/v1/track unless ENABLE_VISITOR_TRACKING=1.
+  // Theme can set disabled:true to skip network entirely (recommended).
+  if (cfg.disabled === true || cfg.disabled === 'true' || cfg.disabled === 1) {
+    return;
+  }
+
   var visitorId = getOrSetVisitor();
   var sessionId = getOrSetSession();
 

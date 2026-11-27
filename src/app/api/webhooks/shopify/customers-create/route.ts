@@ -6,6 +6,7 @@ import {
   matchOrCreateShopifyContact,
   startShopifyCustomerWelcomeDrip,
 } from '@/lib/shopify/shopify-helper'
+import { insertShopifyWebhookLog } from '@/lib/shopify/webhook-log'
 
 async function handleCustomerWebhook(request: Request, topic: string) {
   const rawBody = await request.text()
@@ -42,7 +43,7 @@ async function handleCustomerWebhook(request: Request, topic: string) {
       await startShopifyCustomerWelcomeDrip(supabase, accountId, contact)
     }
 
-    await supabase.from('shopify_webhook_logs').insert({
+    await insertShopifyWebhookLog(supabase, {
       account_id: accountId,
       topic,
       payload,
@@ -55,7 +56,7 @@ async function handleCustomerWebhook(request: Request, topic: string) {
     const message = err instanceof Error ? err.message : String(err)
     console.error(`[shopify-webhook] error in ${topic}:`, err)
     if (accountId) {
-      await supabase.from('shopify_webhook_logs').insert({
+      await insertShopifyWebhookLog(supabase, {
         account_id: accountId,
         topic,
         payload: JSON.parse(rawBody || '{}'),

@@ -7,6 +7,7 @@ import {
 } from '@/lib/shopify/shopify-helper'
 import { scheduleImmediateWhatsAppJobs } from '@/lib/whatsapp/process-send-jobs'
 import { formatItemsSummary } from '@/lib/shopify/product-image'
+import { insertShopifyWebhookLog } from '@/lib/shopify/webhook-log'
 
 export async function POST(request: Request) {
   const rawBody = await request.text()
@@ -84,7 +85,7 @@ export async function POST(request: Request) {
     }
 
     // Log success or skipped
-    await supabase.from('shopify_webhook_logs').insert({
+    await insertShopifyWebhookLog(supabase, {
       account_id: accountId,
       topic,
       payload,
@@ -96,7 +97,7 @@ export async function POST(request: Request) {
   } catch (err: any) {
     console.error(`[shopify-webhook] error in ${topic}:`, err)
     if (accountId) {
-      await supabase.from('shopify_webhook_logs').insert({
+      await insertShopifyWebhookLog(supabase, {
         account_id: accountId,
         topic,
         payload: JSON.parse(rawBody || '{}'),

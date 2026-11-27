@@ -19,6 +19,7 @@ import {
   shipmentNotifyTrigger,
   type TrackingEvent,
 } from '@/lib/shiprocket/status'
+import { insertShopifyWebhookLog } from '@/lib/shopify/webhook-log'
 
 export interface ProcessShipmentResult {
   success: true
@@ -190,7 +191,7 @@ export async function processShipmentTrackingEvent(
 
   scheduleImmediateWhatsAppJobs(notifyRes.jobIds || [])
 
-  await supabase.from('shopify_webhook_logs').insert({
+  await insertShopifyWebhookLog(supabase, {
     account_id: accountId,
     topic: `${event.source}/${milestone}`,
     payload: event as unknown as Record<string, unknown>,

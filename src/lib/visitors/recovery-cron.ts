@@ -14,6 +14,7 @@ import { engineSendTemplate } from '@/lib/automations/meta-send'
 import { findOrCreateConversation } from '@/lib/inbox/find-or-create-conversation'
 import { getOrCreateCaptureSettings } from '@/lib/visitors/capture-settings'
 import { ensureContactLinkToken } from '@/lib/visitors/tokens'
+import { isVisitorTrackingEnabled } from '@/lib/visitors/feature-flags'
 
 export type NudgeType = 'cart' | 'browse' | 'visit'
 
@@ -341,6 +342,14 @@ async function sendVisitNudge(
 export async function runVisitorRecoveryCron(
   now = new Date(),
 ): Promise<Response> {
+  if (!isVisitorTrackingEnabled()) {
+    return NextResponse.json({
+      ok: true,
+      skipped: 'visitor_tracking_disabled',
+      processed: 0,
+    })
+  }
+
   const supabase = supabaseAdmin()
 
   if (!isInsideIstSendWindow(now)) {

@@ -16,6 +16,7 @@ import {
 } from '@/lib/shopify/fulfillment-tracking'
 import { scheduleImmediateWhatsAppJobs } from '@/lib/whatsapp/process-send-jobs'
 import { scheduleOrderFollowups } from '@/lib/followups/order-followups'
+import { insertShopifyWebhookLog } from '@/lib/shopify/webhook-log'
 
 const COURIER_STATUSES = new Set(['in_transit', 'out_for_delivery', 'delivered', 'ndr'])
 
@@ -179,7 +180,7 @@ export async function POST(request: Request) {
 
     scheduleImmediateWhatsAppJobs(jobIds)
 
-    await supabase.from('shopify_webhook_logs').insert({
+    await insertShopifyWebhookLog(supabase, {
       account_id: accountId,
       topic,
       payload,
@@ -191,7 +192,7 @@ export async function POST(request: Request) {
   } catch (err: any) {
     console.error(`[shopify-webhook] error in ${topic}:`, err)
     if (accountId) {
-      await supabase.from('shopify_webhook_logs').insert({
+      await insertShopifyWebhookLog(supabase, {
         account_id: accountId,
         topic,
         payload: JSON.parse(rawBody || '{}'),

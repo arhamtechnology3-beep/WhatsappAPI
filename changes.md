@@ -1,5 +1,23 @@
 # Project Changes Log - WhatsappAPI (wacrm)
 
+## [2026-11-27 11:40 IST] Ops — leave Supabase Cloud; Hostinger VPS self-host guide
+
+### Root Cause
+- Login failed with `exceed_egress_quota` on Supabase Cloud.
+- Owner asked to run everything on Hostinger and stop depending on supabase.com.
+- Hostinger Node/MySQL cannot replace Postgres Auth/Realtime/Storage; official path is **Hostinger VPS + Supabase template** + point Node env at the VPS.
+
+### Objective & Fixes
+- Docs + dump/restore/cutover scripts under `deploy/hostinger-vps/`.
+- Guide: `docs/hostinger-selfhost-supabase.md`.
+
+### Files Modified
+- `docs/hostinger-selfhost-supabase.md`, `docs/hostinger-cron.md`
+- `deploy/hostinger-vps/**`, `.env.local.example`, `changes.md`
+
+### Live
+- Owner orders Hostinger VPS (KVM 2+, Ubuntu+Supabase template) → dump Cloud → restore VPS → switch Node env → restart. No app code rewrite; no migration SQL in this PR.
+
 ## [2026-11-27 00:20 IST] Feature (Follow-ups) — DP10 website unlock multi-step drip until purchase
 
 ### Root Cause
